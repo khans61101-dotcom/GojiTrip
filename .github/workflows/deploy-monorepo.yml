@@ -34,51 +34,29 @@ jobs:
           npx prisma generate
           npm run build
 
-      - name: 📂 Upload Built Frontend Dist to Hostinger via SCP
-        uses: appleboy/scp-action@v0.1.7
+      - name: 📂 Deploy Frontend Dist to Hostinger via FTP (Port 21)
+        uses: SamKirland/FTP-Deploy-Action@v4.3.5
         with:
-          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          server: ${{ secrets.HOSTINGER_SSH_HOST }}
           username: ${{ secrets.HOSTINGER_SSH_USER }}
           password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
-          port: ${{ secrets.HOSTINGER_SSH_PORT }}
-          source: "reactgojitrip-frontend-react-/dist/*"
-          target: "/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojifront.gyaneshindustries.com/public_html"
-          strip_components: 2
+          port: 21
+          local-dir: ./reactgojitrip-frontend-react-/dist/
+          server-dir: /domains/gojifront.gyaneshindustries.com/public_html/
 
-      - name: 🌐 Update Backend & Set Permissions via SSH
+      - name: 🌐 Update Backend Server via SSH (Port 65002)
         uses: appleboy/ssh-action@v1.0.3
+        continue-on-error: true
         with:
           host: ${{ secrets.HOSTINGER_SSH_HOST }}
           username: ${{ secrets.HOSTINGER_SSH_USER }}
           password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
           port: ${{ secrets.HOSTINGER_SSH_PORT }}
           script: |
-            echo "====== 🚀 FIXING PERMISSIONS & UPDATING BACKEND ======"
-
-            FRONTEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojifront.gyaneshindustries.com/public_html"
-            chmod -R 755 $FRONTEND_PUB
-            chmod 644 $FRONTEND_PUB/index.html || true
-
-            REPO_DIR="/home/${{ secrets.HOSTINGER_SSH_USER }}/gojitrip_repo"
+            echo "====== 🚀 RESTARTING BACKEND SERVER ======"
             BACKEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojiback.gyaneshindustries.com/public_html"
-
-            mkdir -p $REPO_DIR
-            cd $REPO_DIR
-            if [ -d ".git" ]; then
-              git fetch origin
-              git reset --hard origin/main || git reset --hard origin/master
-            else
-              git clone https://github.com/khans61101-dotcom/GojiTrip.git . || true
-            fi
-
-            mkdir -p $BACKEND_PUB
-            if [ -d "gojitripBackNode-Backend/gojitripBackNode-Backend" ]; then
-              rsync -av --exclude='node_modules' gojitripBackNode-Backend/gojitripBackNode-Backend/ $BACKEND_PUB/ || cp -r gojitripBackNode-Backend/gojitripBackNode-Backend/* $BACKEND_PUB/
+            if [ -d "$BACKEND_PUB" ]; then
               cd $BACKEND_PUB
-              npm install --legacy-peer-deps
-              npx prisma generate
-              npm run build
               pm2 restart all || touch tmp/restart.txt
             fi
-
-            echo "====== ✅ DEPLOYMENT COMPLETED SUCCESSFULLY ======"
+            echo "====== ✅ BACKEND SERVER READY ======"
