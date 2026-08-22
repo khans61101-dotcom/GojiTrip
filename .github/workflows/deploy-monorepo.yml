@@ -34,7 +34,19 @@ jobs:
           npx prisma generate
           npm run build
 
-      - name: 🌐 Deploy via SSH to Hostinger
+      - name: 📂 Deploy Frontend Dist to Hostinger via SFTP
+        uses: SamKirland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+          port: ${{ secrets.HOSTINGER_SSH_PORT }}
+          protocol: sftp
+          local-dir: ./reactgojitrip-frontend-react-/dist/
+          server-dir: /domains/gojifront.gyaneshindustries.com/public_html/
+          dangerous-clean-slate: true
+
+      - name: 🌐 Update Backend & Restart PM2 via SSH
         uses: appleboy/ssh-action@v1.0.3
         continue-on-error: true
         with:
@@ -43,45 +55,14 @@ jobs:
           password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
           port: ${{ secrets.HOSTINGER_SSH_PORT }}
           script: |
-            echo "====== 🚀 EXECUTING AUTOMATED HOSTINGER DEPLOYMENT ======"
-
-            REPO_DIR="/home/${{ secrets.HOSTINGER_SSH_USER }}/gojitrip_repo"
+            echo "====== 🚀 UPDATING BACKEND & PERMISSIONS ======"
             FRONTEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojifront.gyaneshindustries.com/public_html"
+            chmod -R 755 $FRONTEND_PUB || true
+            chmod 644 $FRONTEND_PUB/index.html || true
+
             BACKEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojiback.gyaneshindustries.com/public_html"
-
-            # 1. Pull Latest Code into REPO_DIR
-            mkdir -p $REPO_DIR
-            cd $REPO_DIR
-            if [ -d ".git" ]; then
-              git fetch origin
-              git reset --hard origin/main || git reset --hard origin/master
-            else
-              git clone https://github.com/khans61101-dotcom/GojiTrip.git .
-            fi
-
-            # 2. Build & Deploy Frontend to gojifront
-            echo "Deploying Frontend to $FRONTEND_PUB..."
-            if [ -d "reactgojitrip-frontend-react-" ]; then
-              cd reactgojitrip-frontend-react-
-              npm install --legacy-peer-deps
-              npm run build
-              mkdir -p $FRONTEND_PUB
-              rm -rf $FRONTEND_PUB/*
-              cp -r dist/* $FRONTEND_PUB/
-              cd $REPO_DIR
-            fi
-
-            # 3. Build & Deploy Backend to gojiback
-            echo "Deploying Backend to $BACKEND_PUB..."
-            mkdir -p $BACKEND_PUB
-            if [ -d "gojitripBackNode-Backend/gojitripBackNode-Backend" ]; then
-              rsync -av --exclude='node_modules' gojitripBackNode-Backend/gojitripBackNode-Backend/ $BACKEND_PUB/ || cp -r gojitripBackNode-Backend/gojitripBackNode-Backend/* $BACKEND_PUB/
+            if [ -d "$BACKEND_PUB" ]; then
               cd $BACKEND_PUB
-              npm install --legacy-peer-deps
-              npx prisma generate
-              npm run build
-              echo "Restarting Node.js Backend Server..."
               pm2 restart all || touch tmp/restart.txt
             fi
-
-            echo "====== ✅ HOSTINGER FRONTEND & BACKEND DEPLOYED SUCCESSFULLY ======"
+            echo "====== ✅ DEPLOYMENT COMPLETED ======"
