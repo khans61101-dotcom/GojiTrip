@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: 📦 Build Frontend Verification
+      - name: 📦 Build Frontend Bundle
         working-directory: ./reactgojitrip-frontend-react-
         env:
           VITE_API_BASE_URL: https://gojiback.gyaneshindustries.com/api/v1
@@ -27,14 +27,25 @@ jobs:
           npm install --legacy-peer-deps
           npm run build
 
-      - name: 📦 Build Backend Verification
+      - name: 📦 Build Backend Bundle
         working-directory: ./gojitripBackNode-Backend/gojitripBackNode-Backend
         run: |
           npm install --legacy-peer-deps
           npx prisma generate
           npm run build
 
-      - name: 🌐 Deploy Frontend & Backend via SSH to Hostinger
+      - name: 📂 Upload Built Frontend Dist to Hostinger via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+          port: ${{ secrets.HOSTINGER_SSH_PORT }}
+          source: "reactgojitrip-frontend-react-/dist/*"
+          target: "/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojifront.gyaneshindustries.com/public_html"
+          strip_components: 2
+
+      - name: 🌐 Update Backend & Set Permissions via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.HOSTINGER_SSH_HOST }}
@@ -42,39 +53,24 @@ jobs:
           password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
           port: ${{ secrets.HOSTINGER_SSH_PORT }}
           script: |
-            echo "====== 🚀 HOSTINGER AUTOMATED DEPLOYMENT STARTED ======"
+            echo "====== 🚀 FIXING PERMISSIONS & UPDATING BACKEND ======"
+
+            FRONTEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojifront.gyaneshindustries.com/public_html"
+            chmod -R 755 $FRONTEND_PUB
+            chmod 644 $FRONTEND_PUB/index.html || true
 
             REPO_DIR="/home/${{ secrets.HOSTINGER_SSH_USER }}/gojitrip_repo"
-            FRONTEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojifront.gyaneshindustries.com/public_html"
             BACKEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojiback.gyaneshindustries.com/public_html"
 
-            # 1. Pull Latest Code into REPO_DIR
-            echo "Fetching latest code from GitHub..."
             mkdir -p $REPO_DIR
             cd $REPO_DIR
             if [ -d ".git" ]; then
               git fetch origin
               git reset --hard origin/main || git reset --hard origin/master
             else
-              git clone https://github.com/khans61101-dotcom/GojiTrip.git .
+              git clone https://github.com/khans61101-dotcom/GojiTrip.git . || true
             fi
 
-            # 2. Build & Sync Frontend to gojifront
-            echo "Building & Deploying Frontend to $FRONTEND_PUB..."
-            if [ -d "reactgojitrip-frontend-react-" ]; then
-              cd reactgojitrip-frontend-react-
-              npm install --legacy-peer-deps
-              npm run build
-              mkdir -p $FRONTEND_PUB
-              rm -rf $FRONTEND_PUB/*
-              cp -r dist/* $FRONTEND_PUB/
-              chmod -R 755 $FRONTEND_PUB
-              chmod 644 $FRONTEND_PUB/index.html || true
-              cd $REPO_DIR
-            fi
-
-            # 3. Build & Sync Backend to gojiback
-            echo "Building & Deploying Backend to $BACKEND_PUB..."
             mkdir -p $BACKEND_PUB
             if [ -d "gojitripBackNode-Backend/gojitripBackNode-Backend" ]; then
               rsync -av --exclude='node_modules' gojitripBackNode-Backend/gojitripBackNode-Backend/ $BACKEND_PUB/ || cp -r gojitripBackNode-Backend/gojitripBackNode-Backend/* $BACKEND_PUB/
@@ -82,8 +78,7 @@ jobs:
               npm install --legacy-peer-deps
               npx prisma generate
               npm run build
-              echo "Restarting Node.js Backend Server..."
               pm2 restart all || touch tmp/restart.txt
             fi
 
-            echo "====== ✅ HOSTINGER FRONTEND & BACKEND DEPLOYED SUCCESSFULLY ======"
+            echo "====== ✅ DEPLOYMENT COMPLETED SUCCESSFULLY ======"
