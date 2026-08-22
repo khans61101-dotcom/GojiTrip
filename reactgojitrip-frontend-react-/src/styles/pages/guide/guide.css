@@ -1,0 +1,7 @@
+.guide-hero {
+  @apply relative bg-gradient-to-r from-blue-600 to-blue-800 text-white;
+}
+
+.guide-hero-container {
+  @apply max-w-7xl mx-auto py-16 px-4;
+}

@@ -1,0 +1,65 @@
+/* ============================================
+   FOOTER - RESPONSIVE
+   ============================================ */
+footer {
+  padding: 60px 0 30px;
+  border-top: 1px solid var(--line);
+  margin-top: 40px;
+}
+
+@media (max-width: 768px) {
+  footer {
+    padding: 40px 0 24px;
+    margin-top: 30px;
+  }
+}
+
+@media (max-width: 480px) {
+  footer {
+    padding: 32px 0 20px;
+    margin-top: 20px;
+  }
+}
+
+.foot-grid {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 30px;
+  margin-bottom: 36px;
+}
+
+@media (max-width: 768px) {
+  .foot-grid {
+    flex-direction: column;
+    gap: 24px;
+    margin-bottom: 28px;
+  }
+}
+
+.foot-links {
+  display: flex;
+  gap: 60px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .foot-links {
+    gap: 32px;
+  }
+}
+
+@media (max-width: 480px) {
+  .foot-links {
+    gap: 24px;
+    flex-direction: column;
+  }
+}
+
+.foot-col h5 {
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ink-soft);
+  margin: 0 0 14px;
+}

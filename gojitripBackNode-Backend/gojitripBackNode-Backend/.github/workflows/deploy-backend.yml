@@ -1,0 +1,43 @@
+name: Deploy NestJS Backend to Hostinger
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies & Generate Prisma
+        run: |
+          npm ci
+          npx prisma generate
+
+      - name: 🏗️ Build NestJS Backend
+        run: npm run build
+
+      - name: 🌐 Deploy via SSH to Hostinger
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+          port: ${{ secrets.HOSTINGER_SSH_PORT }}
+          script: |
+            cd /home/u822110105/domains/gojiback.gyaneshindustries.com/public_html
+            git pull origin main
+            npm install
+            npx prisma generate
+            npm run build
+            pm2 restart all || touch tmp/restart.txt

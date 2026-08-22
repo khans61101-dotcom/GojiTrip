@@ -1,0 +1,178 @@
+generator client {
+  provider      = "prisma-client-js"
+  engineType    = "binary"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  username     String   @unique
+  password     String
+  full_name    String?
+  is_active    Boolean  @default(true)
+  is_superuser Boolean  @default(false)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+}
+
+model Trip {
+  id        Int      @id @default(autoincrement())
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Route {
+  id                  Int      @id @default(autoincrement())
+  routeName           String
+  origin              String
+  destination         String
+  totalDistanceKm     Float
+  estimatedTravelTime String
+  roadCondition       String
+  weatherSummary      String
+  approvalStatus      String   @default("Draft")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  createdByName       String
+}
+
+model Hotel {
+  id                 Int      @id @default(autoincrement())
+  hotelName          String
+  propertyType       String
+  contactPerson      String
+  phoneNumber        String
+  location           String
+  latitude           Float
+  longitude          Float
+  checkInTime        String
+  checkOutTime       String
+  availabilityStatus String
+  partnerStatus      String
+  imageUrl           String?
+  approvalStatus     String   @default("Draft")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  createdByName      String
+  rooms              Room[]
+}
+
+model Restaurant {
+  id                Int      @id @default(autoincrement())
+  restaurantName    String
+  location          String
+  contactDetails    String
+  cuisineTypes      String[]
+  openingHours      String
+  imageUrl          String?
+  photos            String[] @default([])
+  recommendedDishes String[] @default([])
+  priceRange        String
+  approvalStatus    String   @default("Draft")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  createdByName     String
+}
+
+model Activity {
+  id              Int      @id @default(autoincrement())
+  activityName    String
+  guideName       String
+  guideContact    String
+  pricing         Float
+  duration        String
+  difficultyLevel String
+  availability    String
+  approvalStatus  String   @default("Draft")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdByName   String
+}
+
+model Media {
+  id         Int      @id @default(autoincrement())
+  title      String
+  fileType   String
+  category   String
+  url        String
+  fileSizeMb Float
+  tags       String[]
+  uploadedAt DateTime @default(now())
+  uploadedBy String
+  entityId   String?
+  entityType String?
+}
+
+model Transport {
+  id              Int      @id @default(autoincrement())
+  operatorName    String
+  contactPerson   String
+  mobileNumber    String
+  whatsAppNumber  String
+  vehicleType     String
+  vehicleNumber   String
+  seatCapacity    Int
+  route           String
+  pickupPoint     String
+  departureTime   String
+  fare            Float
+  currency        String
+  luggagePolicy   String
+  driverPhotoUrl  String?
+  vehiclePhotos   String[]
+  licenceVerified Boolean  @default(false)
+  activeStatus    String   @default("ACTIVE")
+  approvalStatus  String   @default("PENDING")
+  createdByName   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model WorkflowLog {
+  id             Int      @id @default(autoincrement())
+  entityType     String
+  entityId       String
+  entityTitle    String
+  previousStatus String
+  newStatus      String
+  changedByRole  String
+  changedByName  String
+  comment        String?
+  timestamp      DateTime @default(now())
+}
+
+model Room {
+  id            Int     @id @default(autoincrement())
+  hotel         Hotel   @relation(fields: [hotelId], references: [id])
+  hotelId       Int
+  name          String
+  type          String // e.g., 'AC' or 'Non-AC'
+  pricePerNight Float
+  capacity      Int
+  available     Boolean @default(true)
+  description   String?
+}
+
+model Guide {
+  id              Int      @id @default(autoincrement())
+  fullName        String
+  contactNumber   String
+  licenseNumber   String?
+  languages       String[]
+  experienceYears Int?
+  specialization  String   @default("Mountain Guide")
+  dailyRate       Float?
+  bio             String?
+  photoUrl        String?
+  approvalStatus  String   @default("Published")
+  createdByName   String   @default("Admin")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

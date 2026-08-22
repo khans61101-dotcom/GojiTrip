@@ -1,0 +1,18 @@
+:root {
+  --sky: #0EA5E9;
+  --sky-dark: #0879b3;
+  --green: #22C55E;
+  --orange: #F59E0B;
+  --ink: #0B1524;
+  --ink-soft: #3a4a5e;
+  --paper: #FBFDFF;
+  --mist: #EAF4FC;
+  --line: #DCE9F3;
+  --radius: 20px;
+  --shadow: 0 20px 45px -20px rgba(11, 21, 36, .18);
+  
+  /* Responsive spacing variables */
+  --section-padding: 90px;
+  --container-padding: 24px;
+  --gap-base: 20px;
+}

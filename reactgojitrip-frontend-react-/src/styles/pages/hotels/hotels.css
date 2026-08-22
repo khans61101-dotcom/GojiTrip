@@ -1,0 +1,7 @@
+.hotel-hero {
+  @apply bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white;
+}
+
+.hotel-hero-container {
+  @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16;
+}

@@ -1,0 +1,465 @@
+import { apiRequest, clearToken, saveToken } from '@/lib/api';
+import {
+  ActivityEntry,
+  ApprovalStatus,
+  GuideEntry,
+  HotelEntry,
+  MediaItem,
+  RestaurantEntry,
+  RouteEntry,
+  RoleType,
+  TransportEntry,
+  WorkflowHistoryLog,
+} from '@/types/cms';
+
+type BackendTrip = { id: number; name: string; destination: string; price: number; description?: string | null; duration: number; is_active: boolean; image_url?: string | null; created_at: string; updated_at: string; owner_id?: number | null };
+type BackendRoute = { id: number; name: string; origin: string; destination: string; distance: number; status: string };
+type BackendHotel = { id: number; name: string; location: string; price_per_night: number; is_active: boolean };
+type BackendRestaurant = { id: number; name: string; location: string; cuisine: string; is_active: boolean };
+type BackendActivity = { id: number; name: string; description: string; price: number; guide_name: string; is_active: boolean };
+type BackendMedia = { id: number; filename: string; filepath: string; uploaded_at: string };
+type BackendUser = { id: number; email: string; username: string; full_name?: string | null; is_active: boolean; is_superuser: boolean; created_at: string; updated_at?: string | null };
+
+const fallbackStatus: ApprovalStatus = 'Published';
+
+const emptyStats = {
+  transportsCount: 0, routesCount: 0, hotelsCount: 0, restaurantsCount: 0,
+  activitiesCount: 0, mediaCount: 0, draftCount: 0, underReviewCount: 0, approvedCount: 0, publishedCount: 0, guidesCount: 0,
+};
+
+function mapTrip(t: BackendTrip): TransportEntry {
+  return {
+    id: String(t.id),
+    operatorName: t.name,
+    contactPerson: '',
+    mobileNumber: '',
+    whatsAppNumber: '',
+    vehicleType: 'Jeep',
+    vehicleNumber: `TRIP-${t.id}`,
+    seatCapacity: 0,
+    route: t.destination,
+    pickupPoint: '',
+    departureTime: '',
+    fare: t.price,
+    currency: 'USD',
+    luggagePolicy: t.description || '',
+    driverPhotoUrl: t.image_url || undefined,
+    vehiclePhotos: t.image_url ? [t.image_url] : [],
+    licenceVerified: true,
+    activeStatus: t.is_active ? 'Active' : 'Inactive',
+    approvalStatus: fallbackStatus,
+    createdAt: t.created_at,
+    updatedAt: t.updated_at,
+    createdByName: 'API',
+  };
+}
+
+function mapRoute(r: BackendRoute): RouteEntry {
+  return {
+    id: String(r.id),
+    routeName: r.name,
+    origin: r.origin,
+    destination: r.destination,
+    totalDistanceKm: r.distance,
+    estimatedTravelTime: '',
+    roadCondition: 'Smooth Asphalt',
+    fuelStations: [],
+    evChargingStations: [],
+    medicalCentres: [],
+    policePosts: [],
+    atms: [],
+    viewpoints: [],
+    restaurants: [],
+    recommendedStops: [],
+    touristAttractions: [],
+    weatherSummary: '',
+    emergencyContacts: [],
+    connectedTransportIds: [],
+    connectedHotelIds: [],
+    approvalStatus: (r.status as ApprovalStatus) || fallbackStatus,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    createdByName: 'API',
+  };
+}
+
+function mapHotel(h: any): HotelEntry {
+  return {
+    id: String(h.id),
+    hotelName: h.hotelName,
+    propertyType: h.propertyType,
+    contactPerson: h.contactPerson,
+    phoneNumber: h.phoneNumber,
+    location: h.location,
+    latitude: h.latitude,
+    longitude: h.longitude,
+    roomTypes: [], // The backend response doesn't seem to return room types in the root object
+    facilities: [], // Backend doesn't return facilities
+    checkInTime: h.checkInTime,
+    checkOutTime: h.checkOutTime,
+    hotelPhotos: h.imageUrl ? [h.imageUrl] : [], // Backend now returns imageUrl
+    availabilityStatus: h.availabilityStatus,
+    partnerStatus: h.partnerStatus,
+    approvalStatus: h.approvalStatus,
+    createdAt: h.createdAt,
+    updatedAt: h.updatedAt,
+    createdByName: h.createdByName,
+  };
+}
+
+function mapRestaurant(r: any): RestaurantEntry {
+  return {
+    id: String(r.id),
+    restaurantName: r.restaurantName,
+    location: r.location,
+    contactDetails: r.contactDetails,
+    cuisineTypes: r.cuisineTypes,
+    openingHours: r.openingHours,
+    priceRange: r.priceRange,
+    photos: [], // Not returned by backend
+    imageUrl: r.imageUrl,
+    recommendedDishes: [], // Not returned by backend
+    approvalStatus: r.approvalStatus,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    createdByName: r.createdByName,
+  };
+}
+
+function mapActivity(a: any): ActivityEntry {
+  const photosArray = Array.isArray(a.photos) && a.photos.length > 0
+    ? a.photos
+    : a.imageUrl
+      ? [a.imageUrl]
+      : [];
+  return {
+    id: String(a.id),
+    activityName: a.activityName,
+    guideName: a.guideName,
+    guideContactDetails: a.guideContact,
+    pricing: a.pricing,
+    duration: a.duration,
+    difficultyLevel: a.difficultyLevel,
+    photos: photosArray,
+    imageUrl: a.imageUrl || photosArray[0] || '',
+    availability: a.availability,
+    approvalStatus: a.approvalStatus,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+    createdByName: a.createdByName,
+  };
+}
+
+function mapGuide(g: any): GuideEntry {
+  return {
+    id: String(g.id),
+    fullName: g.fullName,
+    contactNumber: g.contactNumber,
+    licenseNumber: g.licenseNumber || '',
+    languages: Array.isArray(g.languages) ? g.languages : ['English', 'Nepali'],
+    experienceYears: g.experienceYears || 0,
+    specialization: g.specialization || 'Mountain Guide',
+    dailyRate: g.dailyRate || 0,
+    bio: g.bio || '',
+    photoUrl: g.photoUrl || '',
+    approvalStatus: g.approvalStatus || 'Published',
+    createdAt: g.createdAt,
+    updatedAt: g.updatedAt,
+    createdByName: g.createdByName || 'Admin',
+  };
+}
+
+function mapMedia(m: any): MediaItem {
+  return {
+    id: String(m.id),
+    title: m.title,
+    fileType: m.fileType,
+    category: m.category,
+    url: m.url,
+    thumbnailUrl: m.url,
+    fileSizeMb: m.fileSizeMb,
+    tags: m.tags,
+    uploadedAt: m.uploadedAt,
+    uploadedBy: m.uploadedBy,
+  };
+}
+
+class CMSStore {
+  private transports: TransportEntry[] = [];
+  private routes: RouteEntry[] = [];
+  private hotels: HotelEntry[] = [];
+  private restaurants: RestaurantEntry[] = [];
+  private activities: ActivityEntry[] = [];
+  private guides: GuideEntry[] = [];
+  private media: MediaItem[] = [];
+  private logs: WorkflowHistoryLog[] = [];
+  private currentRole: RoleType = 'Admin';
+  private listeners: (() => void)[] = [];
+  private hydrated = false;
+
+  constructor() {
+    if (typeof window !== 'undefined') void this.refreshAll();
+  }
+
+  private notify() {
+    this.listeners.forEach(l => l());
+  }
+
+  subscribe(listener: () => void) {
+    this.listeners.push(listener);
+    return () => { this.listeners = this.listeners.filter(l => l !== listener); };
+  }
+
+  private async refreshAll() {
+    try {
+      const [trips, routes, hotels, restaurants, activities, guides, media, logs] = await Promise.all([
+        apiRequest<BackendTrip[]>('/trips'),
+        apiRequest<BackendRoute[]>('/routes'),
+        apiRequest<BackendHotel[]>('/hotels'),
+        apiRequest<BackendRestaurant[]>('/restaurants'),
+        apiRequest<BackendActivity[]>('/activities'),
+        apiRequest<any[]>('/guides'),
+        apiRequest<BackendMedia[]>('/media'),
+        apiRequest<WorkflowHistoryLog[]>('/workflow/logs'),
+      ]);
+      console.log("Successfully fetched all data");
+      this.transports = trips.map(mapTrip);
+      this.routes = routes.map(mapRoute);
+      this.hotels = hotels.map(mapHotel);
+      this.restaurants = restaurants.map(mapRestaurant);
+      this.activities = activities.map(mapActivity);
+      this.guides = Array.isArray(guides) ? guides.map(mapGuide) : [];
+      this.media = media.map(mapMedia);
+      this.logs = logs;
+      this.hydrated = true;
+      this.notify();
+    } catch (error) {
+      console.error("Error in refreshAll:", error);
+      this.hydrated = true;
+      this.notify();
+    }
+  }
+
+  resetToDefaults() {
+    void this.refreshAll();
+  }
+
+  getRole() { return this.currentRole; }
+  setRole(role: RoleType) { this.currentRole = role; this.notify(); }
+
+  getStats() {
+    return {
+      totalEntries: this.transports.length + this.routes.length + this.hotels.length + this.restaurants.length + this.activities.length + this.guides.length + this.media.length,
+      transportsCount: this.transports.length,
+      routesCount: this.routes.length,
+      hotelsCount: this.hotels.length,
+      restaurantsCount: this.restaurants.length,
+      activitiesCount: this.activities.length,
+      guidesCount: this.guides.length,
+      mediaCount: this.media.length,
+      draftCount: 0,
+      underReviewCount: 0,
+      approvedCount: 0,
+      publishedCount: 0,
+    };
+  }
+
+  getWorkflowLogs() { return this.logs; }
+  getTransports() { return this.transports; }
+  getRoutes() { return this.routes; }
+  getHotels() { return this.hotels; }
+  getRestaurants() { return this.restaurants; }
+  getActivities() { return this.activities; }
+  getGuides() { return this.guides; }
+  getMedia() { return this.media; }
+  isHydrated() { return this.hydrated; }
+
+  getTransportById(id: string) { return this.transports.find(x => x.id === id); }
+  getRouteById(id: string) { return this.routes.find(x => x.id === id); }
+
+  async login(username: string, password: string) {
+    const result = await apiRequest<{ access_token: string; token_type: string }>('/auth/login', {
+      method: 'POST',
+      auth: false,
+      body: { username, password },
+    });
+    await saveToken(result.access_token);
+    await this.refreshAll();
+    return result;
+  }
+
+  async signup(payload: { email: string; username: string; full_name?: string; password: string }) {
+    return apiRequest('/auth/signup', { method: 'POST', auth: false, body: payload });
+  }
+
+  async refreshToken() {
+    const result = await apiRequest<{ access_token: string; token_type: string }>('/auth/refresh', { method: 'POST' });
+    await saveToken(result.access_token);
+    return result;
+  }
+
+  logout() {
+    clearToken();
+  }
+
+  async saveTransport(entry: Partial<TransportEntry> & { id?: string }) {
+    const payload = {
+      operatorName: entry.operatorName || 'New Operator',
+      contactPerson: entry.contactPerson || 'N/A',
+      mobileNumber: entry.mobileNumber || 'N/A',
+      whatsAppNumber: entry.whatsAppNumber || 'N/A',
+      vehicleType: entry.vehicleType || 'Other',
+      vehicleNumber: entry.vehicleNumber || 'N/A',
+      seatCapacity: Number(entry.seatCapacity) || 0,
+      route: entry.route || 'N/A',
+      pickupPoint: entry.pickupPoint || 'N/A',
+      departureTime: entry.departureTime || 'N/A',
+      fare: Number(entry.fare) || 0,
+      currency: entry.currency || 'USD',
+      luggagePolicy: entry.luggagePolicy || 'N/A',
+      driverPhotoUrl: entry.driverPhotoUrl || null,
+      vehiclePhotos: entry.vehiclePhotos || [],
+      licenceVerified: !!entry.licenceVerified,
+      activeStatus: entry.activeStatus || 'ACTIVE',
+      approvalStatus: entry.approvalStatus || 'PENDING',
+      createdByName: entry.createdByName || 'API',
+    };
+    const method = entry.id ? 'PATCH' : 'POST';
+    const path = entry.id ? `/transport/${Number(entry.id)}` : '/transport';
+    try {
+      await apiRequest(path, { method, body: payload });
+      await this.refreshAll();
+    } catch (error) {
+      console.error('Failed to save transport:', error);
+      throw error;
+    }
+  }
+
+  async deleteTransport(id: string) { await apiRequest(`/transport/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
+
+  async saveRoute(entry: Partial<RouteEntry> & { id?: string }) {
+    const payload = {
+      routeName: entry.routeName || 'New Route',
+      origin: entry.origin || '',
+      destination: entry.destination || '',
+      totalDistanceKm: Number(entry.totalDistanceKm) || 0,
+      estimatedTravelTime: entry.estimatedTravelTime || 'N/A',
+      roadCondition: entry.roadCondition || 'N/A',
+      weatherSummary: entry.weatherSummary || 'N/A',
+      approvalStatus: entry.approvalStatus && entry.approvalStatus.trim() !== '' ? entry.approvalStatus : 'Draft',
+      createdByName: entry.createdByName || (typeof window !== 'undefined' && localStorage.getItem('gojitrip_username')) || 'Goji Admin',
+    };
+    const method = entry.id ? 'PATCH' : 'POST';
+    const path = entry.id ? `/routes/${Number(entry.id)}` : '/routes';
+    const savedId = entry.id;
+    await apiRequest(path, { method, body: payload });
+    await this.refreshAll();
+    return savedId ? this.routes.find(r => r.id === savedId) : this.routes[0];
+  }
+  async deleteRoute(id: string) { await apiRequest(`/routes/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
+
+  async saveHotel(entry: Partial<HotelEntry> & { id?: string }) {
+    const payload = {
+      hotelName: entry.hotelName || 'New Hotel',
+      propertyType: entry.propertyType || 'Hotel',
+      contactPerson: entry.contactPerson || 'N/A',
+      phoneNumber: entry.phoneNumber || 'N/A',
+      location: entry.location || 'N/A',
+      latitude: Number(entry.latitude) || 0,
+      longitude: Number(entry.longitude) || 0,
+      checkInTime: entry.checkInTime || 'N/A',
+      checkOutTime: entry.checkOutTime || 'N/A',
+      availabilityStatus: entry.availabilityStatus || 'Available',
+      partnerStatus: entry.partnerStatus || 'Standard',
+      imageUrl: entry.hotelPhotos?.[0] || null,
+      approvalStatus: entry.approvalStatus || 'Draft',
+      createdByName: entry.createdByName || 'API',
+    };
+    const method = entry.id ? 'PATCH' : 'POST';
+    const path = entry.id ? `/hotels/${Number(entry.id)}` : '/hotels';
+    await apiRequest(path, { method, body: payload });
+    await this.refreshAll();
+  }
+  async deleteHotel(id: string) { await apiRequest(`/hotels/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
+
+  async saveRestaurant(entry: Partial<RestaurantEntry> & { id?: string }) {
+    const payload = {
+      restaurantName: entry.restaurantName || 'New Restaurant',
+      location: entry.location || 'N/A',
+      contactDetails: entry.contactDetails || 'N/A',
+      cuisineTypes: entry.cuisineTypes || [],
+      openingHours: entry.openingHours || 'N/A',
+      priceRange: entry.priceRange || 'NPR NPR',
+      approvalStatus: entry.approvalStatus || 'Draft',
+      createdByName: entry.createdByName || 'API',
+    };
+    const method = entry.id ? 'PATCH' : 'POST';
+    const path = entry.id ? `/restaurants/${Number(entry.id)}` : '/restaurants';
+    await apiRequest(path, { method, body: payload });
+    await this.refreshAll();
+  }
+  async deleteRestaurant(id: string) { await apiRequest(`/restaurants/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
+
+  async saveActivity(entry: Partial<ActivityEntry> & { id?: string }) {
+    const payload = {
+      activityName: entry.activityName || 'New Activity',
+      guideName: entry.guideName || 'N/A',
+      guideContact: entry.guideContactDetails || 'N/A',
+      pricing: Number(entry.pricing) || 0,
+      duration: entry.duration || 'N/A',
+      difficultyLevel: entry.difficultyLevel || 'Easy',
+      availability: entry.availability || 'Daily',
+      approvalStatus: entry.approvalStatus || 'Draft',
+      createdByName: entry.createdByName || 'API',
+      imageUrl: entry.imageUrl || (entry.photos && entry.photos[0]) || '',
+      photos: entry.photos || [],
+    };
+    const isNew = !entry.id || String(entry.id).startsWith('act-') || String(entry.id).startsWith('activity_');
+    const method = isNew ? 'POST' : 'PATCH';
+    const path = isNew ? '/activities' : `/activities/${Number(entry.id)}`;
+    await apiRequest(path, { method, body: payload });
+    await this.refreshAll();
+  }
+  async deleteActivity(id: string) { await apiRequest(`/activities/${id}`, { method: 'DELETE' }); await this.refreshAll(); }
+
+  async saveGuide(entry: Partial<GuideEntry> & { id?: string }) {
+    const payload = {
+      fullName: entry.fullName || 'New Guide',
+      contactNumber: entry.contactNumber || 'N/A',
+      licenseNumber: entry.licenseNumber || 'NPL-GUIDE-101',
+      languages: entry.languages || ['English', 'Nepali'],
+      experienceYears: Number(entry.experienceYears) || 3,
+      specialization: entry.specialization || 'Mountain Guide',
+      dailyRate: Number(entry.dailyRate) || 3000,
+      bio: entry.bio || '',
+      photoUrl: entry.photoUrl || '',
+      approvalStatus: entry.approvalStatus || 'Published',
+      createdByName: entry.createdByName || 'Admin',
+    };
+    const isNew = !entry.id || String(entry.id).startsWith('gd-') || String(entry.id).startsWith('guide_');
+    const method = isNew ? 'POST' : 'PATCH';
+    const path = isNew ? '/guides' : `/guides/${Number(entry.id)}`;
+    await apiRequest(path, { method, body: payload });
+    await this.refreshAll();
+  }
+  async deleteGuide(id: string) { await apiRequest(`/guides/${id}`, { method: 'DELETE' }); await this.refreshAll(); }
+
+  async addMedia(entry: Partial<MediaItem> & { url: string }) {
+    await apiRequest('/media/upload', {
+      method: 'POST',
+      body: {
+        url: entry.url,
+        title: entry.title || 'Uploaded Media',
+        category: entry.category || 'Destinations'
+      }
+    });
+    await this.refreshAll();
+  }
+  async deleteMedia(id: string) { await apiRequest(`/media/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
+
+  updateStatus(_entityType: string, _entityId: string, _newStatus: ApprovalStatus, _comment?: string) {
+    this.notify();
+  }
+}
+
+export const cmsStore = new CMSStore();
