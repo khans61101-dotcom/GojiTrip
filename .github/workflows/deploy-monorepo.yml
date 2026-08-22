@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: 📦 Build Frontend Bundle
+      - name: 📦 Build Frontend
         working-directory: ./reactgojitrip-frontend-react-
         env:
           VITE_API_BASE_URL: https://gojiback.gyaneshindustries.com/api/v1
@@ -27,24 +27,19 @@ jobs:
           npm install --legacy-peer-deps
           npm run build
 
-      - name: 📦 Build Backend Bundle
+      - name: 📦 Build Backend
         working-directory: ./gojitripBackNode-Backend/gojitripBackNode-Backend
         run: |
           npm install --legacy-peer-deps
           npx prisma generate
           npm run build
 
-      - name: 📂 Deploy Frontend Dist to Hostinger via FTP (Port 21)
-        uses: SamKirland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.HOSTINGER_SSH_HOST }}
-          username: ${{ secrets.HOSTINGER_SSH_USER }}
-          password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
-          port: 21
-          local-dir: ./reactgojitrip-frontend-react-/dist/
-          server-dir: /domains/gojifront.gyaneshindustries.com/public_html/
+      - name: 📂 Upload Frontend Dist via Native SCP
+        run: |
+          sudo apt-get update && sudo apt-get install -y sshpass
+          sshpass -p "${{ secrets.HOSTINGER_SSH_PASSWORD }}" scp -P ${{ secrets.HOSTINGER_SSH_PORT }} -o StrictHostKeyChecking=no -r ./reactgojitrip-frontend-react-/dist/* ${{ secrets.HOSTINGER_SSH_USER }}@${{ secrets.HOSTINGER_SSH_HOST }}:/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojifront.gyaneshindustries.com/public_html/
 
-      - name: 🌐 Update Backend Server via SSH (Port 65002)
+      - name: 🌐 Update Backend & Permissions via SSH
         uses: appleboy/ssh-action@v1.0.3
         continue-on-error: true
         with:
@@ -53,10 +48,14 @@ jobs:
           password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
           port: ${{ secrets.HOSTINGER_SSH_PORT }}
           script: |
-            echo "====== 🚀 RESTARTING BACKEND SERVER ======"
+            echo "====== 🚀 FIXING PERMISSIONS & UPDATING BACKEND ======"
+            FRONTEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojifront.gyaneshindustries.com/public_html"
+            chmod -R 755 $FRONTEND_PUB || true
+            chmod 644 $FRONTEND_PUB/index.html || true
+
             BACKEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojiback.gyaneshindustries.com/public_html"
             if [ -d "$BACKEND_PUB" ]; then
               cd $BACKEND_PUB
               pm2 restart all || touch tmp/restart.txt
             fi
-            echo "====== ✅ BACKEND SERVER READY ======"
+            echo "====== ✅ DEPLOYMENT COMPLETED ======"
