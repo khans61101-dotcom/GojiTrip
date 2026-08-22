@@ -44,24 +44,43 @@ jobs:
           script: |
             echo "====== 🚀 EXECUTING AUTOMATED HOSTINGER DEPLOYMENT ======"
 
-            BACKEND_PATH="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojiback.gyaneshindustries.com/public_html"
+            REPO_DIR="/home/${{ secrets.HOSTINGER_SSH_USER }}/gojitrip_repo"
+            FRONTEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojifront.gyaneshindustries.com/public_html"
+            BACKEND_PUB="/home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojiback.gyaneshindustries.com/public_html"
 
-            echo "Updating Backend at $BACKEND_PATH..."
-            mkdir -p $BACKEND_PATH
-            cd $BACKEND_PATH
+            # 1. Pull Latest Code into REPO_DIR
+            mkdir -p $REPO_DIR
+            cd $REPO_DIR
             if [ -d ".git" ]; then
-              git pull origin main || git pull origin master
+              git fetch origin
+              git reset --hard origin/main || git reset --hard origin/master
             else
-              git clone https://github.com/khans61101-dotcom/GojiTrip.git . || true
+              git clone https://github.com/khans61101-dotcom/GojiTrip.git .
             fi
 
+            # 2. Build & Deploy Frontend to gojifront
+            echo "Deploying Frontend to $FRONTEND_PUB..."
+            if [ -d "reactgojitrip-frontend-react-" ]; then
+              cd reactgojitrip-frontend-react-
+              npm install --legacy-peer-deps
+              npm run build
+              mkdir -p $FRONTEND_PUB
+              rm -rf $FRONTEND_PUB/*
+              cp -r dist/* $FRONTEND_PUB/
+              cd $REPO_DIR
+            fi
+
+            # 3. Build & Deploy Backend to gojiback
+            echo "Deploying Backend to $BACKEND_PUB..."
+            mkdir -p $BACKEND_PUB
             if [ -d "gojitripBackNode-Backend/gojitripBackNode-Backend" ]; then
-              cd gojitripBackNode-Backend/gojitripBackNode-Backend
+              rsync -av --exclude='node_modules' gojitripBackNode-Backend/gojitripBackNode-Backend/ $BACKEND_PUB/ || cp -r gojitripBackNode-Backend/gojitripBackNode-Backend/* $BACKEND_PUB/
+              cd $BACKEND_PUB
               npm install --legacy-peer-deps
               npx prisma generate
               npm run build
-              echo "Restarting Node.js Backend..."
+              echo "Restarting Node.js Backend Server..."
               pm2 restart all || touch tmp/restart.txt
             fi
 
-            echo "====== ✅ DEPLOYMENT COMPLETED SUCCESSFULLY ======"
+            echo "====== ✅ HOSTINGER FRONTEND & BACKEND DEPLOYED SUCCESSFULLY ======"
