@@ -7,7 +7,7 @@ on:
       - master
 
 jobs:
-  build-and-deploy-frontend:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,34 +25,11 @@ jobs:
         working-directory: ./reactgojitrip-frontend-react-
         run: npm ci
 
-      - name: 🏗️ Build Frontend Production Bundle
+      - name: 🏗️ Build Frontend Bundle
         working-directory: ./reactgojitrip-frontend-react-
         env:
           VITE_API_BASE_URL: https://gojiback.gyaneshindustries.com/api/v1
         run: npm run build
-
-      - name: 📂 Deploy Frontend to Hostinger via FTP
-        uses: SamKirland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.HOSTINGER_FTP_SERVER }}
-          username: ${{ secrets.HOSTINGER_FTP_USERNAME }}
-          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          local-dir: ./reactgojitrip-frontend-react-/dist/
-          server-dir: /public_html/
-
-  build-backend:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 🚀 Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'npm'
-          cache-dependency-path: gojitripBackNode-Backend/gojitripBackNode-Backend/package-lock.json
 
       - name: 📦 Install Backend Dependencies & Prisma Generate
         working-directory: ./gojitripBackNode-Backend/gojitripBackNode-Backend
@@ -63,3 +40,35 @@ jobs:
       - name: 🏗️ Build NestJS Backend
         working-directory: ./gojitripBackNode-Backend/gojitripBackNode-Backend
         run: npm run build
+
+  deploy-to-hostinger:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚀 Trigger Hostinger Deployment via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOSTINGER_SSH_HOST }}
+          username: ${{ secrets.HOSTINGER_SSH_USER }}
+          password: ${{ secrets.HOSTINGER_SSH_PASSWORD }}
+          port: ${{ secrets.HOSTINGER_SSH_PORT }}
+          script: |
+            echo "====== 🌐 STARTING HOSTINGER AUTO-DEPLOYMENT ======"
+            
+            # 1. Update Repository Code
+            cd /home/${{ secrets.HOSTINGER_SSH_USER }}/domains/gojiback.gyaneshindustries.com/public_html || true
+            if [ -d ".git" ]; then
+              git pull origin main || git pull origin master
+            fi
+
+            # 2. Deploy Backend
+            if [ -d "gojitripBackNode-Backend/gojitripBackNode-Backend" ]; then
+              cd gojitripBackNode-Backend/gojitripBackNode-Backend
+              npm install --production=false
+              npx prisma generate
+              npm run build
+              pm2 restart all || touch tmp/restart.txt
+            fi
+
+            echo "====== ✅ HOSTINGER AUTO-DEPLOYMENT COMPLETED SUCCESSFULLY ======"
