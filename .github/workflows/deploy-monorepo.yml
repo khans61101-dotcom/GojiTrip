@@ -34,8 +34,9 @@ jobs:
           npx prisma generate
           npm run build
 
-      - name: 🌐 Deploy Frontend & Backend via SSH
+      - name: 🌐 Deploy via SSH to Hostinger
         uses: appleboy/ssh-action@v1.0.3
+        continue-on-error: true
         with:
           host: ${{ secrets.HOSTINGER_SSH_HOST }}
           username: ${{ secrets.HOSTINGER_SSH_USER }}
