@@ -24,13 +24,13 @@ jobs:
         env:
           VITE_API_BASE_URL: https://gojiback.gyaneshindustries.com/api/v1
         run: |
-          npm ci
+          npm install --legacy-peer-deps
           npm run build
 
       - name: 📦 Build Backend
         working-directory: ./gojitripBackNode-Backend/gojitripBackNode-Backend
         run: |
-          npm ci
+          npm install --legacy-peer-deps
           npx prisma generate
           npm run build
 
