@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Eye, EyeOff, LogIn, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, LogIn, ShieldCheck, AlertCircle, Loader2, Home } from 'lucide-react';
 import { loginUser } from '@/lib/auth';
 import { getCurrentUser } from '@/lib/auth';
 
@@ -38,6 +38,16 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Top Left Navigation Button */}
+      <div className="absolute top-6 left-6 z-30">
+        <Link
+          to="/"
+          className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white text-xs font-bold transition-all shadow-xl backdrop-blur-md group"
+        >
+          <Home className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+          <span>← Back to Home</span>
+        </Link>
+      </div>
       {/* Animated background glows */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full bg-emerald-600/10 blur-[120px] animate-pulse" />
