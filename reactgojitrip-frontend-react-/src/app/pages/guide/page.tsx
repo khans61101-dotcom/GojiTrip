@@ -3,6 +3,7 @@
 import "@/styles/pages/guide/guide.css";
 
 import React from "react";
+import { cmsStore } from "@/lib/cms-store";
 import { SafeImage } from "@/components/common/SafeImage";
 import { Search, MapPin, Clock, Users } from "lucide-react";
 
@@ -701,12 +702,27 @@ const GuidePage: React.FC = () => {
       );
 
       const guideArray = extractArray(guidesResponse);
-
       guideData = guideArray.map(mapGuide);
     } catch (guideError) {
-      console.error("Failed to fetch guides:", guideError);
-
+      console.error("Failed to fetch guides, loading store fallback:", guideError);
       guideData = [];
+    }
+
+    if (guideData.length === 0) {
+      const storeGuides = cmsStore.getGuides();
+      guideData = storeGuides.map((g) => ({
+        id: String(g.id),
+        name: g.fullName,
+        description: g.bio || `Certified ${g.specialization} with ${g.experienceYears || 5}+ years experience across Annapurna & Mustang corridors.`,
+        image: g.photoUrl || "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+        rating: 4.9,
+        location: g.location || "Pokhara / Kathmandu",
+        price: g.dailyRate || 3500,
+        specialties: g.specialization ? [g.specialization, "Trekking", "Mountain Navigation"] : ["Trekking", "Cultural Heritage"],
+        languages: g.languages && g.languages.length > 0 ? g.languages : ["Nepali", "English"],
+        guideContactDetails: g.contactNumber,
+        availability: "Available Daily",
+      }));
     }
 
     /* ---------------------------

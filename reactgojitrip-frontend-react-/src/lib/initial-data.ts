@@ -1,4 +1,4 @@
-import { TransportEntry, RouteEntry, HotelEntry, RestaurantEntry, ActivityEntry, MediaItem, WorkflowHistoryLog } from '@/types/cms';
+import { TransportEntry, RouteEntry, HotelEntry, RestaurantEntry, ActivityEntry, GuideEntry, MediaItem, WorkflowHistoryLog } from '@/types/cms';
 
 export const INITIAL_TRANSPORTS: TransportEntry[] = [
   {
@@ -173,6 +173,7 @@ export const INITIAL_HOTELS: HotelEntry[] = [
       'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80',
       'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=800&q=80'
     ],
+    imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80',
     availabilityStatus: 'Available',
     partnerStatus: 'Verified Partner',
     approvalStatus: 'Published',
@@ -204,6 +205,7 @@ export const INITIAL_HOTELS: HotelEntry[] = [
     hotelPhotos: [
       'https://images.unsplash.com/photo-1587061949409-02df41d5e562?auto=format&fit=crop&w=800&q=80'
     ],
+    imageUrl: 'https://images.unsplash.com/photo-1587061949409-02df41d5e562?auto=format&fit=crop&w=800&q=80',
     availabilityStatus: 'Available',
     partnerStatus: 'Verified Partner',
     approvalStatus: 'Approved',
@@ -217,11 +219,12 @@ export const INITIAL_RESTAURANTS: RestaurantEntry[] = [
   {
     id: 'res-1',
     restaurantName: 'Yac & Thakali Organic Kitchen',
-    location: 'Marpha Village Main Lane',
+    location: 'Marpha Village Main Lane, Mustang',
     contactDetails: '+977-9856711223',
     cuisineTypes: ['Thakali', 'Nepali Organic', 'Bakery'],
     openingHours: '06:30 AM - 09:30 PM',
     priceRange: 'NPR NPR',
+    imageUrl: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80',
     photos: [
       'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80'
     ],
@@ -234,6 +237,139 @@ export const INITIAL_RESTAURANTS: RestaurantEntry[] = [
     createdAt: '2026-07-19T09:00:00Z',
     updatedAt: '2026-07-24T12:00:00Z',
     createdByName: 'Deepa Adhikari (Senior Editor)'
+  },
+  {
+    id: 'res-2',
+    restaurantName: 'Pokhara Lakeside Thakali Bhancha',
+    location: 'Lakeside Street 6, Pokhara',
+    contactDetails: '+977-61-460112',
+    cuisineTypes: ['Thakali', 'Local Fish', 'Nepali Dal Bhat'],
+    openingHours: '07:00 AM - 10:00 PM',
+    priceRange: 'NPR NPR',
+    imageUrl: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80',
+    photos: [
+      'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=800&q=80'
+    ],
+    recommendedDishes: [
+      'Phewa Lake Fried Fish',
+      'Mutton Thakali Set with Ghee',
+      'Gundruk Khatiya Soup'
+    ],
+    approvalStatus: 'Published',
+    createdAt: '2026-07-20T10:00:00Z',
+    updatedAt: '2026-07-25T11:00:00Z',
+    createdByName: 'Nabin Gurung (Content Team)'
+  },
+  {
+    id: 'res-3',
+    restaurantName: 'Muktinath Himalayan Cafe & Bakery',
+    location: 'Ranipauwa Bazaar, Muktinath',
+    contactDetails: '+977-9846098112',
+    cuisineTypes: ['Tibetan', 'Bakery', 'Coffee & Tea'],
+    openingHours: '06:00 AM - 08:30 PM',
+    priceRange: 'NPR NPR',
+    imageUrl: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=80',
+    photos: [
+      'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=80'
+    ],
+    recommendedDishes: [
+      'Hot Cinnamon Roll & Filter Coffee',
+      'Steamed Yak Meat Momos',
+      'Butter Tea (Suja)'
+    ],
+    approvalStatus: 'Published',
+    createdAt: '2026-07-22T08:00:00Z',
+    updatedAt: '2026-07-26T14:00:00Z',
+    createdByName: 'Deepa Adhikari (Senior Editor)'
+  },
+  {
+    id: 'res-4',
+    restaurantName: 'Trishuli Riverbank Dhaba & Resto',
+    location: 'Kurintar, Prithvi Highway',
+    contactDetails: '+977-9801234567',
+    cuisineTypes: ['Highway Dhaba', 'Buffet Dal Bhat', 'Snacks'],
+    openingHours: '05:00 AM - 11:00 PM',
+    priceRange: 'NPR',
+    imageUrl: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=800&q=80',
+    photos: [
+      'https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=800&q=80'
+    ],
+    recommendedDishes: [
+      'Fresh River Fish Fry',
+      'Unlimited Chicken Dal Bhat Thali',
+      'Masala Milk Tea'
+    ],
+    approvalStatus: 'Published',
+    createdAt: '2026-07-23T09:30:00Z',
+    updatedAt: '2026-07-27T10:00:00Z',
+    createdByName: 'Nabin Gurung'
+  }
+];
+
+export const INITIAL_GUIDES: GuideEntry[] = [
+  {
+    id: 'gd-1',
+    fullName: 'Pasang Nuru Sherpa',
+    specialization: 'High Altitude Trekking & Mountaineering',
+    contactNumber: '+977-9846011223',
+    licenseNumber: 'NMA-GUIDE-8848',
+    experienceYears: 12,
+    languages: ['Nepali', 'English', 'Sherpa', 'Hindi'],
+    photoUrl: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80',
+    bio: 'Certified NMA Mountain Guide with 12+ years experience leading Annapurna Circuit, Mustang Valley & EBC Treks.',
+    dailyRate: 4500,
+    location: 'Pokhara / Jomsom',
+    approvalStatus: 'Published',
+    createdAt: '2026-07-15T10:00:00Z',
+    updatedAt: '2026-07-25T12:00:00Z'
+  },
+  {
+    id: 'gd-2',
+    fullName: 'Rohan Thapa',
+    specialization: 'Tandem Paragliding Pilot & Adventure Expert',
+    contactNumber: '+977-9806112233',
+    licenseNumber: 'APPI-PILOT-410',
+    experienceYears: 8,
+    languages: ['Nepali', 'English'],
+    photoUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=800&q=80',
+    bio: 'APPI Licensed Commercial Tandem Paragliding Pilot in Sarangkot, Pokhara with 3,500+ safe flights.',
+    dailyRate: 8500,
+    location: 'Pokhara Lakeside',
+    approvalStatus: 'Published',
+    createdAt: '2026-07-16T11:00:00Z',
+    updatedAt: '2026-07-26T14:00:00Z'
+  },
+  {
+    id: 'gd-3',
+    fullName: 'Sujata Gurung',
+    specialization: 'Cultural Heritage & Monastery Specialist',
+    contactNumber: '+977-9851098765',
+    licenseNumber: 'NTB-CULTURE-104',
+    experienceYears: 7,
+    languages: ['Nepali', 'English', 'French'],
+    photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=800&q=80',
+    bio: 'Licensed UNESCO Cultural Heritage Guide specializing in Kathmandu Valley Temples, Muktinath Pilgrimage & Buddhist Monasteries.',
+    dailyRate: 3500,
+    location: 'Kathmandu / Pokhara',
+    approvalStatus: 'Published',
+    createdAt: '2026-07-18T09:00:00Z',
+    updatedAt: '2026-07-27T10:00:00Z'
+  },
+  {
+    id: 'gd-4',
+    fullName: 'Kiran Sunuwar',
+    specialization: 'River Captain & White Water Rafting Specialist',
+    contactNumber: '+977-9801122998',
+    licenseNumber: 'NARA-RIVER-305',
+    experienceYears: 10,
+    languages: ['Nepali', 'English'],
+    photoUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=800&q=80',
+    bio: 'NARA certified Senior River Captain with 10 years experience navigating Trishuli, Bote Koshi and Kali Gandaki rapids.',
+    dailyRate: 4000,
+    location: 'Kurintar / Pokhara',
+    approvalStatus: 'Published',
+    createdAt: '2026-07-20T08:00:00Z',
+    updatedAt: '2026-07-28T11:00:00Z'
   }
 ];
 
@@ -249,6 +385,7 @@ export const INITIAL_ACTIVITIES: ActivityEntry[] = [
     photos: [
       'https://images.unsplash.com/photo-1521651201144-634f700b36ef?auto=format&fit=crop&w=800&q=80'
     ],
+    imageUrl: 'https://images.unsplash.com/photo-1521651201144-634f700b36ef?auto=format&fit=crop&w=800&q=80',
     availability: 'Daily',
     approvalStatus: 'Published',
     createdAt: '2026-07-15T12:00:00Z',

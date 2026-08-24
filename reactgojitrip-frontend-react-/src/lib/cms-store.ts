@@ -11,6 +11,7 @@ import {
   TransportEntry,
   WorkflowHistoryLog,
 } from '@/types/cms';
+import { INITIAL_ACTIVITIES, INITIAL_HOTELS, INITIAL_MEDIA, INITIAL_RESTAURANTS, INITIAL_ROUTES, INITIAL_TRANSPORTS, INITIAL_GUIDES, INITIAL_LOGS } from '@/lib/initial-data';
 
 type BackendTrip = { id: number; name: string; destination: string; price: number; description?: string | null; duration: number; is_active: boolean; image_url?: string | null; created_at: string; updated_at: string; owner_id?: number | null };
 type BackendRoute = { id: number; name: string; origin: string; destination: string; distance: number; status: string };
@@ -223,18 +224,26 @@ class CMSStore {
         apiRequest<WorkflowHistoryLog[]>('/workflow/logs'),
       ]);
       console.log("Successfully fetched all data");
-      this.transports = trips.map(mapTrip);
-      this.routes = routes.map(mapRoute);
-      this.hotels = hotels.map(mapHotel);
-      this.restaurants = restaurants.map(mapRestaurant);
-      this.activities = activities.map(mapActivity);
-      this.guides = Array.isArray(guides) ? guides.map(mapGuide) : [];
-      this.media = media.map(mapMedia);
-      this.logs = logs;
+      this.transports = Array.isArray(trips) && trips.length > 0 ? trips.map(mapTrip) : INITIAL_TRANSPORTS;
+      this.routes = Array.isArray(routes) && routes.length > 0 ? routes.map(mapRoute) : INITIAL_ROUTES;
+      this.hotels = Array.isArray(hotels) && hotels.length > 0 ? hotels.map(mapHotel) : INITIAL_HOTELS;
+      this.restaurants = Array.isArray(restaurants) && restaurants.length > 0 ? restaurants.map(mapRestaurant) : INITIAL_RESTAURANTS;
+      this.activities = Array.isArray(activities) && activities.length > 0 ? activities.map(mapActivity) : INITIAL_ACTIVITIES;
+      this.guides = Array.isArray(guides) && guides.length > 0 ? guides.map(mapGuide) : INITIAL_GUIDES;
+      this.media = Array.isArray(media) && media.length > 0 ? media.map(mapMedia) : INITIAL_MEDIA;
+      this.logs = Array.isArray(logs) ? logs : INITIAL_LOGS;
       this.hydrated = true;
       this.notify();
     } catch (error) {
-      console.error("Error in refreshAll:", error);
+      console.error("Error in refreshAll, loading initial defaults:", error);
+      this.transports = INITIAL_TRANSPORTS;
+      this.routes = INITIAL_ROUTES;
+      this.hotels = INITIAL_HOTELS;
+      this.restaurants = INITIAL_RESTAURANTS;
+      this.activities = INITIAL_ACTIVITIES;
+      this.guides = INITIAL_GUIDES;
+      this.media = INITIAL_MEDIA;
+      this.logs = INITIAL_LOGS;
       this.hydrated = true;
       this.notify();
     }

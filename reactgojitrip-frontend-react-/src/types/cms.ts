@@ -94,6 +94,7 @@ export interface HotelEntry {
   checkInTime: string;
   checkOutTime: string;
   hotelPhotos: string[];
+  imageUrl?: string;
   availabilityStatus: 'Available' | 'Fully Booked' | 'Seasonal Closure';
   partnerStatus: 'Verified Partner' | 'Pending Verification' | 'Standard';
   approvalStatus: ApprovalStatus;
@@ -157,10 +158,12 @@ export interface GuideEntry {
   dailyRate?: number;
   bio?: string;
   photoUrl?: string;
+  imageUrl?: string;
+  location?: string;
   approvalStatus: ApprovalStatus;
   createdAt: string;
   updatedAt: string;
-  createdByName: string;
+  createdByName?: string;
 }
 
 export interface MediaItem {
