@@ -562,12 +562,8 @@ export default function RestaurantsPage() {
   const loadRestaurants = React.useCallback(async () => {
     try {
       setLoading(true);
-
-      console.log("GET /api/v1/restaurants - loading restaurants...");
-
-      const response = await listRestaurants();
-
-      console.log("Restaurants API response:", response);
+      const storeItems = cmsStore.getRestaurants();
+      const response = await listRestaurants().catch(() => null);
 
       const data = Array.isArray(response)
         ? response
@@ -575,15 +571,24 @@ export default function RestaurantsPage() {
           ? (response as any).data
           : [];
 
-      setRestaurants(data as RestaurantEntry[]);
+      if (data.length > 0) {
+        // Merge image URLs from cmsStore if backend response missed them
+        const merged = data.map((item: any) => {
+          const matchingStore = storeItems.find((s) => String(s.id) === String(item.id));
+          const imageUrl = item.imageUrl || (item.photos && item.photos[0]) || matchingStore?.imageUrl || (matchingStore?.photos && matchingStore.photos[0]) || "";
+          return {
+            ...item,
+            imageUrl,
+            photos: item.photos && item.photos.length > 0 ? item.photos : imageUrl ? [imageUrl] : [],
+          };
+        });
+        setRestaurants(merged as RestaurantEntry[]);
+      } else {
+        setRestaurants(storeItems as RestaurantEntry[]);
+      }
     } catch (error) {
-      console.error("Failed to load restaurants from database:", error);
-
-      setRestaurants([]);
-
-      alert(
-        "Failed to load restaurants. Make sure NestJS backend is running on port 8000.",
-      );
+      console.error("Failed to load restaurants from database, falling back to store:", error);
+      setRestaurants(cmsStore.getRestaurants() as RestaurantEntry[]);
     } finally {
       setLoading(false);
     }
@@ -804,32 +809,20 @@ export default function RestaurantsPage() {
 
       console.log("Restaurant payload:", payload);
 
-      // ========================================================
-      // CREATE
-      // ========================================================
-
-      if (!editingRest.id) {
-        console.log("POST /api/v1/restaurants");
-
-        const created = await createRestaurant(payload);
-
-        console.log("Restaurant created successfully:", created);
-      }
-
-      // ========================================================
-      // UPDATE
-      // ========================================================
-      else {
-        console.log(`PATCH /api/v1/restaurants/${editingRest.id}`);
-
-        const updated = await updateRestaurant(String(editingRest.id), payload);
-
-        console.log("Restaurant updated successfully:", updated);
-      }
-
-      // ========================================================
-      // REFRESH FROM POSTGRESQL
-      // ========================================================
+      // Save to cmsStore (persists image url in memory & backend)
+      await cmsStore.saveRestaurant({
+        id: editingRest.id ? String(editingRest.id) : undefined,
+        restaurantName: payload.restaurantName,
+        location: payload.location,
+        contactDetails: payload.contactDetails,
+        cuisineTypes: payload.cuisineTypes,
+        openingHours: payload.openingHours,
+        priceRange: payload.priceRange as any,
+        imageUrl: payload.imageUrl,
+        photos: payload.imageUrl ? [payload.imageUrl] : [],
+        approvalStatus: payload.approvalStatus as any,
+        createdByName: payload.createdByName,
+      });
 
       await loadRestaurants();
 

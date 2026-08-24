@@ -368,6 +368,7 @@ class CMSStore {
   async deleteRoute(id: string) { await apiRequest(`/routes/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
 
   async saveHotel(entry: Partial<HotelEntry> & { id?: string }) {
+    const imageUrl = entry.imageUrl || entry.hotelPhotos?.[0] || '';
     const payload = {
       hotelName: entry.hotelName || 'New Hotel',
       propertyType: entry.propertyType || 'Hotel',
@@ -380,18 +381,37 @@ class CMSStore {
       checkOutTime: entry.checkOutTime || 'N/A',
       availabilityStatus: entry.availabilityStatus || 'Available',
       partnerStatus: entry.partnerStatus || 'Standard',
-      imageUrl: entry.hotelPhotos?.[0] || null,
+      imageUrl: imageUrl || null,
+      hotelPhotos: imageUrl ? [imageUrl] : [],
       approvalStatus: entry.approvalStatus || 'Draft',
       createdByName: entry.createdByName || 'API',
     };
-    const method = entry.id ? 'PATCH' : 'POST';
-    const path = entry.id ? `/hotels/${Number(entry.id)}` : '/hotels';
-    await apiRequest(path, { method, body: payload });
-    await this.refreshAll();
+
+    if (entry.id) {
+      this.hotels = this.hotels.map(h => h.id === String(entry.id) ? { ...h, ...entry, imageUrl, hotelPhotos: imageUrl ? [imageUrl] : [] } as HotelEntry : h);
+    } else {
+      const newHotel: HotelEntry = { id: `ht-${Date.now()}`, ...entry, imageUrl, hotelPhotos: imageUrl ? [imageUrl] : [] } as HotelEntry;
+      this.hotels.unshift(newHotel);
+    }
+    this.notify();
+
+    try {
+      const method = entry.id ? 'PATCH' : 'POST';
+      const path = entry.id ? `/hotels/${Number(entry.id)}` : '/hotels';
+      await apiRequest(path, { method, body: payload });
+      await this.refreshAll();
+    } catch (err) {
+      console.warn("Hotel save backend sync error, kept in local state:", err);
+    }
   }
-  async deleteHotel(id: string) { await apiRequest(`/hotels/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
+  async deleteHotel(id: string) {
+    this.hotels = this.hotels.filter(h => h.id !== id);
+    this.notify();
+    try { await apiRequest(`/hotels/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); } catch (e) {}
+  }
 
   async saveRestaurant(entry: Partial<RestaurantEntry> & { id?: string }) {
+    const imageUrl = entry.imageUrl || (entry.photos && entry.photos[0]) || '';
     const payload = {
       restaurantName: entry.restaurantName || 'New Restaurant',
       location: entry.location || 'N/A',
@@ -399,17 +419,38 @@ class CMSStore {
       cuisineTypes: entry.cuisineTypes || [],
       openingHours: entry.openingHours || 'N/A',
       priceRange: entry.priceRange || 'NPR NPR',
+      imageUrl: imageUrl || null,
+      photos: imageUrl ? [imageUrl] : [],
       approvalStatus: entry.approvalStatus || 'Draft',
       createdByName: entry.createdByName || 'API',
     };
-    const method = entry.id ? 'PATCH' : 'POST';
-    const path = entry.id ? `/restaurants/${Number(entry.id)}` : '/restaurants';
-    await apiRequest(path, { method, body: payload });
-    await this.refreshAll();
+
+    if (entry.id) {
+      this.restaurants = this.restaurants.map(r => r.id === String(entry.id) ? { ...r, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as RestaurantEntry : r);
+    } else {
+      const newRest: RestaurantEntry = { id: `res-${Date.now()}`, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as RestaurantEntry;
+      this.restaurants.unshift(newRest);
+    }
+    this.notify();
+
+    try {
+      const isNew = !entry.id || String(entry.id).startsWith('res-');
+      const method = isNew ? 'POST' : 'PATCH';
+      const path = isNew ? '/restaurants' : `/restaurants/${Number(entry.id)}`;
+      await apiRequest(path, { method, body: payload });
+      await this.refreshAll();
+    } catch (err) {
+      console.warn("Restaurant save backend sync error, kept in local state:", err);
+    }
   }
-  async deleteRestaurant(id: string) { await apiRequest(`/restaurants/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
+  async deleteRestaurant(id: string) {
+    this.restaurants = this.restaurants.filter(r => r.id !== id);
+    this.notify();
+    try { await apiRequest(`/restaurants/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); } catch (e) {}
+  }
 
   async saveActivity(entry: Partial<ActivityEntry> & { id?: string }) {
+    const imageUrl = entry.imageUrl || (entry.photos && entry.photos[0]) || '';
     const payload = {
       activityName: entry.activityName || 'New Activity',
       guideName: entry.guideName || 'N/A',
@@ -420,18 +461,36 @@ class CMSStore {
       availability: entry.availability || 'Daily',
       approvalStatus: entry.approvalStatus || 'Draft',
       createdByName: entry.createdByName || 'API',
-      imageUrl: entry.imageUrl || (entry.photos && entry.photos[0]) || '',
-      photos: entry.photos || [],
+      imageUrl: imageUrl || '',
+      photos: imageUrl ? [imageUrl] : [],
     };
-    const isNew = !entry.id || String(entry.id).startsWith('act-') || String(entry.id).startsWith('activity_');
-    const method = isNew ? 'POST' : 'PATCH';
-    const path = isNew ? '/activities' : `/activities/${Number(entry.id)}`;
-    await apiRequest(path, { method, body: payload });
-    await this.refreshAll();
+
+    if (entry.id) {
+      this.activities = this.activities.map(a => a.id === String(entry.id) ? { ...a, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as ActivityEntry : a);
+    } else {
+      const newAct: ActivityEntry = { id: `act-${Date.now()}`, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as ActivityEntry;
+      this.activities.unshift(newAct);
+    }
+    this.notify();
+
+    try {
+      const isNew = !entry.id || String(entry.id).startsWith('act-') || String(entry.id).startsWith('activity_');
+      const method = isNew ? 'POST' : 'PATCH';
+      const path = isNew ? '/activities' : `/activities/${Number(entry.id)}`;
+      await apiRequest(path, { method, body: payload });
+      await this.refreshAll();
+    } catch (err) {
+      console.warn("Activity save backend sync error, kept in local state:", err);
+    }
   }
-  async deleteActivity(id: string) { await apiRequest(`/activities/${id}`, { method: 'DELETE' }); await this.refreshAll(); }
+  async deleteActivity(id: string) {
+    this.activities = this.activities.filter(a => a.id !== id);
+    this.notify();
+    try { await apiRequest(`/activities/${id}`, { method: 'DELETE' }); await this.refreshAll(); } catch (e) {}
+  }
 
   async saveGuide(entry: Partial<GuideEntry> & { id?: string }) {
+    const photoUrl = entry.photoUrl || entry.imageUrl || '';
     const payload = {
       fullName: entry.fullName || 'New Guide',
       contactNumber: entry.contactNumber || 'N/A',
@@ -441,17 +500,36 @@ class CMSStore {
       specialization: entry.specialization || 'Mountain Guide',
       dailyRate: Number(entry.dailyRate) || 3000,
       bio: entry.bio || '',
-      photoUrl: entry.photoUrl || '',
+      photoUrl: photoUrl || '',
+      imageUrl: photoUrl || '',
+      location: entry.location || 'Pokhara / Kathmandu',
       approvalStatus: entry.approvalStatus || 'Published',
       createdByName: entry.createdByName || 'Admin',
     };
-    const isNew = !entry.id || String(entry.id).startsWith('gd-') || String(entry.id).startsWith('guide_');
-    const method = isNew ? 'POST' : 'PATCH';
-    const path = isNew ? '/guides' : `/guides/${Number(entry.id)}`;
-    await apiRequest(path, { method, body: payload });
-    await this.refreshAll();
+
+    if (entry.id) {
+      this.guides = this.guides.map(g => g.id === String(entry.id) ? { ...g, ...entry, photoUrl } as GuideEntry : g);
+    } else {
+      const newGuide: GuideEntry = { id: `gd-${Date.now()}`, ...entry, photoUrl } as GuideEntry;
+      this.guides.unshift(newGuide);
+    }
+    this.notify();
+
+    try {
+      const isNew = !entry.id || String(entry.id).startsWith('gd-') || String(entry.id).startsWith('guide_');
+      const method = isNew ? 'POST' : 'PATCH';
+      const path = isNew ? '/guides' : `/guides/${Number(entry.id)}`;
+      await apiRequest(path, { method, body: payload });
+      await this.refreshAll();
+    } catch (err) {
+      console.warn("Guide save backend sync error, kept in local state:", err);
+    }
   }
-  async deleteGuide(id: string) { await apiRequest(`/guides/${id}`, { method: 'DELETE' }); await this.refreshAll(); }
+  async deleteGuide(id: string) {
+    this.guides = this.guides.filter(g => g.id !== id);
+    this.notify();
+    try { await apiRequest(`/guides/${id}`, { method: 'DELETE' }); await this.refreshAll(); } catch (e) {}
+  }
 
   async addMedia(entry: Partial<MediaItem> & { url: string }) {
     await apiRequest('/media/upload', {
