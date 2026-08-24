@@ -559,47 +559,70 @@ export const Hero = () => {
           ================================================== */}
 
           <div className="space-y-6">
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-slate-900 leading-[1.1]">
+            <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 text-xs font-bold uppercase tracking-wider">
+              <Sparkles className="w-4 h-4 text-emerald-500" />
+              <span>Verified Nepal Travel Portal & AI Companion</span>
+            </div>
+
+            <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold text-slate-900 leading-[1.1] tracking-tight">
               Plan Smarter.
               <br />
-              <span className="text-blue-600">Travel Better.</span>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600">Travel Better.</span>
               <br />
               GojiTrip.
             </h1>
 
-            <p className="text-base md:text-xl text-slate-600 max-w-lg">
-              AI-powered route planning, real-time insights, and everything you
-              need for a perfect journey.
+            <p className="text-base md:text-xl text-slate-600 max-w-lg leading-relaxed">
+              AI-powered route planning, verified highway insights, certified mountain guides, partner homestays, and transparent transport fares for Nepal & beyond.
             </p>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-2.5 pt-1">
               {[
-                {
-                  icon: Navigation,
-                  label: "AI Route Planner",
-                },
-                {
-                  icon: Sparkles,
-                  label: "Real-time Updates",
-                },
-                {
-                  icon: BrainCircuit,
-                  label: "Smart Recommendations",
-                },
+                { icon: Navigation, label: "AI Route Planner" },
+                { icon: Sparkles, label: "100% Ground Verified" },
+                { icon: BrainCircuit, label: "Smart Highway Insights" },
               ].map((feature, index) => {
                 const Icon = feature.icon;
-
                 return (
                   <div
                     key={index}
-                    className="flex items-center gap-2 px-4 py-2 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-full text-slate-700 font-medium text-sm shadow-sm"
+                    className="flex items-center gap-2 px-3.5 py-2 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-full text-slate-700 font-semibold text-xs shadow-sm"
                   >
-                    <Icon size={16} className="text-blue-600" />
-
-                    {feature.label}
+                    <Icon size={15} className="text-emerald-600" />
+                    <span>{feature.label}</span>
                   </div>
                 );
               })}
+            </div>
+
+            {/* Popular Route Quick Presets */}
+            <div className="pt-3">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">
+                Popular Nepal Routes (Click to Auto-Fill):
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { label: "Kathmandu ➔ Pokhara", src: "Kathmandu, Nepal", dst: "Pokhara, Nepal", srcLat: 27.7172, srcLng: 85.3240, dstLat: 28.2096, dstLng: 83.9856 },
+                  { label: "Kathmandu ➔ Muktinath", src: "Kathmandu, Nepal", dst: "Muktinath, Nepal", srcLat: 27.7172, srcLng: 85.3240, dstLat: 28.8167, dstLng: 83.8667 },
+                  { label: "Pokhara ➔ Chitwan", src: "Pokhara, Nepal", dst: "Chitwan, Nepal", srcLat: 28.2096, srcLng: 83.9856, dstLat: 27.5291, dstLng: 84.4533 },
+                  { label: "Kathmandu ➔ Janakpur", src: "Kathmandu, Nepal", dst: "Janakpur, Nepal", srcLat: 27.7172, srcLng: 85.3240, dstLat: 26.7271, dstLng: 85.9231 },
+                ].map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setSource(preset.src);
+                      setDestination(preset.dst);
+                      setSourceLocation({ placeId: `src_${idx}`, name: preset.src, address: preset.src, latitude: preset.srcLat, longitude: preset.srcLng });
+                      setDestinationLocation({ placeId: `dst_${idx}`, name: preset.dst, address: preset.dst, latitude: preset.dstLat, longitude: preset.dstLng });
+                      if (!date) setDate(today);
+                    }}
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-lg transition-colors shadow-xs flex items-center space-x-1"
+                  >
+                    <span>{preset.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
