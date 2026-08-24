@@ -55,32 +55,35 @@ function mapTrip(t: BackendTrip): TransportEntry {
   };
 }
 
-function mapRoute(r: BackendRoute): RouteEntry {
+function mapRoute(r: any): RouteEntry {
+  const imageUrl = r.imageUrl || r.image_url || (r.photos && r.photos[0]) || '';
   return {
     id: String(r.id),
-    routeName: r.name,
-    origin: r.origin,
-    destination: r.destination,
-    totalDistanceKm: r.distance,
-    estimatedTravelTime: '',
-    roadCondition: 'Smooth Asphalt',
-    fuelStations: [],
-    evChargingStations: [],
-    medicalCentres: [],
-    policePosts: [],
-    atms: [],
-    viewpoints: [],
-    restaurants: [],
-    recommendedStops: [],
-    touristAttractions: [],
-    weatherSummary: '',
-    emergencyContacts: [],
-    connectedTransportIds: [],
-    connectedHotelIds: [],
-    approvalStatus: (r.status as ApprovalStatus) || fallbackStatus,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    createdByName: 'API',
+    routeName: r.routeName || r.name || 'Unnamed Route',
+    origin: r.origin || '',
+    destination: r.destination || '',
+    totalDistanceKm: Number(r.totalDistanceKm ?? r.distance) || 0,
+    estimatedTravelTime: r.estimatedTravelTime || r.duration || 'N/A',
+    roadCondition: r.roadCondition || 'Smooth Asphalt',
+    imageUrl,
+    photos: imageUrl ? [imageUrl] : [],
+    fuelStations: Array.isArray(r.fuelStations) ? r.fuelStations : [],
+    evChargingStations: Array.isArray(r.evChargingStations) ? r.evChargingStations : [],
+    medicalCentres: Array.isArray(r.medicalCentres) ? r.medicalCentres : [],
+    policePosts: Array.isArray(r.policePosts) ? r.policePosts : [],
+    atms: Array.isArray(r.atms) ? r.atms : [],
+    viewpoints: Array.isArray(r.viewpoints) ? r.viewpoints : [],
+    restaurants: Array.isArray(r.restaurants) ? r.restaurants : [],
+    recommendedStops: Array.isArray(r.recommendedStops) ? r.recommendedStops : [],
+    touristAttractions: Array.isArray(r.touristAttractions) ? r.touristAttractions : [],
+    weatherSummary: r.weatherSummary || '',
+    emergencyContacts: Array.isArray(r.emergencyContacts) ? r.emergencyContacts : [],
+    connectedTransportIds: Array.isArray(r.connectedTransportIds) ? r.connectedTransportIds : [],
+    connectedHotelIds: Array.isArray(r.connectedHotelIds) ? r.connectedHotelIds : [],
+    approvalStatus: (r.approvalStatus || r.status as ApprovalStatus) || fallbackStatus,
+    createdAt: r.createdAt || new Date().toISOString(),
+    updatedAt: r.updatedAt || new Date().toISOString(),
+    createdByName: r.createdByName || 'API',
   };
 }
 
@@ -347,6 +350,7 @@ class CMSStore {
   async deleteTransport(id: string) { await apiRequest(`/transport/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
 
   async saveRoute(entry: Partial<RouteEntry> & { id?: string }) {
+    const imageUrl = entry.imageUrl || (entry.photos && entry.photos[0]) || '';
     const payload = {
       routeName: entry.routeName || 'New Route',
       origin: entry.origin || '',
@@ -355,15 +359,29 @@ class CMSStore {
       estimatedTravelTime: entry.estimatedTravelTime || 'N/A',
       roadCondition: entry.roadCondition || 'N/A',
       weatherSummary: entry.weatherSummary || 'N/A',
+      imageUrl: imageUrl || null,
+      photos: imageUrl ? [imageUrl] : [],
       approvalStatus: entry.approvalStatus && entry.approvalStatus.trim() !== '' ? entry.approvalStatus : 'Draft',
       createdByName: entry.createdByName || (typeof window !== 'undefined' && localStorage.getItem('gojitrip_username')) || 'Goji Admin',
     };
-    const method = entry.id ? 'PATCH' : 'POST';
-    const path = entry.id ? `/routes/${Number(entry.id)}` : '/routes';
-    const savedId = entry.id;
-    await apiRequest(path, { method, body: payload });
-    await this.refreshAll();
-    return savedId ? this.routes.find(r => r.id === savedId) : this.routes[0];
+
+    if (entry.id) {
+      this.routes = this.routes.map(r => r.id === String(entry.id) ? { ...r, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as RouteEntry : r);
+    } else {
+      const newRoute: RouteEntry = { id: `rt-${Date.now()}`, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as RouteEntry;
+      this.routes.unshift(newRoute);
+    }
+    this.notify();
+
+    try {
+      const method = entry.id ? 'PATCH' : 'POST';
+      const path = entry.id ? `/routes/${Number(entry.id)}` : '/routes';
+      await apiRequest(path, { method, body: payload });
+      await this.refreshAll();
+    } catch (err) {
+      console.warn("Route save backend sync error, kept in local state:", err);
+    }
+    return entry.id ? this.routes.find(r => r.id === String(entry.id)) : this.routes[0];
   }
   async deleteRoute(id: string) { await apiRequest(`/routes/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
 

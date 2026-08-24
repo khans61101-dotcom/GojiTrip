@@ -66,6 +66,8 @@ export interface RouteEntry {
   emergencyContacts: EmergencyContact[];
   connectedTransportIds: string[];
   connectedHotelIds: string[];
+  imageUrl?: string;
+  photos?: string[];
   approvalStatus: ApprovalStatus;
   createdAt: string;
   updatedAt: string;

@@ -56,7 +56,7 @@ const API_BASE_URL = "http://localhost:8000";
 
 const getImageUrl = (
   image?: string | null,
-  fallback = "/logo/gojitriplogo.jpg",
+  fallback = "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
 ): string => {
   if (!image || typeof image !== "string") {
     return fallback;
@@ -206,6 +206,7 @@ const mapGuide = (value: unknown): Guide => {
   const imageValue =
     item.image ??
     item.imageUrl ??
+    item.photoUrl ??
     item.photo ??
     item.profileImage ??
     item.profilePhoto ??

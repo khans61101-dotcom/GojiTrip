@@ -25,6 +25,7 @@ import {
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
 import { API_BASE_URL } from "@/lib/api";
+import { cmsStore } from "@/lib/cms-store";
 
 // ============================================================
 // TYPES
@@ -539,43 +540,37 @@ export default function RoutesPage() {
     try {
       setLoading(true);
       setError(null);
+      const storeRoutes = cmsStore.getRoutes() as any[];
 
       const response = await fetch(`${API_BASE_URL}/routes`, {
         method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-
+        headers: { Accept: "application/json" },
         cache: "no-store",
-      });
+      }).catch(() => null);
 
-      if (!response.ok) {
-        throw new Error(`Failed to load routes. HTTP ${response.status}`);
+      let mappedRoutes: any[] = [];
+      if (response && response.ok) {
+        const json = await response.json().catch(() => null);
+        const rawRoutes = extractRoutesFromResponse(json);
+        mappedRoutes = rawRoutes.map(mapRouteFromApi).filter((r) => r.id);
       }
 
-      const json = await response.json();
-
-      console.log("ROUTES API RESPONSE:", json);
-
-      const rawRoutes = extractRoutesFromResponse(json);
-
-      const mappedRoutes = rawRoutes
-        .map(mapRouteFromApi)
-        .filter((route) => route.id);
+      if (mappedRoutes.length === 0) {
+        mappedRoutes = storeRoutes;
+      }
 
       setRoutes(mappedRoutes);
-
       setActiveRouteId((currentId) => {
         if (currentId && mappedRoutes.some((route) => route.id === currentId)) {
           return currentId;
         }
-
         return mappedRoutes[0]?.id ?? null;
       });
     } catch (err) {
-      console.error("FETCH ROUTES ERROR:", err);
-
-      setError(err instanceof Error ? err.message : "Unable to load routes");
+      console.error("FETCH ROUTES ERROR, loading store fallback:", err);
+      const storeRoutes = cmsStore.getRoutes() as any[];
+      setRoutes(storeRoutes);
+      if (storeRoutes.length > 0) setActiveRouteId(storeRoutes[0].id);
     } finally {
       setLoading(false);
     }
@@ -726,6 +721,9 @@ export default function RoutesPage() {
 
         touristAttractions: editingRoute.touristAttractions ?? [],
 
+        imageUrl: (editingRoute as any).imageUrl || "",
+        photos: (editingRoute as any).imageUrl ? [(editingRoute as any).imageUrl] : [],
+
         emergencyContacts: editingRoute.emergencyContacts ?? [],
 
         connectedTransportIds: editingRoute.connectedTransportIds ?? [],
@@ -735,62 +733,26 @@ export default function RoutesPage() {
 
       console.log("SAVE ROUTE PAYLOAD:", payload);
 
-      const response = await fetch(
-        isEdit ? `${API_BASE_URL}/routes/${id}` : `${API_BASE_URL}/routes`,
-        {
-          method: isEdit ? "PATCH" : "POST",
-
-          headers: {
-            "Content-Type": "application/json",
-
-            Accept: "application/json",
-          },
-
-          body: JSON.stringify(payload),
-        },
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-
-        console.error("SAVE ROUTE API ERROR:", errorText);
-
-        let parsedError = "";
-        try {
-          const jsonErr = JSON.parse(errorText);
-          if (Array.isArray(jsonErr.message)) {
-            parsedError = jsonErr.message.join(", ");
-          } else if (typeof jsonErr.message === "string") {
-            parsedError = jsonErr.message;
-          } else if (jsonErr.error) {
-            parsedError = String(jsonErr.error);
-          }
-        } catch {
-          // not JSON
-        }
-
-        throw new Error(
-          parsedError || `Save failed (${response.status}: ${response.statusText})`,
-        );
-      }
-
-      const saved = await response.json();
-
-      console.log("SAVED ROUTE:", saved);
-
-      setIsModalOpen(false);
-      setEditingRoute(null);
+      await cmsStore.saveRoute({
+        id: isEdit ? String(id) : undefined,
+        routeName: payload.routeName,
+        origin: payload.origin,
+        destination: payload.destination,
+        totalDistanceKm: payload.totalDistanceKm,
+        estimatedTravelTime: payload.estimatedTravelTime,
+        roadCondition: payload.roadCondition as any,
+        weatherSummary: payload.weatherSummary,
+        imageUrl: payload.imageUrl,
+        photos: payload.photos,
+        approvalStatus: payload.approvalStatus as any,
+        createdByName: payload.createdByName,
+      });
 
       await fetchRoutes();
-
-      const savedRoute = mapRouteFromApi(saved?.data ?? saved?.route ?? saved);
-
-      if (savedRoute.id) {
-        setActiveRouteId(savedRoute.id);
-      }
+      setEditingRoute(null);
+      setIsModalOpen(false);
     } catch (err) {
       console.error("SAVE ROUTE ERROR:", err);
-
       setError(err instanceof Error ? err.message : "Unable to save route");
     } finally {
       setSaving(false);

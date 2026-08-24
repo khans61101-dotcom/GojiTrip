@@ -5,6 +5,7 @@ import "@/styles/pages/route/route.css";
 import React from "react";
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
+import { cmsStore } from "@/lib/cms-store";
 import { MapPin, Search, Star, Navigation, Clock, X } from "lucide-react";
 
 /* ============================================================
@@ -204,12 +205,13 @@ const RoutePage = () => {
       setLoading(true);
       setError(null);
 
+      const storeRoutes = cmsStore.getRoutes();
       const response = await apiRequest<
         | BackendRoute[]
         | {
             data?: BackendRoute[];
           }
-      >("/routes");
+      >("/routes").catch(() => null);
 
       const backendRoutes = Array.isArray(response)
         ? response
@@ -217,17 +219,40 @@ const RoutePage = () => {
           ? response.data
           : [];
 
-      const mappedRoutes = backendRoutes.map(mapBackendRoute);
+      let mappedRoutes = backendRoutes.map(mapBackendRoute);
+
+      if (mappedRoutes.length === 0) {
+        mappedRoutes = storeRoutes.map((r) => ({
+          id: String(r.id),
+          name: r.routeName,
+          description: `Scenic travel corridor along ${r.routeName}. Distance: ${r.totalDistanceKm} km (${r.roadCondition}).`,
+          image: r.imageUrl || (r.photos && r.photos[0]) || "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80",
+          rating: 4.9,
+          location: `${r.origin} → ${r.destination}`,
+          price: 0,
+          duration: r.estimatedTravelTime || "7-9 Hours",
+          difficulty: (r.roadCondition?.includes("4x4") ? "hard" : "moderate") as "easy" | "moderate" | "hard",
+          stops: r.viewpoints?.length || 5,
+        }));
+      }
 
       setRoutes(mappedRoutes);
     } catch (error) {
-      console.error("Failed to fetch routes:", error);
-
-      setRoutes([]);
-
-      setError(
-        error instanceof Error ? error.message : "Failed to load routes.",
-      );
+      console.error("Failed to fetch routes, loading store fallback:", error);
+      const storeRoutes = cmsStore.getRoutes();
+      const mappedRoutes: RoutePlan[] = storeRoutes.map((r) => ({
+        id: String(r.id),
+        name: r.routeName,
+        description: `Scenic travel corridor along ${r.routeName}. Distance: ${r.totalDistanceKm} km (${r.roadCondition}).`,
+        image: r.imageUrl || (r.photos && r.photos[0]) || "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80",
+        rating: 4.9,
+        location: `${r.origin} → ${r.destination}`,
+        price: 0,
+        duration: r.estimatedTravelTime || "7-9 Hours",
+        difficulty: (r.roadCondition?.includes("4x4") ? "hard" : "moderate") as "easy" | "moderate" | "hard",
+        stops: r.viewpoints?.length || 5,
+      }));
+      setRoutes(mappedRoutes);
     } finally {
       setLoading(false);
     }
