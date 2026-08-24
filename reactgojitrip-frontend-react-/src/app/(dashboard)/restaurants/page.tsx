@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { cmsStore } from "@/lib/cms-store";
+import { ImageFileInput } from "@/components/common/ImageFileInput";
 
 import {
   listRestaurants,
@@ -1374,24 +1375,39 @@ export default function RestaurantsPage() {
                 </div>
               )}
 
-              {/* MEDIA BUTTON */}
+              {/* =============== IMAGE FILE UPLOAD FROM COMPUTER =============== */}
+              <div className="pt-2 border-t border-slate-800 space-y-3">
+                <ImageFileInput
+                  label="Restaurant Photo (Select File from Computer / Device)"
+                  value={editingRest.imageUrl || (editingRest.photos && editingRest.photos[0]) || ""}
+                  onChange={(url) =>
+                    setEditingRest({
+                      ...editingRest,
+                      imageUrl: url,
+                      photos: [url, ...(editingRest.photos || [])],
+                    })
+                  }
+                  onClear={() =>
+                    setEditingRest({
+                      ...editingRest,
+                      imageUrl: "",
+                      photos: [],
+                    })
+                  }
+                  category="Restaurants"
+                />
 
-              <div className="pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setMediaPickerOpen(true)}
-                  className="w-full px-4 py-3 rounded-xl bg-[#182238] border-2 border-dashed border-emerald-500/30 hover:border-emerald-500 text-emerald-400 hover:text-emerald-300 font-semibold text-xs transition-all flex items-center justify-center space-x-2"
-                >
-                  <ImageIcon className="w-4 h-4" />
-
-                  <span>
-                    {editingRest.imageUrl
-                      ? "Change Restaurant Photo"
-                      : "Attach Restaurant Photo from Media Library"}
-                  </span>
-
-                  <UploadCloud className="w-4 h-4 opacity-50" />
-                </button>
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>Or choose from existing Media Library:</span>
+                  <button
+                    type="button"
+                    onClick={() => setMediaPickerOpen(true)}
+                    className="px-3 py-1.5 rounded-lg bg-[#182238] border border-slate-700 hover:border-emerald-500 text-emerald-400 text-xs font-semibold flex items-center space-x-1"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span>Open Media Library</span>
+                  </button>
+                </div>
               </div>
 
               {/* ACTIONS */}

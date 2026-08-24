@@ -4,6 +4,7 @@ import React from "react";
 import { cmsStore } from "@/lib/cms-store";
 import { ActivityEntry } from "@/types/cms";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { ImageFileInput } from "@/components/common/ImageFileInput";
 import {
   Compass,
   Plus,
@@ -973,17 +974,39 @@ export default function ActivitiesPage() {
                 </div>
               )}
 
-              {/* =============== MEDIA LIBRARY BUTTON =============== */}
-              <div className="pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setMediaPickerOpen(true)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-[#182238] border-2 border-dashed border-emerald-500/30 hover:border-emerald-500 text-emerald-400 hover:text-emerald-300 font-semibold text-xs transition-all flex items-center justify-center space-x-2 group"
-                >
-                  <ImageIcon className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  <span>Attach Activity Photo from Media Library</span>
-                  <UploadCloud className="w-3.5 h-3.5 opacity-50 group-hover:opacity-100 transition-opacity" />
-                </button>
+              {/* =============== IMAGE FILE UPLOAD FROM COMPUTER =============== */}
+              <div className="pt-2 border-t border-slate-800 space-y-3">
+                <ImageFileInput
+                  label="Activity Photo (Select File from Computer / Device)"
+                  value={editingAct.imageUrl || (editingAct.photos && editingAct.photos[0]) || ""}
+                  onChange={(url) =>
+                    setEditingAct({
+                      ...editingAct,
+                      imageUrl: url,
+                      photos: [url, ...(editingAct.photos || [])],
+                    })
+                  }
+                  onClear={() =>
+                    setEditingAct({
+                      ...editingAct,
+                      imageUrl: "",
+                      photos: [],
+                    })
+                  }
+                  category="Activities"
+                />
+
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>Or choose from Media Library:</span>
+                  <button
+                    type="button"
+                    onClick={() => setMediaPickerOpen(true)}
+                    className="px-3 py-1.5 rounded-lg bg-[#182238] border border-slate-700 hover:border-emerald-500 text-emerald-400 text-xs font-semibold flex items-center space-x-1"
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span>Open Media Library</span>
+                  </button>
+                </div>
               </div>
 
               <div className="pt-4 flex justify-end space-x-3 border-t border-slate-800">

@@ -3,6 +3,7 @@
 import React from 'react';
 import { listTransport, createTransport, updateTransport, deleteTransport, TransportRecord } from '@/lib/api';
 import { StatusBadge } from '@/components/common/StatusBadge';
+import { ImageFileInput } from '@/components/common/ImageFileInput';
 import { Bus, Plus, Search, CheckCircle, XCircle, Phone, MessageSquare, Trash2, Edit, Clock, DollarSign, MapPin } from 'lucide-react';
 
 type TransportForm = {
@@ -296,9 +297,15 @@ export default function TransportPage() {
                 <input value={editing.currency} onChange={e => setEditing({ ...editing, currency: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Currency" />
                 <input value={editing.luggagePolicy} onChange={e => setEditing({ ...editing, luggagePolicy: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Luggage policy" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <input value={editing.driverPhotoUrl} onChange={e => setEditing({ ...editing, driverPhotoUrl: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Driver photo URL" />
-                <input value={editing.vehiclePhotos} onChange={e => setEditing({ ...editing, vehiclePhotos: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder='Vehicle photos JSON array' />
+              {/* =============== DRIVER & VEHICLE PHOTO FILE UPLOAD =============== */}
+              <div className="space-y-3 pt-2 border-t border-slate-800">
+                <ImageFileInput
+                  label="Driver / Operator Photo (Select File from Computer)"
+                  value={editing.driverPhotoUrl || ""}
+                  onChange={(url) => setEditing({ ...editing, driverPhotoUrl: url })}
+                  onClear={() => setEditing({ ...editing, driverPhotoUrl: "" })}
+                  category="Transport"
+                />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <label className="flex items-center gap-2 text-slate-300"><input type="checkbox" checked={editing.licenceVerified} onChange={e => setEditing({ ...editing, licenceVerified: e.target.checked })} /> Licence verified</label>

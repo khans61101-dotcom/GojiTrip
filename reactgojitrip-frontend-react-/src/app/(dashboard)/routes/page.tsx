@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { ImageFileInput } from "@/components/common/ImageFileInput";
 import { API_BASE_URL } from "@/lib/api";
 
 // ============================================================
@@ -1373,6 +1374,17 @@ export default function RoutesPage() {
 
                   <option>Published</option>
                 </select>
+              </div>
+
+              {/* ROUTE BANNER PHOTO */}
+              <div className="pt-2 border-t border-slate-800">
+                <ImageFileInput
+                  label="Route Banner / Landscape Photo (Select File from Computer)"
+                  value={(editingRoute as any).imageUrl || ""}
+                  onChange={(url) => setEditingRoute({ ...editingRoute, imageUrl: url } as any)}
+                  onClear={() => setEditingRoute({ ...editingRoute, imageUrl: "" } as any)}
+                  category="Routes"
+                />
               </div>
 
               {/* WEATHER */}

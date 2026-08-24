@@ -4,6 +4,7 @@ import React from "react";
 import { cmsStore } from "@/lib/cms-store";
 import { GuideEntry } from "@/types/cms";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { ImageFileInput } from "@/components/common/ImageFileInput";
 import {
   Users,
   Plus,
@@ -689,25 +690,25 @@ export default function GuidesPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  Profile Photo URL
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={editingGuide.photoUrl || ""}
-                    onChange={(e) => setEditingGuide({ ...editingGuide, photoUrl: e.target.value })}
-                    placeholder="https://..."
-                    className="flex-1 bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  />
+              {/* =============== PROFILE PHOTO FILE UPLOAD =============== */}
+              <div className="space-y-2">
+                <ImageFileInput
+                  label="Guide Profile Photo (Select File from Computer / Device)"
+                  value={editingGuide.photoUrl || ""}
+                  onChange={(url) => setEditingGuide({ ...editingGuide, photoUrl: url })}
+                  onClear={() => setEditingGuide({ ...editingGuide, photoUrl: "" })}
+                  category="Activities"
+                />
+
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span>Or select from Media Library:</span>
                   <button
                     type="button"
                     onClick={() => setMediaPickerOpen(true)}
-                    className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-white hover:bg-slate-700 flex items-center space-x-1"
+                    className="px-3 py-1.5 rounded-lg bg-[#182238] border border-slate-700 hover:border-emerald-500 text-emerald-400 text-xs font-semibold flex items-center space-x-1"
                   >
-                    <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Select</span>
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    <span>Open Media Library</span>
                   </button>
                 </div>
               </div>
