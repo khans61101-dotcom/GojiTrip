@@ -21,6 +21,7 @@ import {
   Bus,
   Sparkles,
   ArrowLeft,
+  Camera,
 } from "lucide-react";
 import { SafeImage } from "@/components/common/SafeImage";
 
@@ -109,27 +110,45 @@ export default function YelpDetailModal({
     };
   }, [isOpen]);
 
+  // Load persisted reviews from localStorage when modal opens
+  useEffect(() => {
+    if (data?.id) {
+      try {
+        const saved = localStorage.getItem(`goji_reviews_${data.id}`);
+        if (saved) {
+          setUserReviews(JSON.parse(saved));
+        } else {
+          setUserReviews([]);
+        }
+      } catch (err) {
+        console.error("Error reading reviews:", err);
+      }
+    }
+  }, [data?.id]);
+
   if (!isOpen || !data) return null;
 
   // Combine default reviews with user-submitted reviews
+  const defaultReviews: ReviewItem[] = [
+    {
+      id: "r-1",
+      author: "Pasang Gurung",
+      rating: 5,
+      date: "2 days ago",
+      comment: "Exceptional service and beautiful views! Highly recommended for anyone traveling in Nepal.",
+    },
+    {
+      id: "r-2",
+      author: "Anjali Sharma",
+      rating: 4,
+      date: "1 week ago",
+      comment: "Great experience. Clean facilities, helpful staff, and very convenient location along the route.",
+    },
+  ];
+
   const allReviews = [
     ...userReviews,
-    ...(data.reviewsList || [
-      {
-        id: "r-1",
-        author: "Pasang Gurung",
-        rating: 5,
-        date: "2 days ago",
-        comment: "Exceptional service and beautiful views! Highly recommended for anyone traveling in Nepal.",
-      },
-      {
-        id: "r-2",
-        author: "Anjali Sharma",
-        rating: 4,
-        date: "1 week ago",
-        comment: "Great experience. Clean facilities, helpful staff, and very convenient location along the route.",
-      },
-    ]),
+    ...(data.reviewsList || defaultReviews),
   ];
 
   const handleAddReview = (e: React.FormEvent) => {
@@ -144,14 +163,23 @@ export default function YelpDetailModal({
       comment: newComment.trim(),
     };
 
-    setUserReviews([review, ...userReviews]);
+    const updatedReviews = [review, ...userReviews];
+    setUserReviews(updatedReviews);
+    if (data?.id) {
+      try {
+        localStorage.setItem(`goji_reviews_${data.id}`, JSON.stringify(updatedReviews));
+      } catch (err) {
+        console.error("Error saving review:", err);
+      }
+    }
+
     setNewComment("");
     setNewAuthor("");
     setShowReviewSuccess(true);
     setTimeout(() => setShowReviewSuccess(false), 4000);
   };
 
-  const gallery = data.galleryImages && data.galleryImages.length >= 3
+  const gallery = data.galleryImages && data.galleryImages.length > 0
     ? data.galleryImages
     : [
         data.image || DEFAULT_FALLBACK,
@@ -159,6 +187,10 @@ export default function YelpDetailModal({
         "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
         "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80",
       ];
+
+  const img1 = gallery[0] || DEFAULT_FALLBACK;
+  const img2 = gallery[1] || gallery[0] || DEFAULT_FALLBACK;
+  const img3 = gallery[2] || gallery[0] || DEFAULT_FALLBACK;
 
   const operatingHours = data.hours || [
     { day: "Mon - Fri", time: "07:00 AM - 10:00 PM" },
@@ -205,7 +237,7 @@ export default function YelpDetailModal({
           <div className="grid grid-cols-1 sm:grid-cols-3 h-full gap-1">
             <div className="relative sm:col-span-2 h-full overflow-hidden">
               <SafeImage
-                src={gallery[0]}
+                src={img1}
                 fallbackSrc={DEFAULT_FALLBACK}
                 alt={data.name}
                 fill
@@ -213,12 +245,20 @@ export default function YelpDetailModal({
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/40 to-transparent" />
             </div>
-            <div className="hidden sm:grid grid-rows-2 h-full gap-1">
+            <div className="hidden sm:grid grid-rows-2 h-full gap-1 relative">
               <div className="relative h-full overflow-hidden">
-                <SafeImage src={gallery[1]} fallbackSrc={DEFAULT_FALLBACK} alt="Gallery 2" fill className="object-cover hover:scale-105 transition-transform duration-500" />
+                <SafeImage src={img2} fallbackSrc={DEFAULT_FALLBACK} alt="Gallery 2" fill className="object-cover hover:scale-105 transition-transform duration-500" />
               </div>
               <div className="relative h-full overflow-hidden">
-                <SafeImage src={gallery[2]} fallbackSrc={DEFAULT_FALLBACK} alt="Gallery 3" fill className="object-cover hover:scale-105 transition-transform duration-500" />
+                <SafeImage src={img3} fallbackSrc={DEFAULT_FALLBACK} alt="Gallery 3" fill className="object-cover hover:scale-105 transition-transform duration-500" />
+                {gallery.length > 3 && (
+                  <div className="absolute inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center">
+                    <span className="px-3.5 py-1.5 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full text-white font-extrabold text-xs flex items-center space-x-1.5 border border-white/30 shadow-lg">
+                      <Camera className="w-4 h-4 text-emerald-400" />
+                      <span>+{gallery.length - 3} More Photos</span>
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

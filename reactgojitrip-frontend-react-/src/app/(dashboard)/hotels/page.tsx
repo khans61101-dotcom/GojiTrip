@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import { ApprovalStatus } from "@/types/cms";
 import {
   Hotel,
@@ -513,13 +514,27 @@ const handleSaveHotel = async (e: React.FormEvent) => {
               )}
 
               {/* =============== IMAGE FILE UPLOAD FROM COMPUTER =============== */}
-              <div className="pt-2 border-t border-slate-800 space-y-3">
+              <div className="pt-2 border-t border-slate-800 space-y-4">
                 <ImageFileInput
-                  label="Hotel Photo (Select File from Computer / Device)"
+                  label="Hero Cover Photo (Main Cover Image)"
                   value={editingHotel.imageUrl || ""}
                   onChange={(url) => setEditingHotel({ ...editingHotel, imageUrl: url })}
                   onClear={handleRemovePhoto}
                   category="Hotels"
+                />
+
+                <MultiImageFileInput
+                  label="Hotel Photo Gallery (Add Multiple Images for Yelp Detail View)"
+                  images={(editingHotel as any).hotelPhotos || []}
+                  onChange={(photos) =>
+                    setEditingHotel({
+                      ...editingHotel,
+                      hotelPhotos: photos,
+                      imageUrl: editingHotel.imageUrl || photos[0] || "",
+                    } as any)
+                  }
+                  category="Hotels"
+                  maxImages={10}
                 />
 
                 <div className="flex items-center justify-between text-xs text-slate-400">

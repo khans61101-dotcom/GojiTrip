@@ -446,6 +446,7 @@ const RestaurantsPage: React.FC = () => {
       phone: r.description || "+977 1 4220000",
       whatsapp: "+9779801112233",
       image: r.image,
+      galleryImages: (r as any).photos || (r as any).restaurantPhotos || (r.image ? [r.image] : []),
       description: `${r.name} is a renowned dining spot along the Nepal highway corridor, serving authentic organic Thakali thali, Himalayan coffee, and local delicacies.`,
       amenities: r.dietaryOptions || ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"],
       priceTag: "NRs 450 - 1,200 / meal",

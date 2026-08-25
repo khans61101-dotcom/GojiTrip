@@ -24,6 +24,7 @@ import {
 
 import { cmsStore } from "@/lib/cms-store";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 
 import {
   listRestaurants,
@@ -574,7 +575,7 @@ export default function RestaurantsPage() {
       if (data.length > 0) {
         // Merge image URLs from cmsStore if backend response missed them
         const merged = data.map((item: any) => {
-          const matchingStore = storeItems.find((s) => String(s.id) === String(item.id));
+          const matchingStore = storeItems.find((s: any) => String(s.id) === String(item.id));
           const imageUrl = item.imageUrl || (item.photos && item.photos[0]) || matchingStore?.imageUrl || (matchingStore?.photos && matchingStore.photos[0]) || "";
           return {
             ...item,
@@ -1369,25 +1370,38 @@ export default function RestaurantsPage() {
               )}
 
               {/* =============== IMAGE FILE UPLOAD FROM COMPUTER =============== */}
-              <div className="pt-2 border-t border-slate-800 space-y-3">
+              <div className="pt-2 border-t border-slate-800 space-y-4">
                 <ImageFileInput
-                  label="Restaurant Photo (Select File from Computer / Device)"
+                  label="Hero Cover Photo (Main Cover Image)"
                   value={editingRest.imageUrl || (editingRest.photos && editingRest.photos[0]) || ""}
                   onChange={(url) =>
                     setEditingRest({
                       ...editingRest,
                       imageUrl: url,
-                      photos: [url, ...(editingRest.photos || [])],
+                      photos: editingRest.photos && editingRest.photos.length > 0 ? [url, ...editingRest.photos.slice(1)] : [url],
                     })
                   }
                   onClear={() =>
                     setEditingRest({
                       ...editingRest,
                       imageUrl: "",
-                      photos: [],
                     })
                   }
                   category="Restaurants"
+                />
+
+                <MultiImageFileInput
+                  label="Restaurant Photo Gallery (Add Multiple Images for Yelp Detail View)"
+                  images={editingRest.photos || []}
+                  onChange={(photos) =>
+                    setEditingRest({
+                      ...editingRest,
+                      photos: photos,
+                      imageUrl: editingRest.imageUrl || photos[0] || "",
+                    })
+                  }
+                  category="Restaurants"
+                  maxImages={10}
                 />
 
                 <div className="flex items-center justify-between text-xs text-slate-400">

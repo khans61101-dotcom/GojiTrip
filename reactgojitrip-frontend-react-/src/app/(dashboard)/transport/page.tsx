@@ -4,6 +4,7 @@ import React from 'react';
 import { listTransport, createTransport, updateTransport, deleteTransport, TransportRecord } from '@/lib/api';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { ImageFileInput } from '@/components/common/ImageFileInput';
+import { MultiImageFileInput } from '@/components/common/MultiImageFileInput';
 import { Bus, Plus, Search, CheckCircle, XCircle, Phone, MessageSquare, Trash2, Edit, Clock, DollarSign, MapPin } from 'lucide-react';
 
 type TransportForm = {
@@ -22,7 +23,7 @@ type TransportForm = {
   currency: string;
   luggagePolicy: string;
   driverPhotoUrl: string;
-  vehiclePhotos: string;
+  vehiclePhotos?: string[];
   licenceVerified: boolean;
   activeStatus: string;
   approvalStatus: string;
@@ -44,7 +45,7 @@ const emptyForm: TransportForm = {
   currency: 'NPR',
   luggagePolicy: '',
   driverPhotoUrl: '',
-  vehiclePhotos: '[]',
+  vehiclePhotos: [],
   licenceVerified: false,
   activeStatus: 'Active',
   approvalStatus: 'Draft',
@@ -102,7 +103,7 @@ export default function TransportPage() {
       currency: item.currency || 'NPR',
       luggagePolicy: item.luggagePolicy || '',
       driverPhotoUrl: item.driverPhotoUrl || '',
-      vehiclePhotos: JSON.stringify(item.vehiclePhotos || []),
+      vehiclePhotos: Array.isArray(item.vehiclePhotos) ? item.vehiclePhotos : [],
       licenceVerified: item.licenceVerified || false,
       activeStatus: item.activeStatus || 'Active',
       approvalStatus: item.approvalStatus || 'Draft',
@@ -146,7 +147,7 @@ export default function TransportPage() {
         currency: editing.currency,
         luggagePolicy: editing.luggagePolicy,
         driverPhotoUrl: editing.driverPhotoUrl || null,
-        vehiclePhotos: JSON.parse(editing.vehiclePhotos || '[]'),
+        vehiclePhotos: editing.vehiclePhotos || [],
         licenceVerified: editing.licenceVerified,
         activeStatus: editing.activeStatus,
         approvalStatus: editing.approvalStatus,
@@ -298,13 +299,21 @@ export default function TransportPage() {
                 <input value={editing.luggagePolicy} onChange={e => setEditing({ ...editing, luggagePolicy: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Luggage policy" />
               </div>
               {/* =============== DRIVER & VEHICLE PHOTO FILE UPLOAD =============== */}
-              <div className="space-y-3 pt-2 border-t border-slate-800">
+              <div className="space-y-4 pt-2 border-t border-slate-800">
                 <ImageFileInput
-                  label="Driver / Operator Photo (Select File from Computer)"
+                  label="Driver / Main Vehicle Cover Photo (Select File from Computer)"
                   value={editing.driverPhotoUrl || ""}
                   onChange={(url) => setEditing({ ...editing, driverPhotoUrl: url })}
                   onClear={() => setEditing({ ...editing, driverPhotoUrl: "" })}
                   category="Transport"
+                />
+
+                <MultiImageFileInput
+                  label="Vehicle Fleet Gallery (Add Multiple Photos for Yelp Detail View)"
+                  images={editing.vehiclePhotos || []}
+                  onChange={(photos) => setEditing({ ...editing, vehiclePhotos: photos })}
+                  category="Transport"
+                  maxImages={10}
                 />
               </div>
               <div className="grid grid-cols-3 gap-4">

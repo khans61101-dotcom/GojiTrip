@@ -616,6 +616,7 @@ const HotelsPage: React.FC = () => {
       phone: h.contact || "+977 1 4567890",
       whatsapp: "+9779801234567",
       image: h.image,
+      galleryImages: (h as any).hotelPhotos || (h as any).photos || (h.image ? [h.image] : []),
       description: h.description || `${h.name} offers magnificent mountain view accommodation, gourmet dining, and warm Nepalese hospitality.`,
       amenities: h.amenities || ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Water", "24/7 Room Service", "Free Parking"],
       priceTag: `${h.currency || "NRs "}${h.pricePerNight} / night`,

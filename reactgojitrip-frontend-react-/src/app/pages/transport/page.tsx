@@ -584,6 +584,7 @@ const TransportPage: React.FC = () => {
       phone: t.provider || "+977 1 4567890",
       whatsapp: "+9779801234567",
       image: t.image,
+      galleryImages: (t as any).vehiclePhotos || (t as any).photos || (t.image ? [t.image] : []),
       description: `${t.name} (${t.provider}) provides reliable, safe ${t.type} passenger transport service along the ${t.from} to ${t.to} corridor. Driver photo and vehicle licences are fully verified.`,
       amenities: t.amenities || ["AC Vehicle", "Reclining Seats", "Luggage Storage", "GPS Tracking", "Verified Driver"],
       priceTag: `${t.currency} ${t.price} / seat`,
