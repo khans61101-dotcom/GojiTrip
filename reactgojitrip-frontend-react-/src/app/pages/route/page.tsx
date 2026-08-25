@@ -451,35 +451,93 @@ export default function RoutePage() {
             </div>
           </form>
 
-          {/* DB ROUTE SELECTOR TABS */}
+          {/* SCALABLE DB ROUTE SELECTOR FOR 1 TO 100+ ROUTES */}
           {dbRoutes.length > 0 && (
-            <div className="pt-6">
-              <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mb-2">
-                Available Database Routes ({dbRoutes.length}):
+            <div className="pt-6 max-w-4xl mx-auto space-y-3">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-2 text-xs font-bold text-slate-300">
+                <div className="flex items-center space-x-2">
+                  <RouteIcon className="w-4 h-4 text-emerald-400" />
+                  <span>Available Database Corridors ({dbRoutes.length})</span>
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Select corridor from dropdown or scroll quick pills
+                </div>
               </div>
-              <div className="flex flex-wrap items-center justify-center gap-2 max-w-4xl mx-auto">
-                {dbRoutes.map((r) => {
-                  const isActive = !routeSearch && activeDbRoute?.id === r.id;
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => {
-                        setRouteSearch(null);
-                        setSelectedRouteId(r.id);
-                      }}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 ${
-                        isActive
-                          ? "bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/20 scale-105"
-                          : "bg-white/10 text-slate-200 border-white/15 hover:bg-white/20 hover:text-white"
-                      }`}
-                    >
-                      <RouteIcon className="w-3.5 h-3.5" />
-                      <span>{r.routeName || `${r.origin} → ${r.destination}`}</span>
-                      <span className="text-[10px] opacity-75">({r.totalDistanceKm} km)</span>
-                    </button>
-                  );
-                })}
+
+              {/* DROPDOWN SELECT MENU FOR EASY NAVIGATION OF MULTIPLE ROUTES */}
+              <div className="relative max-w-md mx-auto">
+                <select
+                  value={routeSearch ? "" : activeDbRoute?.id || ""}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      setRouteSearch(null);
+                      setSelectedRouteId(e.target.value);
+                    }
+                  }}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer shadow-lg backdrop-blur-md"
+                >
+                  {routeSearch && <option value="" disabled className="bg-slate-900 text-white">-- Custom Search Active --</option>}
+                  {dbRoutes.map((r, i) => (
+                    <option key={r.id} value={r.id} className="bg-slate-900 text-white">
+                      #{i + 1} {r.routeName || `${r.origin} → ${r.destination}`} ({r.totalDistanceKm} km - {r.roadCondition})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* HORIZONTAL SCROLLING QUICK SWITCH PILLS WITH NAVIGATION BUTTONS */}
+              <div className="relative flex items-center group">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById("db-route-pills-container");
+                    if (el) el.scrollBy({ left: -200, behavior: "smooth" });
+                  }}
+                  className="hidden sm:flex shrink-0 w-7 h-7 rounded-full bg-white/10 hover:bg-white/25 border border-white/20 text-white items-center justify-center text-xs shadow-md mr-1 transition-all"
+                  aria-label="Scroll left"
+                >
+                  ‹
+                </button>
+
+                <div
+                  id="db-route-pills-container"
+                  className="flex items-center gap-2 overflow-x-auto whitespace-nowrap py-1 px-1 scrollbar-none scroll-smooth w-full"
+                >
+                  {dbRoutes.map((r) => {
+                    const isActive = !routeSearch && activeDbRoute?.id === r.id;
+                    return (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => {
+                          setRouteSearch(null);
+                          setSelectedRouteId(r.id);
+                        }}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 shrink-0 ${
+                          isActive
+                            ? "bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/20 scale-105"
+                            : "bg-white/10 text-slate-200 border-white/15 hover:bg-white/20 hover:text-white"
+                        }`}
+                      >
+                        <RouteIcon className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{r.routeName || `${r.origin} → ${r.destination}`}</span>
+                        <span className="text-[10px] opacity-75">({r.totalDistanceKm} km)</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById("db-route-pills-container");
+                    if (el) el.scrollBy({ left: 200, behavior: "smooth" });
+                  }}
+                  className="hidden sm:flex shrink-0 w-7 h-7 rounded-full bg-white/10 hover:bg-white/25 border border-white/20 text-white items-center justify-center text-xs shadow-md ml-1 transition-all"
+                  aria-label="Scroll right"
+                >
+                  ›
+                </button>
               </div>
             </div>
           )}
