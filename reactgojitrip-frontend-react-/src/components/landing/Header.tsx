@@ -88,13 +88,10 @@ export default function Header() {
             aria-label="GojiTrip home"
           >
             <img
-              src="/logo/gojitriplogo.jpg"
+              src="/logo/gojitriplogo.png"
               alt="GojiTrip"
-              className="w-10 h-10 md:w-11 md:h-11 rounded-xl object-contain shadow-sm"
+              className="h-9 md:h-11 w-auto object-contain"
             />
-            <span className="ml-2.5 text-xl font-extrabold text-slate-800 tracking-tight">
-              GojiTrip
-            </span>
           </Link>
 
           {/* Clean Primary Navbar Links (Compact & Spaced) */}

@@ -49,21 +49,11 @@ export default function Footer() {
           {/* Brand Info & Newsletter (Col 1-5) */}
           <div className="lg:col-span-5 space-y-6">
             <Link to="/" className="inline-flex items-center space-x-3 group">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800/90 border border-slate-700/80 p-1 flex items-center justify-center shadow-lg group-hover:border-emerald-500/50 transition-colors">
-                <img
-                  src="/logo/gojitriplogo.jpg"
-                  alt="GojiTrip Logo"
-                  className="w-full h-full object-contain rounded-xl"
-                />
-              </div>
-              <div>
-                <span className="text-2xl font-extrabold text-white tracking-tight">
-                  GojiTrip
-                </span>
-                <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
-                  Verified Travel Portal
-                </div>
-              </div>
+              <img
+                src="/logo/gojitriplogo.png"
+                alt="GojiTrip Logo"
+                className="h-12 md:h-14 w-auto object-contain bg-white p-2 rounded-xl shadow-md"
+              />
             </Link>
 
             <p className="text-xs text-slate-400 leading-relaxed max-w-md">

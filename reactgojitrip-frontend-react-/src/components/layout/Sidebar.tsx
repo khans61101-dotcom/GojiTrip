@@ -81,25 +81,15 @@ export const Sidebar: React.FC = () => {
     <aside className="w-64 bg-[#0F172A] border-r border-slate-800 flex flex-col justify-between h-screen sticky top-0">
       {/* Brand Header */}
       <div>
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-slate-800/80">
-          <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-800/50 flex items-center justify-center flex-shrink-0">
-            <img
-              src="/logo/gojitriplogo.jpg"
-              alt="GojiTrip Logo"
-              className="w-11 h-11 object-contain"
-            />
-          </div>
-          <div>
-            <div className="font-extrabold text-base tracking-tight text-white flex items-center">
-              GojiTrip{" "}
-              <span className="text-emerald-400 text-xs font-semibold ml-1.5 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
-                CMS
-              </span>
-            </div>
-            <div className="text-[11px] text-slate-400 font-medium">
-              Verified Travel Portal
-            </div>
-          </div>
+        <div className="flex items-center justify-between px-4 py-4 border-b border-slate-800/80">
+          <img
+            src="/logo/gojitriplogo.png"
+            alt="GojiTrip Logo"
+            className="h-9 w-auto object-contain bg-white p-1.5 rounded-xl shadow-sm"
+          />
+          <span className="text-emerald-400 text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30">
+            Admin CMS
+          </span>
         </div>
 
         {/* Navigation Menu */}
