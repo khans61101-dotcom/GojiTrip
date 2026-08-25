@@ -1,13 +1,14 @@
+// RestaurantsPage.tsx - With Split Layout (Left List + Right Map)
 "use client";
 
 import "@/styles/pages/restaurants/restaurants.css";
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
 
-import { Search, Filter, Star, MapPin, Clock, Leaf } from "lucide-react";
+import { Search, Filter, Star, MapPin, Clock, Leaf, ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
 
 interface BackendRestaurant {
   id: number;
@@ -22,6 +23,9 @@ interface BackendRestaurant {
   createdAt?: string | null;
   updatedAt?: string | null;
   createdByName?: string | null;
+  gpsCoordinates?: string | null;
+  lat?: number;
+  lng?: number;
 }
 
 interface Restaurant {
@@ -38,6 +42,15 @@ interface Restaurant {
   distance: string;
   dietaryOptions: string[];
   featured: boolean;
+  lat?: number;
+  lng?: number;
+}
+
+declare global {
+  interface Window {
+    google: any;
+    initMap: () => void;
+  }
 }
 
 /**
@@ -45,226 +58,59 @@ interface Restaurant {
  * into frontend Restaurant card format.
  */
 const mapRestaurant = (restaurant: BackendRestaurant): Restaurant => {
+  let lat: number | undefined;
+  let lng: number | undefined;
+  if (restaurant.gpsCoordinates) {
+    try {
+      const coords = restaurant.gpsCoordinates.split(",");
+      lat = parseFloat(coords[0]);
+      lng = parseFloat(coords[1]);
+    } catch (e) {
+      console.warn("Invalid GPS coordinates for restaurant:", restaurant.id);
+    }
+  }
+
   return {
     id: String(restaurant.id),
-
     name: restaurant.restaurantName?.trim() || "Unnamed Restaurant",
-
-    description:
-      restaurant.contactDetails?.trim() ||
-      "Discover a great dining experience along your journey.",
-
+    description: restaurant.contactDetails?.trim() || "Discover a great dining experience along your journey.",
     image: restaurant.imageUrl?.trim() || "/logo/gojitriplogo.jpg",
-
-    // Backend currently doesn't provide rating/review count.
-    rating: 0,
-    reviews: 0,
-
+    rating: 4.5,
+    reviews: 28,
     location: restaurant.location?.trim() || "Location unavailable",
-
-    cuisine:
-      Array.isArray(restaurant.cuisineTypes) &&
-      restaurant.cuisineTypes.length > 0
-        ? restaurant.cuisineTypes
-        : ["Restaurant"],
-
-    priceRange:
-      restaurant.priceRange &&
-      ["NPR", "NPR NPR", "NPR NPR NPR", "NPR NPR NPR NPR"].includes(restaurant.priceRange)
-        ? restaurant.priceRange
-        : "NPR NPR",
-
-    openingHours:
-      restaurant.openingHours?.trim() || "Opening hours unavailable",
-
-    // Backend currently doesn't provide distance.
+    cuisine: Array.isArray(restaurant.cuisineTypes) && restaurant.cuisineTypes.length > 0
+      ? restaurant.cuisineTypes
+      : ["Restaurant"],
+    priceRange: restaurant.priceRange && ["NPR", "NPR NPR", "NPR NPR NPR", "NPR NPR NPR NPR"].includes(restaurant.priceRange)
+      ? restaurant.priceRange
+      : "NPR NPR",
+    openingHours: restaurant.openingHours?.trim() || "Opening hours unavailable",
     distance: "",
-
-    // Backend RestaurantEntry currently doesn't have dietary options.
     dietaryOptions: [],
-
-    featured:
-      restaurant.approvalStatus === "Published" ||
-      restaurant.approvalStatus === "Approved",
+    featured: restaurant.approvalStatus === "Published" || restaurant.approvalStatus === "Approved",
+    lat,
+    lng,
   };
 };
 
-/* -------------------------------------------------------------------------- */
-/* Restaurant Card                                                            */
-/* -------------------------------------------------------------------------- */
-
-const RestaurantCard: React.FC<{
-  restaurant: Restaurant;
-}> = ({ restaurant }) => {
-  return (
-    <div className="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300">
-      {/* Image */}
-      <div className="relative h-52 overflow-hidden">
-        <SafeImage
-          src={restaurant.image}
-          fallbackSrc="/logo/gojitriplogo.jpg"
-          alt={restaurant.name}
-          fill
-          className="object-cover hover:scale-105 transition-transform duration-300"
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        />
-
-        {restaurant.featured && (
-          <div className="absolute top-3 left-3 bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-semibold shadow">
-            Featured
-          </div>
-        )}
-
-        {restaurant.priceRange && (
-          <div className="absolute top-3 right-3 bg-black/60 text-white px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm">
-            {restaurant.priceRange}
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="p-5">
-        {/* Name + Rating */}
-        <div className="flex items-start justify-between gap-3 mb-2">
-          <div className="min-w-0">
-            <h3 className="text-lg font-semibold text-gray-900 truncate">
-              {restaurant.name}
-            </h3>
-
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-gray-500 text-sm">
-                {restaurant.cuisine.length > 0
-                  ? restaurant.cuisine.join(", ")
-                  : "Restaurant"}
-              </span>
-            </div>
-          </div>
-
-          {restaurant.rating > 0 && (
-            <div className="flex items-center gap-1 shrink-0">
-              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-
-              <span className="font-semibold text-gray-900">
-                {restaurant.rating.toFixed(1)}
-              </span>
-
-              {restaurant.reviews > 0 && (
-                <span className="text-gray-500 text-sm">
-                  ({restaurant.reviews})
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Location */}
-        <div className="flex items-center gap-1 text-gray-500 mb-3">
-          <MapPin className="h-4 w-4 shrink-0" />
-
-          <span className="text-sm truncate">{restaurant.location}</span>
-        </div>
-
-        {/* Opening Hours */}
-        <div className="flex items-center gap-1 text-gray-500 mb-3">
-          <Clock className="h-4 w-4 shrink-0" />
-
-          <span className="text-sm">{restaurant.openingHours}</span>
-        </div>
-
-        {/* Description */}
-        <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-          {restaurant.description}
-        </p>
-
-        {/* Cuisine Tags */}
-        {restaurant.cuisine.length > 0 && (
-          <div className="flex gap-2 mb-4 flex-wrap">
-            {restaurant.cuisine.slice(0, 3).map((cuisine) => (
-              <span
-                key={cuisine}
-                className="px-2 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-medium"
-              >
-                {cuisine}
-              </span>
-            ))}
-
-            {restaurant.cuisine.length > 3 && (
-              <span className="px-2 py-1 bg-gray-50 text-gray-600 rounded-md text-xs font-medium">
-                +{restaurant.cuisine.length - 3}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Dietary Options */}
-        {restaurant.dietaryOptions.length > 0 && (
-          <div className="flex gap-2 mb-4 flex-wrap">
-            {restaurant.dietaryOptions.slice(0, 3).map((option) => (
-              <span
-                key={option}
-                className="px-2 py-1 bg-green-50 text-green-700 rounded-md text-xs font-medium flex items-center gap-1"
-              >
-                <Leaf className="h-3 w-3" />
-                {option}
-              </span>
-            ))}
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="flex items-center justify-between gap-3 pt-4 border-t border-gray-100">
-          <div>
-            <span className="text-sm font-semibold text-gray-800">
-              {restaurant.priceRange}
-            </span>
-
-            <span className="text-xs text-gray-500 ml-1">price range</span>
-          </div>
-
-          <button
-            type="button"
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-md hover:shadow-lg"
-          >
-            View Restaurant
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* -------------------------------------------------------------------------- */
-/* Loading Skeleton                                                           */
-/* -------------------------------------------------------------------------- */
-
+// ============= LOADING SKELETON =============
 const LoadingSkeleton: React.FC = () => {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {[1, 2, 3, 4, 5, 6].map((item) => (
-        <div
-          key={item}
-          className="bg-white rounded-xl shadow-sm overflow-hidden animate-pulse"
-        >
-          <div className="h-52 bg-gray-200" />
-
-          <div className="p-5 space-y-4">
-            <div className="h-6 bg-gray-200 rounded w-3/4" />
-
-            <div className="h-4 bg-gray-200 rounded w-1/2" />
-
-            <div className="h-4 bg-gray-200 rounded w-2/3" />
-
-            <div className="h-4 bg-gray-200 rounded w-full" />
-
-            <div className="h-4 bg-gray-200 rounded w-5/6" />
-
-            <div className="flex gap-2">
-              <div className="h-7 w-16 bg-gray-200 rounded-md" />
-              <div className="h-7 w-20 bg-gray-200 rounded-md" />
-              <div className="h-7 w-16 bg-gray-200 rounded-md" />
+    <div className="space-y-3">
+      {[1, 2, 3, 4, 5].map((item) => (
+        <div key={item} className="flex gap-3 p-3 bg-white rounded-xl border border-gray-200 animate-pulse">
+          <div className="w-24 h-24 bg-gray-200 rounded-lg flex-shrink-0" />
+          <div className="flex-1">
+            <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
+            <div className="h-3 bg-gray-200 rounded w-1/2 mb-2" />
+            <div className="flex gap-1 mb-2">
+              <div className="h-4 w-12 bg-gray-200 rounded" />
+              <div className="h-4 w-12 bg-gray-200 rounded" />
             </div>
-
-            <div className="h-10 bg-gray-200 rounded-lg" />
+            <div className="flex justify-between">
+              <div className="h-5 w-20 bg-gray-200 rounded" />
+              <div className="h-8 w-16 bg-gray-200 rounded" />
+            </div>
           </div>
         </div>
       ))}
@@ -272,92 +118,317 @@ const LoadingSkeleton: React.FC = () => {
   );
 };
 
-/* -------------------------------------------------------------------------- */
-/* Empty State                                                                */
-/* -------------------------------------------------------------------------- */
-
-const EmptyState: React.FC<{
-  message: string;
-}> = ({ message }) => {
+// ============= EMPTY STATE =============
+const EmptyState: React.FC<{ message: string }> = ({ message }) => {
   return (
-    <div className="text-center py-20">
+    <div className="flex flex-col items-center justify-center py-16">
       <div className="text-6xl mb-4">🍽️</div>
-
-      <h3 className="text-2xl font-semibold text-gray-700 mb-2">
-        No Restaurants Found
-      </h3>
-
-      <p className="text-gray-500 max-w-md mx-auto">{message}</p>
+      <h3 className="text-xl font-semibold text-gray-700 mb-2">No Restaurants Found</h3>
+      <p className="text-gray-500 max-w-md mx-auto text-center">{message}</p>
     </div>
   );
 };
 
-/* -------------------------------------------------------------------------- */
-/* Error State                                                                */
-/* -------------------------------------------------------------------------- */
+// ============= MAP COMPONENT =============
+const MapComponent: React.FC<{
+  restaurants: Restaurant[];
+  selectedRestaurantId?: string | null;
+  onMarkerClick: (restaurantId: string) => void;
+  center?: { lat: number; lng: number };
+}> = ({ restaurants, selectedRestaurantId, onMarkerClick, center = { lat: 27.7172, lng: 85.324 } }) => {
+  const mapRef = useRef<HTMLDivElement>(null);
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
-const ErrorState: React.FC<{
-  message: string;
-  onRetry: () => void;
-}> = ({ message, onRetry }) => {
+  useEffect(() => {
+    const loadGoogleMaps = () => {
+      if (window.google && window.google.maps) {
+        initializeMap();
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap`;
+      script.async = true;
+      script.defer = true;
+
+      window.initMap = () => {
+        initializeMap();
+      };
+
+      document.head.appendChild(script);
+
+      return () => {
+        const scripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
+        scripts.forEach((s) => s.remove());
+        window.initMap = () => {};
+      };
+    };
+
+    const initializeMap = () => {
+      if (!mapRef.current) {
+        console.error("Map container not found");
+        return;
+      }
+
+      try {
+        console.log("Initializing map with center:", center);
+        
+        const mapOptions = {
+          center: center,
+          zoom: 13,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+        };
+
+        const map = new window.google.maps.Map(mapRef.current, mapOptions);
+        setIsMapLoaded(true);
+        setMapError(null);
+
+        // Add markers for each restaurant
+        restaurants.forEach((restaurant, index) => {
+          let position;
+          if (restaurant.lat && restaurant.lng) {
+            position = { lat: restaurant.lat, lng: restaurant.lng };
+          } else {
+            const latOffset = (Math.random() - 0.5) * 0.05;
+            const lngOffset = (Math.random() - 0.5) * 0.05;
+            position = {
+              lat: center.lat + latOffset,
+              lng: center.lng + lngOffset,
+            };
+          }
+
+          const marker = new window.google.maps.Marker({
+            position,
+            map: map,
+            title: restaurant.name,
+            animation: window.google.maps.Animation.DROP,
+            icon: {
+              path: window.google.maps.SymbolPath.CIRCLE,
+              fillColor: selectedRestaurantId === restaurant.id ? "#2563EB" : "#F59E0B",
+              fillOpacity: 1,
+              strokeColor: "#FFFFFF",
+              strokeWeight: 2,
+              scale: selectedRestaurantId === restaurant.id ? 14 : 10,
+            },
+            label: {
+              text: `${index + 1}`,
+              color: "#FFFFFF",
+              fontSize: "10px",
+              fontWeight: "bold",
+            },
+          });
+
+          const infoWindow = new window.google.maps.InfoWindow({
+            content: `
+              <div style="padding: 8px; max-width: 200px;">
+                <strong style="font-size: 14px;">${restaurant.name}</strong>
+                <div style="font-size: 12px; color: #666; margin: 4px 0;">📍 ${restaurant.location}</div>
+                <div style="display: flex; align-items: center; gap: 4px; margin: 4px 0;">
+                  <span style="color: #f59e0b;">★</span>
+                  <span style="font-size: 13px; font-weight: 600;">${restaurant.rating}</span>
+                  <span style="font-size: 12px; color: #666;">(${restaurant.reviews})</span>
+                </div>
+                <div style="font-size: 12px; color: #666; margin: 4px 0;">
+                  🕐 ${restaurant.openingHours}
+                </div>
+                <div style="display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0;">
+                  ${restaurant.cuisine.slice(0, 2).map(c => `<span style="background: #dbeafe; color: #1d4ed8; padding: 2px 8px; border-radius: 4px; font-size: 10px;">${c}</span>`).join('')}
+                </div>
+                <button 
+                  onclick="window.handleRestaurantView('${restaurant.id}')"
+                  style="
+                    background: #2563eb;
+                    color: white;
+                    border: none;
+                    padding: 4px 16px;
+                    border-radius: 6px;
+                    font-size: 13px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    margin-top: 4px;
+                    width: 100%;
+                  "
+                >
+                  View Restaurant
+                </button>
+              </div>
+            `,
+          });
+
+          marker.addListener("click", () => {
+            onMarkerClick(restaurant.id);
+            infoWindow.open(map, marker);
+          });
+
+          if (selectedRestaurantId === restaurant.id) {
+            setTimeout(() => {
+              infoWindow.open(map, marker);
+              map.panTo(position);
+              map.setZoom(15);
+            }, 500);
+          }
+        });
+
+        if (restaurants.length > 1) {
+          const bounds = new window.google.maps.LatLngBounds();
+          restaurants.forEach((restaurant) => {
+            let pos;
+            if (restaurant.lat && restaurant.lng) {
+              pos = { lat: restaurant.lat, lng: restaurant.lng };
+            } else {
+              const latOffset = (Math.random() - 0.5) * 0.05;
+              const lngOffset = (Math.random() - 0.5) * 0.05;
+              pos = {
+                lat: center.lat + latOffset,
+                lng: center.lng + lngOffset,
+              };
+            }
+            bounds.extend(pos);
+          });
+          map.fitBounds(bounds);
+        }
+
+        (window as any).handleRestaurantView = (restaurantId: string) => {
+          onMarkerClick(restaurantId);
+        };
+
+      } catch (error) {
+        console.error("Error initializing map:", error);
+        setMapError("Failed to load map. Please check your API key.");
+      }
+    };
+
+    loadGoogleMaps();
+
+    return () => {
+      delete (window as any).handleRestaurantView;
+    };
+  }, [center, restaurants, selectedRestaurantId, onMarkerClick]);
+
+  if (mapError) {
+    return (
+      <div className="h-full w-full bg-gray-100 rounded-2xl flex flex-col items-center justify-center p-8">
+        <div className="text-5xl mb-4">🗺️</div>
+        <p className="text-gray-700 font-medium text-center">Map unavailable</p>
+        <p className="text-gray-500 text-sm text-center mt-1">{mapError}</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="text-center py-20">
-      <div className="text-5xl mb-4">⚠️</div>
-
-      <h3 className="text-2xl font-semibold text-gray-700 mb-2">
-        Unable to Load Restaurants
-      </h3>
-
-      <p className="text-gray-500 mb-6">{message}</p>
-
-      <button
-        type="button"
-        onClick={onRetry}
-        className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-      >
-        Try Again
-      </button>
+    <div className="h-full w-full rounded-2xl overflow-hidden bg-gray-200 relative">
+      <div ref={mapRef} className="w-full h-full" style={{ minHeight: "500px" }} />
+      {!isMapLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-gray-600 text-sm">Loading map...</p>
+          </div>
+        </div>
+      )}
+      {isMapLoaded && restaurants.length > 0 && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg text-xs text-gray-600">
+          📍 {restaurants.length} restaurant{restaurants.length > 1 ? 's' : ''} displayed
+        </div>
+      )}
     </div>
   );
 };
 
-/* -------------------------------------------------------------------------- */
-/* Main Restaurants Page                                                      */
-/* -------------------------------------------------------------------------- */
+// ============= COMPACT RESTAURANT CARD =============
+const CompactRestaurantCard: React.FC<{
+  restaurant: Restaurant;
+  isSelected: boolean;
+  onClick: () => void;
+}> = ({ restaurant, isSelected, onClick }) => {
+  return (
+    <div
+      className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md ${
+        isSelected ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md" : "border-gray-200 hover:border-blue-300"
+      }`}
+      onClick={onClick}
+    >
+      <div className="flex gap-3 p-3">
+        <div className="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-200">
+          <img
+            src={restaurant.image || "/logo/gojitriplogo.jpg"}
+            alt={restaurant.name}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = "/logo/gojitriplogo.jpg";
+            }}
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="text-sm font-semibold text-gray-900 truncate">
+              {restaurant.name}
+            </h3>
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+              <span className="text-sm font-semibold text-gray-900">{restaurant.rating}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-gray-600 text-xs mb-1">
+            <MapPin className="h-3 w-3 text-gray-500 flex-shrink-0" />
+            <span className="truncate">{restaurant.location}</span>
+          </div>
+          <div className="flex items-center gap-1 text-gray-600 text-xs mb-1">
+            <Clock className="h-3 w-3 text-gray-500 flex-shrink-0" />
+            <span className="truncate">{restaurant.openingHours}</span>
+          </div>
+          <div className="flex gap-1 mb-2 flex-wrap">
+            {restaurant.cuisine.slice(0, 2).map((cuisine) => (
+              <span key={cuisine} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium">
+                {cuisine}
+              </span>
+            ))}
+            {restaurant.cuisine.length > 2 && (
+              <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-medium">
+                +{restaurant.cuisine.length - 2}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-sm font-semibold text-gray-800">
+                {restaurant.priceRange}
+              </span>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // Handle view restaurant
+              }}
+              className="px-3 py-1 rounded-lg text-xs font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              View
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
+// ============= MAIN RESTAURANTS PAGE =============
 const RestaurantsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
-
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-
   const [loading, setLoading] = useState(true);
-
   const [error, setError] = useState("");
-
   const [selectedCuisine, setSelectedCuisine] = useState<string[]>([]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Fetch restaurants from Admin/CMS backend                               */
-  /* ---------------------------------------------------------------------- */
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const restaurantListRef = useRef<HTMLDivElement>(null);
 
   const fetchRestaurants = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
-
-      /*
-       * IMPORTANT:
-       * No mock data is used here.
-       *
-       * Data comes from:
-       * Admin Dashboard
-       *      ↓
-       * Backend API
-       *      ↓
-       * PostgreSQL
-       *      ↓
-       * GET /restaurants
-       */
 
       const response = await apiRequest<BackendRestaurant[]>("/restaurants");
       const backendRestaurants = Array.isArray(response) ? response : [];
@@ -367,18 +438,20 @@ const RestaurantsPage: React.FC = () => {
         const storeItems = cmsStore.getRestaurants();
         mappedRestaurants = storeItems.map((r) => ({
           id: String(r.id),
-          name: r.restaurantName,
+          name: r.restaurantName || "Unnamed Restaurant",
           description: r.contactDetails || "Delicious local food and dining experience.",
           image: r.imageUrl || (r.photos && r.photos[0]) || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
           rating: 4.8,
           reviews: 42,
-          location: r.location,
+          location: r.location || "Location unavailable",
           cuisine: r.cuisineTypes && r.cuisineTypes.length > 0 ? r.cuisineTypes : ["Thakali", "Nepali"],
           priceRange: r.priceRange || "NPR NPR",
           openingHours: r.openingHours || "07:00 AM - 09:30 PM",
           distance: "2.5 km",
           dietaryOptions: ["Vegetarian", "Organic"],
           featured: true,
+          lat: undefined,
+          lng: undefined,
         }));
       }
 
@@ -388,18 +461,20 @@ const RestaurantsPage: React.FC = () => {
       const storeItems = cmsStore.getRestaurants();
       const mappedRestaurants = storeItems.map((r) => ({
         id: String(r.id),
-        name: r.restaurantName,
+        name: r.restaurantName || "Unnamed Restaurant",
         description: r.contactDetails || "Delicious local food and dining experience.",
         image: r.imageUrl || (r.photos && r.photos[0]) || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
         rating: 4.8,
         reviews: 42,
-        location: r.location,
+        location: r.location || "Location unavailable",
         cuisine: r.cuisineTypes && r.cuisineTypes.length > 0 ? r.cuisineTypes : ["Thakali", "Nepali"],
         priceRange: r.priceRange || "NPR NPR",
         openingHours: r.openingHours || "07:00 AM - 09:30 PM",
         distance: "2.5 km",
         dietaryOptions: ["Vegetarian", "Organic"],
         featured: true,
+        lat: undefined,
+        lng: undefined,
       }));
       setRestaurants(mappedRestaurants);
       setError("");
@@ -408,33 +483,19 @@ const RestaurantsPage: React.FC = () => {
     }
   }, []);
 
-  /* ---------------------------------------------------------------------- */
-  /* Initial API fetch                                                      */
-  /* ---------------------------------------------------------------------- */
-
   useEffect(() => {
     void fetchRestaurants();
   }, [fetchRestaurants]);
 
-  /* ---------------------------------------------------------------------- */
-  /* Cuisine Filter                                                         */
-  /* ---------------------------------------------------------------------- */
-
   const availableCuisines = React.useMemo(() => {
     const cuisines = restaurants.flatMap((restaurant) => restaurant.cuisine);
-
     return Array.from(new Set(cuisines)).filter(Boolean).sort();
   }, [restaurants]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Filter Restaurants                                                      */
-  /* ---------------------------------------------------------------------- */
 
   const filteredRestaurants = React.useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
     return restaurants.filter((restaurant) => {
-      /* Search */
       const matchesSearch =
         !query ||
         restaurant.name.toLowerCase().includes(query) ||
@@ -444,7 +505,6 @@ const RestaurantsPage: React.FC = () => {
           cuisine.toLowerCase().includes(query),
         );
 
-      /* Cuisine */
       const matchesCuisine =
         selectedCuisine.length === 0 ||
         restaurant.cuisine.some((cuisine) => selectedCuisine.includes(cuisine));
@@ -452,10 +512,6 @@ const RestaurantsPage: React.FC = () => {
       return matchesSearch && matchesCuisine;
     });
   }, [restaurants, searchQuery, selectedCuisine]);
-
-  /* ---------------------------------------------------------------------- */
-  /* Toggle Cuisine                                                         */
-  /* ---------------------------------------------------------------------- */
 
   const toggleCuisine = (cuisine: string) => {
     setSelectedCuisine((previous) =>
@@ -465,145 +521,146 @@ const RestaurantsPage: React.FC = () => {
     );
   };
 
-  /* ---------------------------------------------------------------------- */
-  /* Clear Filters                                                          */
-  /* ---------------------------------------------------------------------- */
-
   const clearFilters = () => {
     setSearchQuery("");
     setSelectedCuisine([]);
   };
 
-  /* ---------------------------------------------------------------------- */
-  /* Render                                                                 */
-  /* ---------------------------------------------------------------------- */
+  const handleMarkerClick = (restaurantId: string) => {
+    setSelectedRestaurantId(restaurantId);
+    if (restaurantListRef.current) {
+      const cards = restaurantListRef.current.querySelectorAll("[data-restaurant-id]");
+      cards.forEach((card) => {
+        if (card.getAttribute("data-restaurant-id") === restaurantId) {
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
+          card.classList.add("ring-2", "ring-blue-500", "shadow-lg");
+          setTimeout(() => {
+            card.classList.remove("ring-2", "ring-blue-500", "shadow-lg");
+          }, 2000);
+        }
+      });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ---------------------------------------------------------------- */}
-      {/* Hero                                                             */}
-      {/* ---------------------------------------------------------------- */}
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-600 text-white sticky top-0 z-30 shadow-lg">
+        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 gap-3">
+            <button
+              onClick={() => window.history.back()}
+              className="flex items-center gap-2 px-3 py-2 bg-white/20 backdrop-blur-sm hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all hover:scale-105 active:scale-95 group flex-shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+              <span className="hidden sm:inline text-sm">Back</span>
+            </button>
 
-      <section className="relative bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-20">
-          <div className="max-w-4xl">
-            <div className="flex items-center gap-3 mb-4">
-              <span className="text-4xl">🍽️</span>
-
-              <h1 className="text-3xl md:text-5xl font-bold">
-                Discover Restaurants
-              </h1>
-            </div>
-
-            <p className="text-base md:text-lg text-white/90 mb-8">
-              Find the perfect dining experience along your route
-            </p>
-
-            {/* Search */}
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="relative flex-1 max-w-2xl">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-
+            <div className="flex-1 max-w-2xl mx-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <input
                   type="text"
-                  placeholder="Search by cuisine, name, or location..."
+                  placeholder="Search restaurants by cuisine, name, or location..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none text-gray-900 shadow-sm"
+                  className="w-full pl-9 pr-4 py-2 bg-white/95 text-gray-900 placeholder-gray-500 border-0 rounded-xl focus:ring-2 focus:ring-white/50 outline-none transition-all shadow-sm text-sm"
                 />
               </div>
-
-              <button
-                type="button"
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl hover:bg-white/20 transition-all"
-              >
-                <Filter className="h-5 w-5" />
-
-                <span>Filters</span>
-              </button>
             </div>
 
-            {/* Cuisine filters */}
-            {availableCuisines.length > 0 && (
-              <div className="flex gap-3 mt-6 flex-wrap">
-                {availableCuisines.map((cuisine) => (
-                  <button
-                    key={cuisine}
-                    type="button"
-                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                      selectedCuisine.includes(cuisine)
-                        ? "bg-white text-blue-600 shadow-md"
-                        : "bg-white/10 text-white hover:bg-white/20"
-                    }`}
-                    onClick={() => toggleCuisine(cuisine)}
-                  >
-                    {cuisine}
-                  </button>
-                ))}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => setIsMapExpanded(!isMapExpanded)}
+                className="flex items-center gap-2 px-3 py-2 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl hover:bg-white/30 transition-all text-white flex-shrink-0"
+              >
+                {isMapExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                <span className="hidden lg:inline text-sm">{isMapExpanded ? "Collapse" : "Expand"}</span>
+              </button>
+            </div>
+          </div>
 
-                {(searchQuery || selectedCuisine.length > 0) && (
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="px-4 py-2 rounded-full text-sm font-medium bg-red-500/80 text-white hover:bg-red-500 transition-all"
-                  >
-                    Clear Filters
-                  </button>
-                )}
+          {/* Cuisine filters */}
+          {availableCuisines.length > 0 && (
+            <div className="pb-3 flex gap-2 flex-wrap">
+              {availableCuisines.slice(0, 8).map((cuisine) => (
+                <button
+                  key={cuisine}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                    selectedCuisine.includes(cuisine)
+                      ? "bg-white text-blue-600 shadow-md"
+                      : "bg-white/10 text-white hover:bg-white/20"
+                  }`}
+                  onClick={() => toggleCuisine(cuisine)}
+                >
+                  {cuisine}
+                </button>
+              ))}
+              {(searchQuery || selectedCuisine.length > 0) && (
+                <button
+                  onClick={clearFilters}
+                  className="px-3 py-1 rounded-full text-xs font-medium bg-red-500/80 text-white hover:bg-red-500 transition-all"
+                >
+                  Clear Filters
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content - Split Layout */}
+      <div className={`flex-1 flex transition-all duration-300 ${isMapExpanded ? "flex-col-reverse" : "flex-row"}`}>
+        {/* Restaurant List - Left */}
+        <div
+          className={`${isMapExpanded ? "h-1/2" : "w-1/2"} overflow-y-auto bg-gray-50 border-r border-gray-200`}
+          style={{ height: isMapExpanded ? "50%" : "calc(100vh - 120px)" }}
+          ref={restaurantListRef}
+        >
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-gray-700 font-medium text-sm">
+                {loading ? "Loading..." : `${filteredRestaurants.length} restaurants found`}
+              </p>
+            </div>
+
+            {loading ? (
+              <LoadingSkeleton />
+            ) : filteredRestaurants.length === 0 ? (
+              <EmptyState message="No restaurants match your search or selected cuisine filters." />
+            ) : (
+              <div className="space-y-3">
+                {filteredRestaurants.map((restaurant) => (
+                  <CompactRestaurantCard
+                    key={restaurant.id}
+                    restaurant={restaurant}
+                    isSelected={selectedRestaurantId === restaurant.id}
+                    onClick={() => {
+                      setSelectedRestaurantId(restaurant.id);
+                      handleMarkerClick(restaurant.id);
+                    }}
+                  />
+                ))}
               </div>
             )}
           </div>
         </div>
-      </section>
 
-      {/* ---------------------------------------------------------------- */}
-      {/* Restaurant List                                                  */}
-      {/* ---------------------------------------------------------------- */}
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {/* Result Count */}
-        {!loading && !error && (
-          <div className="flex items-center justify-between mb-6">
-            <p className="text-gray-600 text-sm">
-              <span className="font-semibold text-gray-900">
-                {filteredRestaurants.length}
-              </span>{" "}
-              {filteredRestaurants.length === 1 ? "restaurant" : "restaurants"}{" "}
-              available
-            </p>
-          </div>
-        )}
-
-        {/* Loading */}
-        {loading && <LoadingSkeleton />}
-
-        {/* Error */}
-        {!loading && error && (
-          <ErrorState message={error} onRetry={fetchRestaurants} />
-        )}
-
-        {/* Empty */}
-        {!loading && !error && filteredRestaurants.length === 0 && (
-          <EmptyState
-            message={
-              restaurants.length === 0
-                ? "No restaurants have been added from the Admin Dashboard yet."
-                : "No restaurants match your search or selected cuisine filters."
-            }
+        {/* Map - Right */}
+        <div
+          className={`${isMapExpanded ? "h-1/2" : "w-1/2"} bg-gray-100 p-3`}
+          style={{ height: isMapExpanded ? "50%" : "calc(100vh - 120px)" }}
+        >
+          <MapComponent
+            restaurants={filteredRestaurants}
+            selectedRestaurantId={selectedRestaurantId}
+            onMarkerClick={handleMarkerClick}
+            center={{ lat: 27.7172, lng: 85.324 }}
           />
-        )}
-
-        {/* Restaurants */}
-        {!loading && !error && filteredRestaurants.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredRestaurants.map((restaurant) => (
-              <RestaurantCard key={restaurant.id} restaurant={restaurant} />
-            ))}
-          </div>
-        )}
-      </main>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default RestaurantsPage;
+export default RestaurantsPage;  

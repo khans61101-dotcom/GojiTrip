@@ -16,7 +16,7 @@ import {
   Sparkles,
   ChevronDown,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
 
 export default function Header() {
@@ -24,9 +24,41 @@ export default function Header() {
   const [isAccountOpen, setIsAccountOpen] = useState(false);
   const [isServicesOpen, setIsServicesOpen] = useState(false);
 
+  const servicesRef = useRef<HTMLDivElement>(null);
+  const accountRef = useRef<HTMLDivElement>(null);
+
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
-  const toggleAccount = () => setIsAccountOpen(!isAccountOpen);
-  const toggleServices = () => setIsServicesOpen(!isServicesOpen);
+  const toggleAccount = () => {
+    setIsAccountOpen((prev) => !prev);
+    setIsServicesOpen(false);
+  };
+  const toggleServices = () => {
+    setIsServicesOpen((prev) => !prev);
+    setIsAccountOpen(false);
+  };
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        servicesRef.current &&
+        !servicesRef.current.contains(event.target as Node)
+      ) {
+        setIsServicesOpen(false);
+      }
+      if (
+        accountRef.current &&
+        !accountRef.current.contains(event.target as Node)
+      ) {
+        setIsAccountOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   const primaryLinks = [
     { name: "About Us", href: "/pages/about", icon: Sparkles },
@@ -81,13 +113,10 @@ export default function Header() {
               );
             })}
 
-            {/* "More Travel Services ▾" Dropdown */}
-            <div
-              className="relative"
-              onMouseEnter={() => setIsServicesOpen(true)}
-              onMouseLeave={() => setIsServicesOpen(false)}
-            >
+            {/* "More Travel Services ▾" Dropdown (Click Only) */}
+            <div className="relative" ref={servicesRef}>
               <button
+                type="button"
                 onClick={toggleServices}
                 className="text-xs font-semibold text-slate-700 hover:text-emerald-600 transition-colors flex items-center space-x-1.5 px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200"
               >
@@ -146,7 +175,7 @@ export default function Header() {
             </Link>
 
             {/* Profile Menu Dropdown */}
-            <div className="relative">
+            <div className="relative" ref={accountRef}>
               <button
                 onClick={toggleAccount}
                 className="flex items-center gap-2 p-2.5 text-slate-600 hover:text-emerald-600 rounded-full border border-slate-200 hover:border-emerald-200 transition-all"
