@@ -2,50 +2,74 @@
 
 import "@/styles/pages/route/route.css";
 
-import React from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { SafeImage } from "@/components/common/SafeImage";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, planRoute, type RouteSearchData, type RouteStop } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
-import { MapPin, Search, Star, Navigation, Clock, X, ChevronRight } from "lucide-react";
-import RouteTimeline from "@/components/landing/RouteTimeline";
+import type { RouteEntry, RoutePOI, EmergencyContact } from "@/types/cms";
+import AddRouteModal from "@/components/common/AddRouteModal";
+import {
+  MapPin,
+  Search,
+  Star,
+  Navigation,
+  Clock,
+  X,
+  ChevronRight,
+  Fuel,
+  Zap,
+  Stethoscope,
+  ShieldAlert,
+  CreditCard,
+  Camera,
+  Utensils,
+  Hotel,
+  Bus,
+  Compass,
+  Mountain,
+  Phone,
+  AlertTriangle,
+  Route as RouteIcon,
+  LocateFixed,
+  Sparkles,
+  CheckCircle2,
+} from "lucide-react";
 
 /* ============================================================
-   TYPES
+   ACTION CATEGORIES
 ============================================================ */
 
-interface BackendRoute {
-  id: number | string;
-  name?: string;
-  routeName?: string;
-  origin?: string;
-  destination?: string;
-  distance?: number;
-  totalDistanceKm?: number;
-  status?: string;
-  approvalStatus?: string;
-  description?: string;
-  imageUrl?: string | null;
-  image_url?: string | null;
-  duration?: string;
-  estimatedTravelTime?: string;
-  stops?: number;
-  rating?: number;
-  createdAt?: string;
-  updatedAt?: string;
-}
+type ActionCategory = {
+  key: "hotels" | "restaurants" | "transport" | "places" | "fuel" | "famous-places";
+  label: string;
+  path: string;
+  icon: React.ElementType;
+};
 
-interface RoutePlan {
-  id: string;
-  name: string;
-  description: string;
-  image: string;
-  rating: number;
-  location: string;
-  price: number;
-  duration: string;
-  difficulty: "easy" | "moderate" | "hard";
-  stops: number;
-}
+const actionCategories: ActionCategory[] = [
+  { key: "hotels", label: "Hotels", path: "/pages/hotels", icon: Hotel },
+  { key: "restaurants", label: "Restaurants", path: "/pages/restaurants", icon: Utensils },
+  { key: "transport", label: "Transport", path: "/pages/transport", icon: Bus },
+  { key: "places", label: "Guides & Treks", path: "/pages/guides", icon: Compass },
+  { key: "fuel", label: "Fuel & EV", path: "/pages/fuel-stations", icon: Fuel },
+  { key: "famous-places", label: "Attractions", path: "/pages/famous-places", icon: Star },
+];
+
+/* ============================================================
+   TIMELINE STOP TYPE
+============================================================ */
+
+type TimelineStop = RouteStop & {
+  sequence: number;
+  isSource: boolean;
+  isDestination: boolean;
+  isViaStop?: boolean;
+  badgeLabel?: string;
+  badgeBg?: string;
+  color?: string;
+  distanceKm?: string;
+  travelTime?: string;
+};
 
 interface PlaceSuggestion {
   placeId: string;
@@ -53,1024 +77,679 @@ interface PlaceSuggestion {
   address: string;
 }
 
-interface NearbyPlace {
-  placeId?: string;
-  id?: string;
-  name?: string;
-  displayName?: string;
-  address?: string;
-  formattedAddress?: string;
-  imageUrl?: string | null;
-  photoUrl?: string | null;
-  rating?: number;
-  latitude?: number;
-  longitude?: number;
-  location?: {
-    latitude?: number;
-    longitude?: number;
-  };
-  distanceMeters?: number;
-  types?: string[];
-}
+const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80";
 
 /* ============================================================
-   CONSTANTS
+   MAIN COMPONENT
 ============================================================ */
 
-const DEFAULT_IMAGE = "/logo/gojitriplogo.jpg";
-
-/* ============================================================
-   ROUTE MAPPER
-============================================================ */
-
-function getDifficulty(route: BackendRoute): "easy" | "moderate" | "hard" {
-  const status = String(
-    route.status || route.approvalStatus || "",
-  ).toLowerCase();
-
-  if (
-    status.includes("hard") ||
-    status.includes("rough") ||
-    status.includes("difficult")
-  ) {
-    return "hard";
-  }
-
-  if (status.includes("moderate") || status.includes("mixed")) {
-    return "moderate";
-  }
-
-  return "easy";
-}
-
-function mapBackendRoute(route: BackendRoute): RoutePlan {
-  const distance = Number(route.distance ?? route.totalDistanceKm ?? 0) || 0;
-
-  const routeName =
-    route.routeName ||
-    route.name ||
-    `${route.origin || ""} → ${route.destination || ""}`.trim() ||
-    "Unnamed Route";
-
-  const location =
-    route.origin && route.destination
-      ? `${route.origin} → ${route.destination}`
-      : route.destination || route.origin || "GojiTrip Destination";
-
-  const duration = route.duration || route.estimatedTravelTime || "N/A";
-
-  const image = route.imageUrl || route.image_url || DEFAULT_IMAGE;
-
-  const rating = typeof route.rating === "number" ? route.rating : 0;
-
-  const stops = typeof route.stops === "number" ? route.stops : 0;
-
-  return {
-    id: String(route.id),
-    name: routeName,
-    description:
-      route.description ||
-      `Travel route from ${route.origin || "origin"} to ${
-        route.destination || "destination"
-      }${distance ? ` covering approximately ${distance} km.` : "."}`,
-    image,
-    rating,
-    location,
-    price: 0,
-    duration,
-    difficulty: getDifficulty(route),
-    stops,
-  };
-}
-
-/* ============================================================
-   COMPONENT
-============================================================ */
-
-const RoutePage = () => {
+export default function RoutePage() {
   /* ----------------------------------------------------------
-     ROUTES
+     STATE: DB ROUTES & SELECTION
   ---------------------------------------------------------- */
-
-  const [loading, setLoading] = React.useState(true);
-
-  const [routes, setRoutes] = React.useState<RoutePlan[]>([]);
-
-  const [error, setError] = React.useState<string | null>(null);
+  const [dbRoutes, setDbRoutes] = useState<RouteEntry[]>([]);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
 
   /* ----------------------------------------------------------
-     SEARCH
+     STATE: CUSTOM ROUTE SEARCH & TIMELINE
   ---------------------------------------------------------- */
+  const [sourceSearch, setSourceSearch] = useState("");
+  const [destSearch, setDestSearch] = useState("");
+  const [sourceSuggestions, setSourceSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [destSuggestions, setDestSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [showSourceSuggestions, setShowSourceSuggestions] = useState(false);
+  const [showDestSuggestions, setShowDestSuggestions] = useState(false);
 
-  const [searchTerm, setSearchTerm] = React.useState("");
-
-  const [selectedLocation, setSelectedLocation] =
-    React.useState<PlaceSuggestion | null>(null);
-
-  const [locationSuggestions, setLocationSuggestions] = React.useState<
-    PlaceSuggestion[]
-  >([]);
-
-  const [showSuggestions, setShowSuggestions] = React.useState(false);
-
-  const [searchingLocations, setSearchingLocations] = React.useState(false);
+  const [routeSearch, setRouteSearch] = useState<RouteSearchData | null>(null);
+  const [apiStops, setApiStops] = useState<RouteStop[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [routeDistance, setRouteDistance] = useState<number | string | undefined>();
+  const [routeDuration, setRouteDuration] = useState<string | undefined>();
+  const [error, setError] = useState<string | null>(null);
 
   /* ----------------------------------------------------------
-     NEARBY FAMOUS PLACES
+     STATE: POI FILTER & ADD STOP MODAL
   ---------------------------------------------------------- */
-
-  const [nearbyPlaces, setNearbyPlaces] = React.useState<NearbyPlace[]>([]);
-
-  const [loadingNearbyPlaces, setLoadingNearbyPlaces] = React.useState(false);
-
-  const [nearbyPlacesError, setNearbyPlacesError] = React.useState<
-    string | null
-  >(null);
-
-  /* ----------------------------------------------------------
-     FILTERS
-  ---------------------------------------------------------- */
-
-  const [difficultyFilter, setDifficultyFilter] = React.useState("");
-
-  const [durationFilter, setDurationFilter] = React.useState("");
-
-  const [ratingFilter, setRatingFilter] = React.useState("");
-
-  const handleSelectRoutePreset = React.useCallback((source: string, destination: string) => {
-    const routeData = {
-      source: { name: source },
-      destination: { name: destination },
-      date: new Date().toISOString().split("T")[0],
-      travellers: 2,
-    };
-    sessionStorage.setItem("gojitrip_route_search", JSON.stringify(routeData));
-    window.dispatchEvent(
-      new CustomEvent("gojitrip:route-search", { detail: routeData })
-    );
-    const el = document.getElementById("complete-route-analysis");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth" });
-    }
-  }, []);
+  const [activePoiTab, setActivePoiTab] = useState<string>("all");
+  const [isAddTripModalOpen, setIsAddTripModalOpen] = useState(false);
+  const [selectedStopName, setSelectedStopName] = useState("");
+  const [nextStop, setNextStop] = useState<RouteStop | null>(null);
 
   /* ==========================================================
-     FETCH ROUTES
+     LOAD DB ROUTES
   ========================================================== */
-
-  const fetchRoutes = React.useCallback(async () => {
+  const fetchDbRoutes = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
-
       const storeRoutes = cmsStore.getRoutes();
-      const response = await apiRequest<
-        | BackendRoute[]
-        | {
-            data?: BackendRoute[];
-          }
-      >("/routes").catch(() => null);
 
-      const backendRoutes = Array.isArray(response)
-        ? response
-        : Array.isArray(response?.data)
-          ? response.data
-          : [];
+      const response = await apiRequest<RouteEntry[] | { data?: RouteEntry[] }>("/routes").catch(() => null);
 
-      let mappedRoutes = backendRoutes.map(mapBackendRoute);
-
-      if (mappedRoutes.length === 0) {
-        mappedRoutes = storeRoutes.map((r) => ({
-          id: String(r.id),
-          name: r.routeName,
-          description: `Scenic travel corridor along ${r.routeName}. Distance: ${r.totalDistanceKm} km (${r.roadCondition}).`,
-          image: r.imageUrl || (r.photos && r.photos[0]) || "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80",
-          rating: 4.9,
-          location: `${r.origin} → ${r.destination}`,
-          price: 0,
-          duration: r.estimatedTravelTime || "7-9 Hours",
-          difficulty: (r.roadCondition?.includes("4x4") ? "hard" : "moderate") as "easy" | "moderate" | "hard",
-          stops: r.viewpoints?.length || 5,
-        }));
+      let fetched: RouteEntry[] = [];
+      if (Array.isArray(response)) {
+        fetched = response;
+      } else if (response && Array.isArray((response as any).data)) {
+        fetched = (response as any).data;
       }
 
-      setRoutes(mappedRoutes);
-    } catch (error) {
-      console.error("Failed to fetch routes, loading store fallback:", error);
+      const combined = fetched.length > 0 ? fetched : storeRoutes;
+      setDbRoutes(combined);
+
+      if (combined.length > 0) {
+        setSelectedRouteId((prev) => prev || combined[0].id);
+      }
+    } catch (err) {
+      console.error("Fetch DB routes error:", err);
       const storeRoutes = cmsStore.getRoutes();
-      const mappedRoutes: RoutePlan[] = storeRoutes.map((r) => ({
-        id: String(r.id),
-        name: r.routeName,
-        description: `Scenic travel corridor along ${r.routeName}. Distance: ${r.totalDistanceKm} km (${r.roadCondition}).`,
-        image: r.imageUrl || (r.photos && r.photos[0]) || "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80",
-        rating: 4.9,
-        location: `${r.origin} → ${r.destination}`,
-        price: 0,
-        duration: r.estimatedTravelTime || "7-9 Hours",
-        difficulty: (r.roadCondition?.includes("4x4") ? "hard" : "moderate") as "easy" | "moderate" | "hard",
-        stops: r.viewpoints?.length || 5,
-      }));
-      setRoutes(mappedRoutes);
+      setDbRoutes(storeRoutes);
+      if (storeRoutes.length > 0) {
+        setSelectedRouteId(storeRoutes[0].id);
+      }
     } finally {
       setLoading(false);
     }
   }, []);
 
-  React.useEffect(() => {
-    void fetchRoutes();
-  }, [fetchRoutes]);
+  useEffect(() => {
+    void fetchDbRoutes();
+  }, [fetchDbRoutes]);
 
   /* ==========================================================
-     LOCATION AUTOCOMPLETE
+     ACTIVE ROUTE ENTRY
   ========================================================== */
-
-  const searchLocations = React.useCallback(async (query: string) => {
-    const cleanQuery = query.trim();
-
-    if (cleanQuery.length < 2) {
-      setLocationSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-
-    try {
-      setSearchingLocations(true);
-
-      const response = await apiRequest<
-        | PlaceSuggestion[]
-        | {
-            suggestions?: PlaceSuggestion[];
-          }
-      >(`/places/autocomplete?q=${encodeURIComponent(cleanQuery)}`);
-
-      const suggestions = Array.isArray(response)
-        ? response
-        : Array.isArray(response?.suggestions)
-          ? response.suggestions
-          : [];
-
-      setLocationSuggestions(suggestions);
-
-      setShowSuggestions(suggestions.length > 0);
-    } catch (error) {
-      console.error("Location autocomplete error:", error);
-
-      setLocationSuggestions([]);
-      setShowSuggestions(false);
-    } finally {
-      setSearchingLocations(false);
-    }
-  }, []);
+  const activeDbRoute = useMemo<RouteEntry | null>(() => {
+    if (!selectedRouteId) return dbRoutes[0] || null;
+    return dbRoutes.find((r) => r.id === selectedRouteId) || dbRoutes[0] || null;
+  }, [dbRoutes, selectedRouteId]);
 
   /* ==========================================================
-     DEBOUNCE LOCATION SEARCH
+     TIMELINE STOPS COMPUTATION (DB ROUTE OR SEARCHED ROUTE)
   ========================================================== */
+  const timelineStops = useMemo<TimelineStop[]>(() => {
+    // 1. Custom Searched Route Timeline
+    if (routeSearch) {
+      const srcName = routeSearch.source?.name || "Origin";
+      const dstName = routeSearch.destination?.name || "Destination";
 
-  React.useEffect(() => {
-    if (selectedLocation && searchTerm === selectedLocation.name) {
-      return;
+      const sourceStop: TimelineStop = {
+        id: "src-1",
+        name: srcName,
+        type: "source",
+        subtitle: "Start your journey from here",
+        address: (routeSearch.source as any)?.address || srcName,
+        details: "Starting Point",
+        sequence: 1,
+        isSource: true,
+        isDestination: false,
+        badgeLabel: "START",
+        color: "bg-blue-600",
+        badgeBg: "bg-blue-50 text-blue-600",
+        distanceKm: "0 km",
+        travelTime: "0h 00m",
+      };
+
+      const destStop: TimelineStop = {
+        id: "dst-1",
+        name: dstName,
+        type: "destination",
+        subtitle: "Your final destination",
+        address: (routeSearch.destination as any)?.address || dstName,
+        details: "Final Destination",
+        sequence: apiStops.length + 2,
+        isSource: false,
+        isDestination: true,
+        badgeLabel: "DESTINATION",
+        color: "bg-red-500",
+        badgeBg: "bg-red-50 text-red-600",
+        distanceKm: routeDistance ? `${routeDistance} km` : "End",
+        travelTime: routeDuration || "End",
+      };
+
+      const intermediates: TimelineStop[] = apiStops.map((stop, idx) => ({
+        ...stop,
+        sequence: idx + 2,
+        isSource: false,
+        isDestination: false,
+        badgeLabel: stop.type === "food" ? "FOOD STOP" : stop.type === "fuel" ? "FUEL STOP" : "RECOMMENDED STOP",
+        color: stop.type === "food" ? "bg-orange-500" : stop.type === "fuel" ? "bg-yellow-500" : "bg-emerald-600",
+        badgeBg: "bg-emerald-50 text-emerald-600",
+        distanceKm: `~${((idx + 1) * 45).toFixed(0)} km`,
+        travelTime: `~${(idx + 1) * 1.2}h`,
+      }));
+
+      return [sourceStop, ...intermediates, destStop];
     }
 
-    const timer = window.setTimeout(() => {
-      void searchLocations(searchTerm);
-    }, 400);
+    // 2. DB Active Route Timeline
+    if (activeDbRoute) {
+      const srcName = activeDbRoute.origin || "Origin";
+      const dstName = activeDbRoute.destination || "Destination";
+      const totalKm = activeDbRoute.totalDistanceKm || 100;
 
-    return () => window.clearTimeout(timer);
-  }, [searchTerm, selectedLocation, searchLocations]);
+      const stopsList: TimelineStop[] = [];
 
-  /* ==========================================================
-     FETCH NEARBY FAMOUS PLACES
-  ========================================================== */
+      // Start Stop
+      stopsList.push({
+        id: `db-src-${activeDbRoute.id}`,
+        name: srcName,
+        type: "source",
+        subtitle: "Start your journey",
+        address: `${srcName} Departure Point`,
+        details: `Corridor start along ${activeDbRoute.routeName}. Road condition: ${activeDbRoute.roadCondition}.`,
+        sequence: 1,
+        isSource: true,
+        isDestination: false,
+        badgeLabel: "START",
+        color: "bg-blue-600",
+        badgeBg: "bg-blue-50 text-blue-600",
+        distanceKm: "0 km",
+        travelTime: "0h 00m",
+      });
 
-  const fetchNearbyPlaces = React.useCallback(async (placeId: string) => {
-    try {
-      setLoadingNearbyPlaces(true);
-      setNearbyPlacesError(null);
-      setNearbyPlaces([]);
+      // Intermediate Stops from Recommended & Viewpoints
+      const rawIntermediates = [
+        ...(activeDbRoute.recommendedStops || []),
+        ...(activeDbRoute.viewpoints || []),
+        ...(activeDbRoute.restaurants || []),
+      ];
 
-      /* -----------------------------------------------
-             First get selected place coordinates
-          ------------------------------------------------ */
-
-      const details = await apiRequest<{
-        location?: {
-          placeId?: string;
-          name?: string;
-          address?: string;
-          latitude?: number;
-          longitude?: number;
-        };
-      }>(`/places/details?placeId=${encodeURIComponent(placeId)}`);
-
-      const latitude = details?.location?.latitude;
-
-      const longitude = details?.location?.longitude;
-
-      if (typeof latitude !== "number" || typeof longitude !== "number") {
-        throw new Error("Location coordinates were not returned.");
+      if (rawIntermediates.length > 0) {
+        rawIntermediates.forEach((poi, index) => {
+          const stepKm = Math.round((totalKm / (rawIntermediates.length + 1)) * (index + 1));
+          stopsList.push({
+            id: poi.id || `poi-${index}`,
+            name: poi.name || `Waypoint ${index + 1}`,
+            type: poi.category === "Restaurant" ? "food" : poi.category === "Fuel Station" ? "fuel" : "rest",
+            subtitle: poi.location || "Recommended highway stop",
+            address: poi.details || poi.location || "Nepal Scenic Corridor",
+            details: poi.details || `Key waypoint on ${activeDbRoute.routeName}.`,
+            sequence: index + 2,
+            isSource: false,
+            isDestination: false,
+            badgeLabel: poi.category === "Restaurant" ? "FOOD STOP" : poi.category === "Viewpoint" ? "VIEWPOINT" : "REST STOP",
+            color: poi.category === "Restaurant" ? "bg-orange-500" : poi.category === "Viewpoint" ? "bg-purple-600" : "bg-emerald-600",
+            badgeBg: "bg-emerald-50 text-emerald-600",
+            distanceKm: `${stepKm} km`,
+            travelTime: `~${Math.round(stepKm / 40)}h`,
+          });
+        });
+      } else {
+        // Fallback default waypoint if none in DB
+        const midpointKm = Math.round(totalKm / 2);
+        stopsList.push({
+          id: `mid-${activeDbRoute.id}`,
+          name: `${srcName} - ${dstName} Highway Hub`,
+          type: "rest",
+          subtitle: "Central Rest & Refreshment Stop",
+          address: `Highway junction between ${srcName} and ${dstName}`,
+          details: `Service hub featuring fuel stations, restaurants, and repair facilities.`,
+          sequence: 2,
+          isSource: false,
+          isDestination: false,
+          badgeLabel: "HIGHWAY HUB",
+          color: "bg-emerald-600",
+          badgeBg: "bg-emerald-50 text-emerald-600",
+          distanceKm: `${midpointKm} km`,
+          travelTime: `~${(midpointKm / 40).toFixed(1)}h`,
+        });
       }
 
-      /* -----------------------------------------------
-             Fetch nearby famous places
-          ------------------------------------------------ */
+      // Final Destination Stop
+      stopsList.push({
+        id: `db-dst-${activeDbRoute.id}`,
+        name: dstName,
+        type: "destination",
+        subtitle: "Final Destination",
+        address: `${dstName} Arrival Terminal`,
+        details: `Arrival point for ${activeDbRoute.routeName}. Total distance: ${totalKm} km.`,
+        sequence: stopsList.length + 1,
+        isSource: false,
+        isDestination: true,
+        badgeLabel: "DESTINATION",
+        color: "bg-red-500",
+        badgeBg: "bg-red-50 text-red-600",
+        distanceKm: `${totalKm} km`,
+        travelTime: activeDbRoute.estimatedTravelTime || "End",
+      });
 
-      const response = await apiRequest<
-        | NearbyPlace[]
-        | {
-            places?: NearbyPlace[];
-            data?: NearbyPlace[];
-          }
-      >(`/places/nearby?lat=${latitude}&lng=${longitude}&radius=10000`);
-
-      let places: NearbyPlace[] = [];
-
-      if (Array.isArray(response)) {
-        places = response;
-      } else if (Array.isArray(response?.places)) {
-        places = response.places;
-      } else if (Array.isArray(response?.data)) {
-        places = response.data;
-      }
-
-      setNearbyPlaces(places);
-    } catch (error) {
-      console.error("Nearby famous places error:", error);
-
-      setNearbyPlacesError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load nearby famous places.",
-      );
-
-      setNearbyPlaces([]);
-    } finally {
-      setLoadingNearbyPlaces(false);
+      return stopsList;
     }
-  }, []);
+
+    return [];
+  }, [routeSearch, apiStops, routeDistance, routeDuration, activeDbRoute]);
 
   /* ==========================================================
-     SELECT LOCATION
+     ALL POIS COMBINED FROM ACTIVE DB ROUTE
   ========================================================== */
+  const allRoutePois = useMemo(() => {
+    if (!activeDbRoute) return [];
+    return [
+      ...(activeDbRoute.fuelStations || []).map((p) => ({ ...p, catType: "fuel", catLabel: "Fuel Station", icon: Fuel, color: "text-yellow-500" })),
+      ...(activeDbRoute.evChargingStations || []).map((p) => ({ ...p, catType: "ev", catLabel: "EV Station", icon: Zap, color: "text-emerald-500" })),
+      ...(activeDbRoute.medicalCentres || []).map((p) => ({ ...p, catType: "medical", catLabel: "Medical Centre", icon: Stethoscope, color: "text-red-500" })),
+      ...(activeDbRoute.policePosts || []).map((p) => ({ ...p, catType: "police", catLabel: "Police Checkpost", icon: ShieldAlert, color: "text-blue-500" })),
+      ...(activeDbRoute.atms || []).map((p) => ({ ...p, catType: "atm", catLabel: "ATM", icon: CreditCard, color: "text-purple-500" })),
+      ...(activeDbRoute.viewpoints || []).map((p) => ({ ...p, catType: "viewpoint", catLabel: "Viewpoint", icon: Camera, color: "text-indigo-500" })),
+      ...(activeDbRoute.restaurants || []).map((p) => ({ ...p, catType: "restaurant", catLabel: "Restaurant", icon: Utensils, color: "text-orange-500" })),
+      ...(activeDbRoute.touristAttractions || []).map((p) => ({ ...p, catType: "attraction", catLabel: "Attraction", icon: Mountain, color: "text-cyan-500" })),
+    ];
+  }, [activeDbRoute]);
 
-  const handleSelectLocation = React.useCallback(
-    (suggestion: PlaceSuggestion) => {
-      setSelectedLocation(suggestion);
-
-      setSearchTerm(suggestion.name);
-
-      setShowSuggestions(false);
-      setLocationSuggestions([]);
-
-      void fetchNearbyPlaces(suggestion.placeId);
-    },
-    [fetchNearbyPlaces],
-  );
+  const filteredPois = useMemo(() => {
+    if (activePoiTab === "all") return allRoutePois;
+    return allRoutePois.filter((p) => p.catType === activePoiTab);
+  }, [allRoutePois, activePoiTab]);
 
   /* ==========================================================
-     CLEAR SEARCH
+     SEARCH CUSTOM ROUTE HANDLER
   ========================================================== */
+  const handleCustomSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sourceSearch.trim() || !destSearch.trim()) return;
 
-  const clearSearch = React.useCallback(() => {
-    setSearchTerm("");
-    setSelectedLocation(null);
-    setLocationSuggestions([]);
-    setNearbyPlaces([]);
-    setNearbyPlacesError(null);
-    setShowSuggestions(false);
-  }, []);
+    setLoading(true);
+    setError(null);
+    try {
+      const searchData: RouteSearchData = {
+        source: { name: sourceSearch.trim(), placeId: "src-1", address: sourceSearch.trim(), latitude: 0, longitude: 0 },
+        destination: { name: destSearch.trim(), placeId: "dst-1", address: destSearch.trim(), latitude: 0, longitude: 0 },
+        date: new Date().toISOString().split("T")[0],
+        travellers: 2,
+      };
 
-  /* ==========================================================
-     FILTER ROUTES
-  ========================================================== */
+      setRouteSearch(searchData);
 
-  const filteredRoutes = React.useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-
-    return routes.filter((item) => {
-      const matchesSearch =
-        !query ||
-        item.name.toLowerCase().includes(query) ||
-        item.location.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query);
-
-      const matchesDifficulty =
-        !difficultyFilter || item.difficulty === difficultyFilter;
-
-      const durationInDays = parseInt(item.duration, 10);
-
-      const matchesDuration =
-        !durationFilter ||
-        (durationFilter === "1-3" &&
-          durationInDays >= 1 &&
-          durationInDays <= 3) ||
-        (durationFilter === "4-7" &&
-          durationInDays >= 4 &&
-          durationInDays <= 7) ||
-        (durationFilter === "8+" && durationInDays >= 8);
-
-      const matchesRating =
-        !ratingFilter || item.rating >= Number(ratingFilter);
-
-      return (
-        matchesSearch && matchesDifficulty && matchesDuration && matchesRating
-      );
-    });
-  }, [routes, searchTerm, difficultyFilter, durationFilter, ratingFilter]);
-
-  /* ==========================================================
-     PLACE HELPERS
-  ========================================================== */
-
-  const getPlaceName = (place: NearbyPlace) => {
-    return place.name || place.displayName || "Famous Place";
-  };
-
-  const getPlaceAddress = (place: NearbyPlace) => {
-    return place.address || place.formattedAddress || "Nearby destination";
-  };
-
-  const getPlaceImage = (place: NearbyPlace) => {
-    return place.imageUrl || place.photoUrl || DEFAULT_IMAGE;
-  };
-
-  const getPlaceRating = (place: NearbyPlace) => {
-    return typeof place.rating === "number" ? place.rating : 0;
+      const response = await planRoute(searchData).catch(() => null);
+      if (response && Array.isArray(response.stops)) {
+        setApiStops(response.stops);
+        setRouteDistance(response.distance);
+        setRouteDuration(response.duration);
+      } else {
+        setApiStops([]);
+        setRouteDistance("Custom Route");
+        setRouteDuration("Direct");
+      }
+    } catch (err) {
+      console.error("Custom route error:", err);
+      setError("Unable to calculate route for specified locations.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   /* ==========================================================
-     UI
+     SERVICE BUTTON CLICK HANDLER
   ========================================================== */
+  const handleServiceClick = (stopName: string, categoryPath: string, catKey: string) => {
+    const params = new URLSearchParams();
+    params.set("location", stopName);
+    params.set("routeStop", stopName);
+    params.set("category", catKey);
+    if (activeDbRoute) {
+      params.set("source", activeDbRoute.origin);
+      params.set("destination", activeDbRoute.destination);
+    }
+    window.location.href = `${categoryPath}?${params.toString()}`;
+  };
 
+  /* ==========================================================
+     UI RENDER
+  ========================================================== */
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-20">
       {/* =====================================================
-          HERO
+          HEADER HERO & SEARCH BAR
       ===================================================== */}
-
-      <section className="relative bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-600">
-        <div className="max-w-7xl mx-auto px-4 py-16 md:py-20 text-center">
-          <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 text-white text-xs font-bold tracking-wider uppercase mb-4 backdrop-blur-md">
+      <section className="relative bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white pt-14 pb-20 px-4">
+        <div className="max-w-6xl mx-auto text-center space-y-4">
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold tracking-wider uppercase backdrop-blur-md">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            🗺️ NEPAL HIGHWAY & ROUTE ANALYSIS
+            ✨ REAL-TIME ROUTE INTELLIGENCE & HIGHWAY ANALYSIS
           </span>
 
-          <h1 className="text-3xl md:text-5xl font-extrabold text-white mb-3 tracking-tight">
-            Explore & Plan Nepal Travel Routes
+          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight">
+            Nepal Highway & Route Analysis
           </h1>
 
-          <p className="text-base md:text-lg text-white/90 mb-8 max-w-2xl mx-auto">
-            Get step-by-step route breakdown, altitude changes, emergency stops, hotels & restaurants for your trip.
+          <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
+            Select any database route below or search custom locations to inspect live step-by-step stops, altitude profiles, emergency helplines, and connected services.
           </p>
 
-          {/* SEARCH BOX */}
+          {/* SEARCH FORM */}
+          <form onSubmit={handleCustomSearch} className="max-w-3xl mx-auto pt-4">
+            <div className="bg-white/95 backdrop-blur-md p-3 sm:p-4 rounded-2xl shadow-2xl border border-white/20 flex flex-col sm:flex-row items-center gap-3 text-slate-800">
+              <div className="relative flex-1 w-full">
+                <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-600" />
+                <input
+                  type="text"
+                  placeholder="Starting point (e.g. Kathmandu, Pokhara)..."
+                  value={sourceSearch}
+                  onChange={(e) => setSourceSearch(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-          <div className="relative bg-white rounded-2xl p-3 md:p-4 shadow-2xl max-w-3xl mx-auto">
-            <div className="flex flex-col md:flex-row gap-3 md:gap-4">
-              <div className="relative flex-1">
-                <div className="relative">
-                  <Search
-                    size={19}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-                  />
+              <div className="hidden sm:block text-slate-400 font-bold">➔</div>
 
-                  <input
-                    type="text"
-                    placeholder="Search location e.g. Pokhara, Mustang, Beni..."
-                    className="w-full pl-11 pr-11 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm md:text-base"
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-
-                      if (
-                        selectedLocation &&
-                        e.target.value !== selectedLocation.name
-                      ) {
-                        setSelectedLocation(null);
-                        setNearbyPlaces([]);
-                      }
-                    }}
-                    onFocus={() => {
-                      if (locationSuggestions.length > 0) {
-                        setShowSuggestions(true);
-                      }
-                    }}
-                  />
-
-                  {searchTerm && (
-                    <button
-                      type="button"
-                      onClick={clearSearch}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
-                    >
-                      <X size={18} />
-                    </button>
-                  )}
-                </div>
-
-                {/* AUTOCOMPLETE */}
-
-                {showSuggestions && (
-                  <div className="absolute z-50 left-0 right-0 top-full mt-2 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden text-left">
-                    {searchingLocations ? (
-                      <div className="px-4 py-4 text-sm text-gray-500">
-                        Searching locations...
-                      </div>
-                    ) : (
-                      locationSuggestions.map((suggestion) => (
-                        <button
-                          type="button"
-                          key={suggestion.placeId}
-                          onClick={() => handleSelectLocation(suggestion)}
-                          className="w-full flex items-start gap-3 px-4 py-3 hover:bg-blue-50 transition-colors text-left"
-                        >
-                          <MapPin
-                            size={18}
-                            className="text-blue-600 mt-0.5 shrink-0"
-                          />
-
-                          <div>
-                            <p className="font-semibold text-gray-800 text-sm">
-                              {suggestion.name}
-                            </p>
-
-                            <p className="text-xs text-gray-500 mt-1">
-                              {suggestion.address}
-                            </p>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
+              <div className="relative flex-1 w-full">
+                <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-red-500" />
+                <input
+                  type="text"
+                  placeholder="Destination (e.g. Muktinath, Chitwan)..."
+                  value={destSearch}
+                  onChange={(e) => setDestSearch(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
 
               <button
-                type="button"
-                onClick={() => {
-                  if (selectedLocation) {
-                    void fetchNearbyPlaces(selectedLocation.placeId);
-                  } else {
-                    void searchLocations(searchTerm);
-                  }
-                }}
-                className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors whitespace-nowrap font-bold shadow-md"
+                type="submit"
+                className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg transition-all whitespace-nowrap"
               >
-                Search Location
+                Analyze Custom Route
               </button>
             </div>
-          </div>
+          </form>
 
-          {/* POPULAR ROUTE PRESETS */}
-          <div className="mt-6 flex flex-wrap justify-center gap-2">
-            <span className="text-xs font-bold text-white/80 self-center mr-1">
-              ⚡ Popular Nepal Highways:
-            </span>
-            <button
-              type="button"
-              onClick={() => handleSelectRoutePreset("Kathmandu", "Muktinath")}
-              className="px-3.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-semibold transition-all backdrop-blur-sm shadow-sm"
-            >
-              🏔️ Kathmandu → Muktinath (375 km)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectRoutePreset("Kathmandu", "Pokhara")}
-              className="px-3.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-semibold transition-all backdrop-blur-sm shadow-sm"
-            >
-              🇳🇵 Kathmandu → Pokhara (200 km)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectRoutePreset("Pokhara", "Chitwan")}
-              className="px-3.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-semibold transition-all backdrop-blur-sm shadow-sm"
-            >
-              🦏 Pokhara → Chitwan (148 km)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSelectRoutePreset("Pokhara", "Muktinath")}
-              className="px-3.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-semibold transition-all backdrop-blur-sm shadow-sm"
-            >
-              🚜 Pokhara → Muktinath 4x4 (174 km)
-            </button>
-          </div>
+          {/* DB ROUTE SELECTOR TABS */}
+          {dbRoutes.length > 0 && (
+            <div className="pt-6">
+              <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mb-2">
+                Available Database Routes ({dbRoutes.length}):
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 max-w-4xl mx-auto">
+                {dbRoutes.map((r) => {
+                  const isActive = !routeSearch && activeDbRoute?.id === r.id;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => {
+                        setRouteSearch(null);
+                        setSelectedRouteId(r.id);
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 ${
+                        isActive
+                          ? "bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/20 scale-105"
+                          : "bg-white/10 text-slate-200 border-white/15 hover:bg-white/20 hover:text-white"
+                      }`}
+                    >
+                      <RouteIcon className="w-3.5 h-3.5" />
+                      <span>{r.routeName || `${r.origin} → ${r.destination}`}</span>
+                      <span className="text-[10px] opacity-75">({r.totalDistanceKm} km)</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
       {/* =====================================================
-          COMPLETE ROUTE ANALYSIS SECTION (SAME AS HOMEPAGE)
+          COMPLETE ROUTE ANALYSIS TIMELINE SECTION
       ===================================================== */}
-      <RouteTimeline />
-
-      {/* =====================================================
-          SELECTED LOCATION
-      ===================================================== */}
-
-      {selectedLocation && (
-        <section className="max-w-7xl mx-auto px-4 pt-8">
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0">
-                <MapPin size={20} />
+      <section id="complete-route-analysis" className="max-w-5xl mx-auto px-4 -mt-10 relative z-10">
+        {/* ROUTE HEADER SUMMARY CARD */}
+        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-200 mb-8 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-600 font-extrabold text-[10px] uppercase tracking-wider">
+                  {routeSearch ? "Custom Searched Corridor" : "Verified Nepal Highway Corridor"}
+                </span>
+                {activeDbRoute?.roadCondition && (
+                  <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-extrabold text-[10px] uppercase tracking-wider">
+                    {activeDbRoute.roadCondition}
+                  </span>
+                )}
               </div>
-
-              <div>
-                <p className="text-xs uppercase tracking-wide text-blue-600 font-bold">
-                  Selected Location
-                </p>
-
-                <h2 className="font-bold text-gray-800">
-                  {selectedLocation.name}
-                </h2>
-
-                <p className="text-sm text-gray-500">
-                  {selectedLocation.address}
-                </p>
-              </div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-2">
+                {routeSearch
+                  ? `${routeSearch.source.name} ➔ ${routeSearch.destination.name}`
+                  : activeDbRoute?.routeName || `${activeDbRoute?.origin} ➔ ${activeDbRoute?.destination}`}
+              </h2>
             </div>
 
-            <button
-              type="button"
-              onClick={() => void fetchNearbyPlaces(selectedLocation.placeId)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
-            >
-              <span className="inline-flex items-center gap-2">
-                <Navigation size={16} />
-                Find Nearby Places
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="bg-slate-50 px-4 py-2 rounded-2xl border border-slate-200/80 text-center">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">Total Distance</div>
+                <div className="text-sm font-extrabold text-slate-800">
+                  {routeSearch ? (routeDistance ? `${routeDistance} km` : "N/A") : `${activeDbRoute?.totalDistanceKm || 0} km`}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 px-4 py-2 rounded-2xl border border-slate-200/80 text-center">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">Estimated Duration</div>
+                <div className="text-sm font-extrabold text-slate-800">
+                  {routeSearch ? (routeDuration || "N/A") : activeDbRoute?.estimatedTravelTime || "N/A"}
+                </div>
+              </div>
+
+              {activeDbRoute?.imageUrl && (
+                <div className="w-16 h-12 rounded-xl overflow-hidden shadow-sm border border-slate-200 shrink-0">
+                  <SafeImage src={activeDbRoute.imageUrl} fallbackSrc={DEFAULT_IMAGE} alt="Route" width={64} height={48} className="object-cover w-full h-full" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* WEATHER SUMMARY */}
+          {activeDbRoute?.weatherSummary && (
+            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 flex items-start space-x-3 text-amber-900 text-xs">
+              <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">Highway Weather & Travel Advisory: </span>
+                <span>{activeDbRoute.weatherSummary}</span>
+              </div>
+            </div>
+          )}
+
+          {/* STEP-BY-STEP TIMELINE LIST */}
+          <div className="space-y-6 pt-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center space-x-2">
+                <RouteIcon className="w-5 h-5 text-emerald-600" />
+                <span>Step-by-Step Route Sequence</span>
+              </h3>
+              <span className="text-xs font-semibold text-slate-500">
+                {timelineStops.length} Waypoints Identified
               </span>
-            </button>
-          </div>
-        </section>
-      )}
+            </div>
 
-      {/* =====================================================
-          NEARBY FAMOUS PLACES
-      ===================================================== */}
+            <div className="space-y-6">
+              {timelineStops.map((stop) => (
+                <div key={stop.id} className="flex gap-4 items-start group">
+                  {/* Sequence Marker Circle */}
+                  <div className={`w-9 h-9 rounded-full ${stop.color} text-white font-extrabold text-xs flex items-center justify-center shadow-md shrink-0 mt-1 ring-4 ring-white`}>
+                    {stop.sequence < 10 ? `0${stop.sequence}` : stop.sequence}
+                  </div>
 
-      {(selectedLocation || loadingNearbyPlaces || nearbyPlacesError) && (
-        <section className="max-w-7xl mx-auto px-4 pt-8">
-          <div className="mb-5">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-              Famous Places Near {selectedLocation?.name || "Your Location"}
-            </h2>
+                  {/* Card Content */}
+                  <div className="flex-1 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 hover:border-emerald-400 transition-colors space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <h4 className="font-extrabold text-base sm:text-lg text-slate-900">
+                        {stop.name}
+                      </h4>
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${stop.badgeBg}`}>
+                          {stop.badgeLabel}
+                        </span>
+                        <span className="text-xs font-bold text-slate-500">
+                          {stop.distanceKm} ({stop.travelTime})
+                        </span>
+                      </div>
+                    </div>
 
-            <p className="text-gray-500 mt-1">
-              Discover attractions and famous places around your searched
-              location.
-            </p>
-          </div>
+                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                      {stop.details || stop.subtitle || stop.address}
+                    </p>
 
-          {loadingNearbyPlaces ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {[1, 2, 3, 4].map((item) => (
-                <div
-                  key={item}
-                  className="bg-white rounded-xl overflow-hidden shadow-sm animate-pulse"
-                >
-                  <div className="h-44 bg-gray-200" />
-
-                  <div className="p-4 space-y-3">
-                    <div className="h-5 bg-gray-200 rounded w-3/4" />
-                    <div className="h-4 bg-gray-200 rounded w-full" />
-                    <div className="h-4 bg-gray-200 rounded w-1/2" />
+                    {/* QUICK ACTION CATEGORY BUTTONS FOR EACH STOP */}
+                    <div className="pt-3 border-t border-slate-200/60 flex flex-wrap gap-2">
+                      {actionCategories.map((cat) => {
+                        const Icon = cat.icon;
+                        return (
+                          <button
+                            key={cat.key}
+                            type="button"
+                            onClick={() => handleServiceClick(stop.name, cat.path, cat.key)}
+                            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-all flex items-center space-x-1.5 shadow-sm"
+                          >
+                            <Icon className="w-3.5 h-3.5 text-emerald-500" />
+                            <span>{cat.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-          ) : nearbyPlacesError ? (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-600 text-sm">
-              {nearbyPlacesError}
+          </div>
+        </div>
+
+        {/* POI CATEGORY TABS & CARDS */}
+        {allRoutePois.length > 0 && (
+          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-200 mb-8 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-900">
+                  Points of Interest Along This Highway
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Fuel stations, EV chargers, emergency medical clinics, ATMs, and viewpoints.
+                </p>
+              </div>
+
+              <span className="px-3 py-1 bg-slate-100 text-slate-700 font-bold text-xs rounded-full">
+                {filteredPois.length} Available POIs
+              </span>
             </div>
-          ) : nearbyPlaces.length === 0 ? (
-            <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">📍</div>
 
-              <h3 className="font-semibold text-gray-800">
-                No famous places found
-              </h3>
-
-              <p className="text-sm text-gray-500 mt-1">
-                Try searching another location.
-              </p>
+            {/* POI Filter Pills */}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setActivePoiTab("all")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  activePoiTab === "all" ? "bg-slate-900 text-white border-slate-900" : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                All POIs ({allRoutePois.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePoiTab("fuel")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  activePoiTab === "fuel" ? "bg-yellow-500 text-white border-yellow-500" : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                ⛽ Fuel ({allRoutePois.filter((p) => p.catType === "fuel").length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePoiTab("ev")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  activePoiTab === "ev" ? "bg-emerald-500 text-white border-emerald-500" : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                ⚡ EV Chargers ({allRoutePois.filter((p) => p.catType === "ev").length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePoiTab("medical")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  activePoiTab === "medical" ? "bg-red-500 text-white border-red-500" : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                🩺 Medical ({allRoutePois.filter((p) => p.catType === "medical").length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePoiTab("police")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  activePoiTab === "police" ? "bg-blue-600 text-white border-blue-600" : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                👮 Police ({allRoutePois.filter((p) => p.catType === "police").length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePoiTab("atm")}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  activePoiTab === "atm" ? "bg-purple-600 text-white border-purple-600" : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                }`}
+              >
+                💳 ATMs ({allRoutePois.filter((p) => p.catType === "atm").length})
+              </button>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-              {nearbyPlaces.map((place, index) => {
-                const placeId =
-                  place.placeId ||
-                  place.id ||
-                  `${getPlaceName(place)}-${index}`;
 
-                const rating = getPlaceRating(place);
-
+            {/* POI Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredPois.map((poi, idx) => {
+                const Icon = poi.icon;
                 return (
-                  <div
-                    key={placeId}
-                    className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition-shadow border border-gray-100"
-                  >
-                    <div className="relative h-44 overflow-hidden">
-                      <SafeImage
-                        src={getPlaceImage(place)}
-                        fallbackSrc={DEFAULT_IMAGE}
-                        alt={getPlaceName(place)}
-                        fill
-                        className="object-cover hover:scale-105 transition-transform duration-300"
-                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
-                      />
-
-                      {rating > 0 && (
-                        <div className="absolute top-3 right-3 bg-white/95 px-2 py-1 rounded-full text-xs font-semibold text-gray-800 flex items-center gap-1">
-                          <Star
-                            size={13}
-                            className="fill-yellow-400 text-yellow-400"
-                          />
-                          {rating}
-                        </div>
-                      )}
+                  <div key={idx} className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80 hover:border-emerald-400 transition-all flex items-start space-x-3">
+                    <div className={`w-9 h-9 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-sm ${poi.color}`}>
+                      <Icon className="w-4 h-4" />
                     </div>
-
-                    <div className="p-4">
-                      <h3 className="font-bold text-gray-800 line-clamp-1">
-                        {getPlaceName(place)}
-                      </h3>
-
-                      <p className="text-sm text-gray-500 mt-2 line-clamp-2">
-                        {getPlaceAddress(place)}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">
+                          {poi.catLabel}
+                        </span>
+                      </div>
+                      <h5 className="font-extrabold text-sm text-slate-900 truncate mt-0.5">
+                        {poi.name}
+                      </h5>
+                      <p className="text-xs text-slate-500 truncate mt-0.5">
+                        📍 {poi.location}
                       </p>
-
-                      {typeof place.distanceMeters === "number" && (
-                        <div className="flex items-center gap-1 text-xs text-blue-600 mt-3">
-                          <Navigation size={13} />
-                          {(place.distanceMeters / 1000).toFixed(1)} km away
-                        </div>
+                      {poi.contactNumber && (
+                        <a
+                          href={`tel:${poi.contactNumber}`}
+                          className="inline-flex items-center space-x-1 text-[11px] font-bold text-emerald-600 hover:underline mt-2"
+                        >
+                          <Phone className="w-3 h-3" />
+                          <span>{poi.contactNumber}</span>
+                        </a>
                       )}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const lat =
-                            place.latitude ?? place.location?.latitude;
-
-                          const lng =
-                            place.longitude ?? place.location?.longitude;
-
-                          if (
-                            typeof lat === "number" &&
-                            typeof lng === "number"
-                          ) {
-                            window.open(
-                              `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
-                              "_blank",
-                              "noopener,noreferrer",
-                            );
-                          }
-                        }}
-                        className="w-full mt-4 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                      >
-                        View on Map
-                      </button>
                     </div>
                   </div>
                 );
               })}
             </div>
-          )}
-        </section>
-      )}
-
-      {/* =====================================================
-          FILTERS
-      ===================================================== */}
-
-      <section className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between bg-white p-4 rounded-xl shadow-sm">
-          <div className="flex flex-wrap gap-3 w-full lg:w-auto">
-            <select
-              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-              value={difficultyFilter}
-              onChange={(e) => setDifficultyFilter(e.target.value)}
-            >
-              <option value="">All Difficulties</option>
-              <option value="easy">Easy</option>
-              <option value="moderate">Moderate</option>
-              <option value="hard">Hard</option>
-            </select>
-
-            <select
-              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-              value={durationFilter}
-              onChange={(e) => setDurationFilter(e.target.value)}
-            >
-              <option value="">All Durations</option>
-              <option value="1-3">1-3 Days</option>
-              <option value="4-7">4-7 Days</option>
-              <option value="8+">8+ Days</option>
-            </select>
-
-            <select
-              className="px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-              value={ratingFilter}
-              onChange={(e) => setRatingFilter(e.target.value)}
-            >
-              <option value="">All Ratings</option>
-              <option value="4">4+ Stars</option>
-              <option value="4.5">4.5+ Stars</option>
-              <option value="4.8">4.8+ Stars</option>
-            </select>
-
-            {(searchTerm ||
-              difficultyFilter ||
-              durationFilter ||
-              ratingFilter) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchTerm("");
-                  setSelectedLocation(null);
-                  setLocationSuggestions([]);
-                  setNearbyPlaces([]);
-                  setDifficultyFilter("");
-                  setDurationFilter("");
-                  setRatingFilter("");
-                }}
-                className="px-4 py-2.5 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm font-medium transition-colors"
-              >
-                Clear Filters
-              </button>
-            )}
           </div>
+        )}
 
-          <div className="text-sm text-gray-600 whitespace-nowrap">
-            {filteredRoutes.length}{" "}
-            {filteredRoutes.length === 1 ? "route" : "routes"} available
-          </div>
-        </div>
-      </section>
-
-      {/* =====================================================
-          ERROR
-      ===================================================== */}
-
-      {error && (
-        <section className="max-w-7xl mx-auto px-4 pb-4">
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 text-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <span>Failed to load routes: {error}</span>
-
-              <button
-                type="button"
-                onClick={() => void fetchRoutes()}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                Retry
-              </button>
+        {/* EMERGENCY CONTACTS BOX */}
+        {activeDbRoute?.emergencyContacts && activeDbRoute.emergencyContacts.length > 0 && (
+          <div className="bg-red-50/80 border border-red-200 rounded-3xl p-6 shadow-md mb-8">
+            <div className="flex items-center space-x-2 text-red-700 font-extrabold text-base mb-3">
+              <ShieldAlert className="w-5 h-5 text-red-600" />
+              <span>Highway Emergency & Police Helplines</span>
             </div>
-          </div>
-        </section>
-      )}
-
-      {/* =====================================================
-          ROUTES
-      ===================================================== */}
-
-      <section className="max-w-7xl mx-auto px-4 pb-16">
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[1, 2, 3, 4, 5, 6].map((n) => (
-              <div
-                key={n}
-                className="bg-white rounded-xl shadow-sm overflow-hidden animate-pulse"
-              >
-                <div className="h-48 bg-gray-200" />
-
-                <div className="p-4 space-y-3">
-                  <div className="h-6 bg-gray-200 rounded w-3/4" />
-                  <div className="h-4 bg-gray-200 rounded w-full" />
-                  <div className="h-4 bg-gray-200 rounded w-2/3" />
-
-                  <div className="flex gap-2">
-                    <div className="h-6 w-16 bg-gray-200 rounded-full" />
-                    <div className="h-6 w-16 bg-gray-200 rounded-full" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {activeDbRoute.emergencyContacts.map((contact, idx) => (
+                <div key={idx} className="bg-white p-3.5 rounded-2xl border border-red-200 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-slate-900">{contact.title}</div>
+                    <div className="text-[10px] text-slate-500">{contact.location}</div>
                   </div>
+                  <a
+                    href={`tel:${contact.phone}`}
+                    className="px-3 py-1.5 bg-red-600 text-white rounded-xl text-xs font-bold flex items-center space-x-1 hover:bg-red-700 transition-colors shadow-sm"
+                  >
+                    <Phone className="w-3 h-3" />
+                    <span>{contact.phone}</span>
+                  </a>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : filteredRoutes.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-6xl mb-4">🗺️</div>
-
-            <h3 className="text-2xl font-semibold text-gray-700 mb-2">
-              No Routes Found
-            </h3>
-
-            <p className="text-gray-500">
-              {routes.length === 0
-                ? "No routes have been added from the Admin Dashboard yet."
-                : "Try adjusting your search or filters to find routes."}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredRoutes.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300"
-              >
-                {/* IMAGE */}
-
-                <div className="relative h-48 overflow-hidden">
-                  <SafeImage
-                    src={item.image}
-                    fallbackSrc={DEFAULT_IMAGE}
-                    alt={item.name}
-                    fill
-                    className="object-cover hover:scale-105 transition-transform duration-300"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  />
-
-                  <div className="absolute top-3 right-3 bg-black/60 text-white px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-sm">
-                    {item.stops} stops
-                  </div>
-                </div>
-
-                {/* CONTENT */}
-
-                <div className="p-4">
-                  <div className="flex justify-between items-start gap-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-800 leading-tight">
-                      {item.name}
-                    </h3>
-
-                    {item.rating > 0 && (
-                      <span className="flex items-center gap-1 text-yellow-500 text-sm whitespace-nowrap">
-                        ⭐ {item.rating}
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-gray-600 text-sm mb-2 flex items-center gap-1">
-                    📍 {item.location}
-                  </p>
-
-                  <p className="text-gray-700 text-sm mb-3 line-clamp-2">
-                    {item.description}
-                  </p>
-
-                  {/* TAGS */}
-
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full font-semibold ${
-                        item.difficulty === "easy"
-                          ? "bg-green-50 text-green-600"
-                          : item.difficulty === "moderate"
-                            ? "bg-yellow-50 text-yellow-600"
-                            : "bg-red-50 text-red-600"
-                      }`}
-                    >
-                      {item.difficulty.toUpperCase()}
-                    </span>
-
-                    <span className="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-full font-semibold">
-                      <Clock size={12} className="inline mr-1" />
-                      {item.duration}
-                    </span>
-
-                    <span className="text-xs bg-purple-50 text-purple-600 px-2 py-1 rounded-full font-semibold">
-                      📌 {item.stops} stops
-                    </span>
-                  </div>
-
-                  {/* FOOTER */}
-
-                  <div className="flex justify-between items-center gap-3">
-                    <span className="text-sm text-gray-600">
-                      💰 Free to explore
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const parts = item.name.split("→");
-                        const src = parts[0]?.trim() || item.location.split("→")[0]?.trim() || "Kathmandu";
-                        const dest = parts[1]?.trim() || item.location.split("→")[1]?.trim() || "Pokhara";
-                        handleSelectRoutePreset(src, dest);
-                      }}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all text-xs shadow-md hover:shadow-lg whitespace-nowrap flex items-center gap-1 group"
-                    >
-                      <span>Analyze Route</span>
-                      <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </section>
     </div>
   );
-};
-
-export default RoutePage;
+}
