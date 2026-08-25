@@ -19,6 +19,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import { listHotels, getHotelRooms, RoomType } from "@/lib/api";
+import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
 
 // Types
 interface Hotel {
@@ -598,7 +599,38 @@ const HotelsPage: React.FC = () => {
   });
   const [showFilters, setShowFilters] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(null);
+  const [showYelpModal, setShowYelpModal] = useState(false);
   const hotelListRef = useRef<HTMLDivElement>(null);
+
+  const handleOpenYelpDetail = (h: Hotel) => {
+    setYelpDetailData({
+      id: h.id,
+      name: h.name,
+      category: "Luxury Hotel & Mountain Resort",
+      rating: h.rating || 4.8,
+      reviewCount: h.reviews || 42,
+      priceLevel: "$$",
+      address: h.location,
+      location: h.location,
+      phone: h.contact || "+977 1 4567890",
+      whatsapp: "+9779801234567",
+      image: h.image,
+      description: h.description || `${h.name} offers magnificent mountain view accommodation, gourmet dining, and warm Nepalese hospitality.`,
+      amenities: h.amenities || ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Water", "24/7 Room Service", "Free Parking"],
+      priceTag: `${h.currency || "NRs "}${h.pricePerNight} / night`,
+      entityType: "hotel",
+      offerings: h.roomTypes?.map((rt: any) => ({
+        title: rt.typeName || rt.type || "Deluxe Room",
+        price: `NRs ${rt.pricePerNight} / night`,
+        desc: `Capacity: ${rt.maxGuests || 2} Guests • ${rt.type === "AC" || rt.isAC ? "Air Conditioned" : "Standard Heating"}`,
+      })) || [
+        { title: "Deluxe Mountain View Suite", price: `NRs ${h.pricePerNight}`, desc: "Spacious suite with private balcony overviewing Annapurna peaks." },
+        { title: "Standard Double Room", price: `NRs ${Math.round(h.pricePerNight * 0.8)}`, desc: "Comfortable double bed room with ensuite modern bathroom." },
+      ],
+    });
+    setShowYelpModal(true);
+  };
 
   const fetchHotels = useCallback(async () => {
     setLoading(true);
@@ -940,6 +972,7 @@ const HotelsPage: React.FC = () => {
                     onClick={() => {
                       setSelectedHotelId(hotel.id);
                       handleMarkerClick(hotel.id);
+                      handleOpenYelpDetail(hotel);
                     }}
                   >
                     <div className="flex gap-3 p-3">
@@ -996,18 +1029,30 @@ const HotelsPage: React.FC = () => {
                             </span>
                             <span className="text-gray-600 text-xs">/night</span>
                           </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleBookClick(hotel);
-                            }}
-                            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                              hotel.available !== false ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-gray-200 text-gray-600 cursor-not-allowed"
-                            }`}
-                            disabled={hotel.available === false}
-                          >
-                            {hotel.available !== false ? "Book" : "Sold Out"}
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenYelpDetail(hotel);
+                              }}
+                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 transition-colors"
+                            >
+                              Details
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleBookClick(hotel);
+                              }}
+                              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                                hotel.available !== false ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-gray-200 text-gray-600 cursor-not-allowed"
+                              }`}
+                              disabled={hotel.available === false}
+                            >
+                              {hotel.available !== false ? "Book" : "Sold Out"}
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1028,6 +1073,21 @@ const HotelsPage: React.FC = () => {
           />
         </div>
       </div>
+
+      {/* Yelp Business Detail Modal */}
+      <YelpDetailModal
+        isOpen={showYelpModal}
+        onClose={() => setShowYelpModal(false)}
+        data={yelpDetailData}
+        onBookNow={(data) => {
+          setShowYelpModal(false);
+          const found = hotels.find((h) => h.id === data.id);
+          if (found) {
+            setSelectedHotel(found);
+            setShowBookingModal(true);
+          }
+        }}
+      />
 
       {/* Modals */}
       {showBookingModal && selectedHotel && (

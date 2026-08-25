@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
+import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
 import {
   Search,
   Filter,
@@ -458,8 +459,9 @@ const CompactTransportCard: React.FC<{
   transport: TransportOption;
   isSelected: boolean;
   onClick: () => void;
-}> = ({ transport, isSelected, onClick }) => {
-  const typeIcons = {
+  onViewDetails?: () => void;
+}> = ({ transport, isSelected, onClick, onViewDetails }) => {
+  const typeIcons: Record<string, React.ElementType> = {
     car: Car,
     bus: Bus,
     train: Train,
@@ -472,7 +474,10 @@ const CompactTransportCard: React.FC<{
       className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md ${
         isSelected ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md" : "border-gray-200 hover:border-blue-300"
       }`}
-      onClick={onClick}
+      onClick={() => {
+        onClick();
+        if (onViewDetails) onViewDetails();
+      }}
     >
       <div className="flex gap-3 p-3">
         <div className="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-200">
@@ -522,14 +527,27 @@ const CompactTransportCard: React.FC<{
               </span>
               <span className="text-xs text-gray-500 ml-1">/trip</span>
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-              }}
-              className="px-3 py-1 rounded-lg text-xs font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white"
-            >
-              Book
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onViewDetails) onViewDetails();
+                }}
+                className="px-2.5 py-1 rounded-lg text-xs font-bold transition-colors bg-slate-100 hover:bg-slate-200 text-slate-800"
+              >
+                Details
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onViewDetails) onViewDetails();
+                }}
+                className="px-3 py-1 rounded-lg text-xs font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Book
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -549,7 +567,34 @@ const TransportPage: React.FC = () => {
   });
   const [selectedTransportId, setSelectedTransportId] = useState<string | null>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(null);
+  const [showYelpModal, setShowYelpModal] = useState(false);
   const transportListRef = useRef<HTMLDivElement>(null);
+
+  const handleOpenYelpDetail = (t: TransportOption) => {
+    setYelpDetailData({
+      id: t.id,
+      name: t.name,
+      category: `${t.type.toUpperCase()} Passenger Transport Operator`,
+      rating: t.rating || 4.8,
+      reviewCount: 32,
+      priceLevel: "$$",
+      address: `Pickup Point: ${t.from}`,
+      location: `${t.from} → ${t.to}`,
+      phone: t.provider || "+977 1 4567890",
+      whatsapp: "+9779801234567",
+      image: t.image,
+      description: `${t.name} (${t.provider}) provides reliable, safe ${t.type} passenger transport service along the ${t.from} to ${t.to} corridor. Driver photo and vehicle licences are fully verified.`,
+      amenities: t.amenities || ["AC Vehicle", "Reclining Seats", "Luggage Storage", "GPS Tracking", "Verified Driver"],
+      priceTag: `${t.currency} ${t.price} / seat`,
+      entityType: "transport",
+      offerings: [
+        { title: `Regular Seat Ticket (${t.from} → ${t.to})`, price: `${t.currency} ${t.price}`, desc: `Departure: ${t.departureTime} • Vehicle Type: ${t.type.toUpperCase()}` },
+        { title: "Full Vehicle Private Charter", price: `${t.currency} ${(t.price * 6).toLocaleString()}`, desc: "Private booking for families & groups with custom pickup location." },
+      ],
+    });
+    setShowYelpModal(true);
+  };
 
   const fetchTransports = useCallback(async () => {
     try {
@@ -768,7 +813,9 @@ const TransportPage: React.FC = () => {
                     onClick={() => {
                       setSelectedTransportId(transport.id);
                       handleMarkerClick(transport.id);
+                      handleOpenYelpDetail(transport);
                     }}
+                    onViewDetails={() => handleOpenYelpDetail(transport)}
                   />
                 ))}
               </div>
@@ -789,6 +836,13 @@ const TransportPage: React.FC = () => {
           />
         </div>
       </div>
+
+      {/* Yelp Business Detail Modal */}
+      <YelpDetailModal
+        isOpen={showYelpModal}
+        onClose={() => setShowYelpModal(false)}
+        data={yelpDetailData}
+      />
     </div>
   );
 };

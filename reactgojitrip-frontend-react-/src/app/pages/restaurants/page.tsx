@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useState, useRef } from "react";
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
+import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
 
 import { Search, Filter, Star, MapPin, Clock, Leaf, ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
 
@@ -343,13 +344,17 @@ const CompactRestaurantCard: React.FC<{
   restaurant: Restaurant;
   isSelected: boolean;
   onClick: () => void;
-}> = ({ restaurant, isSelected, onClick }) => {
+  onViewDetails?: () => void;
+}> = ({ restaurant, isSelected, onClick, onViewDetails }) => {
   return (
     <div
       className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md ${
         isSelected ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md" : "border-gray-200 hover:border-blue-300"
       }`}
-      onClick={onClick}
+      onClick={() => {
+        onClick();
+        if (onViewDetails) onViewDetails();
+      }}
     >
       <div className="flex gap-3 p-3">
         <div className="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-200">
@@ -399,13 +404,14 @@ const CompactRestaurantCard: React.FC<{
               </span>
             </div>
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                // Handle view restaurant
+                if (onViewDetails) onViewDetails();
               }}
-              className="px-3 py-1 rounded-lg text-xs font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white"
+              className="px-3 py-1 rounded-lg text-xs font-bold transition-colors bg-red-600 hover:bg-red-700 text-white shadow-sm"
             >
-              View
+              View Details
             </button>
           </div>
         </div>
@@ -423,7 +429,35 @@ const RestaurantsPage: React.FC = () => {
   const [selectedCuisine, setSelectedCuisine] = useState<string[]>([]);
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(null);
+  const [showYelpModal, setShowYelpModal] = useState(false);
   const restaurantListRef = useRef<HTMLDivElement>(null);
+
+  const handleOpenYelpDetail = (r: Restaurant) => {
+    setYelpDetailData({
+      id: r.id,
+      name: r.name,
+      category: r.cuisine.join(" • ") || "Traditional Nepalese & Thakali Cuisine",
+      rating: r.rating || 4.7,
+      reviewCount: r.reviews || 36,
+      priceLevel: r.priceRange || "$$",
+      address: r.location,
+      location: r.location,
+      phone: r.description || "+977 1 4220000",
+      whatsapp: "+9779801112233",
+      image: r.image,
+      description: `${r.name} is a renowned dining spot along the Nepal highway corridor, serving authentic organic Thakali thali, Himalayan coffee, and local delicacies.`,
+      amenities: r.dietaryOptions || ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"],
+      priceTag: "NRs 450 - 1,200 / meal",
+      entityType: "restaurant",
+      offerings: [
+        { title: "Organic Thakali Khana Set", price: "NRs 650", desc: "Authentic buckwheat dhido/rice, black lentil soup, mutton curry, ghee & fermented pickles." },
+        { title: "Special Himalayan Chicken Momos", price: "NRs 350", desc: "Steamed handmade dumplings served with spicy tomato and sesame chutney." },
+        { title: "Fresh Himalayan Arabica Coffee", price: "NRs 220", desc: "Locally roasted Organic Nepalese coffee beans." },
+      ],
+    });
+    setShowYelpModal(true);
+  };
 
   const fetchRestaurants = useCallback(async () => {
     try {
@@ -638,7 +672,9 @@ const RestaurantsPage: React.FC = () => {
                     onClick={() => {
                       setSelectedRestaurantId(restaurant.id);
                       handleMarkerClick(restaurant.id);
+                      handleOpenYelpDetail(restaurant);
                     }}
+                    onViewDetails={() => handleOpenYelpDetail(restaurant)}
                   />
                 ))}
               </div>
@@ -659,6 +695,13 @@ const RestaurantsPage: React.FC = () => {
           />
         </div>
       </div>
+
+      {/* Yelp Business Detail Modal */}
+      <YelpDetailModal
+        isOpen={showYelpModal}
+        onClose={() => setShowYelpModal(false)}
+        data={yelpDetailData}
+      />
     </div>
   );
 };
