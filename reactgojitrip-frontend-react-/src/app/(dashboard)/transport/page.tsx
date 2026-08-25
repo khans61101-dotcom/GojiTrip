@@ -284,9 +284,32 @@ export default function TransportPage() {
                 <input value={editing.whatsAppNumber} onChange={e => setEditing({ ...editing, whatsAppNumber: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="WhatsApp number" />
               </div>
               <div className="grid grid-cols-3 gap-4">
-                <input value={editing.vehicleType} onChange={e => setEditing({ ...editing, vehicleType: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Vehicle type" />
-                <input value={editing.vehicleNumber} onChange={e => setEditing({ ...editing, vehicleNumber: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Vehicle number" />
-                <input type="number" value={editing.seatCapacity} onChange={e => setEditing({ ...editing, seatCapacity: Number(e.target.value) })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Seat capacity" />
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Vehicle Category *</label>
+                  <select
+                    value={editing.vehicleType || "Jeep"}
+                    onChange={(e) => setEditing({ ...editing, vehicleType: e.target.value })}
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="Plane">✈️ Plane / Flight / Airline</option>
+                    <option value="Ship">🚢 Ship / Ferry / Boat / Cruise</option>
+                    <option value="Jeep">🚙 Jeep / Scorpio / 4x4 SUV</option>
+                    <option value="Car">🚗 Car / Taxi / Sedan</option>
+                    <option value="Bus">🚌 Bus / Tourist Coach</option>
+                    <option value="Hiace">🚐 Hiace / Van / Minibus</option>
+                    <option value="Bike">🏍️ Bike / Scooter / Motorcycle</option>
+                    <option value="Train">🚆 Train / Rail</option>
+                    <option value="Other">🚐 Other Vehicle</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Vehicle / Flight No.</label>
+                  <input value={editing.vehicleNumber} onChange={e => setEditing({ ...editing, vehicleNumber: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="e.g. BA-1-PA-4567 or YT-402" />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Seat Capacity</label>
+                  <input type="number" value={editing.seatCapacity} onChange={e => setEditing({ ...editing, seatCapacity: Number(e.target.value) })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Seat capacity" />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <input value={editing.route} onChange={e => setEditing({ ...editing, route: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Route" />

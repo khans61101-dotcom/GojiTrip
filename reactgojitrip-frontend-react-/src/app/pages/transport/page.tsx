@@ -14,6 +14,8 @@ import {
   Bike,
   Users,
   Train,
+  Plane,
+  Ship,
   ArrowLeft,
   MapPin,
   Maximize2,
@@ -69,9 +71,11 @@ interface BackendTransport {
   lng?: number;
 }
 
+type TransportType = "car" | "bus" | "train" | "bike" | "plane" | "ship";
+
 interface TransportOption {
   id: string;
-  type: "car" | "bus" | "train" | "bike";
+  type: TransportType;
   name: string;
   description: string;
   image: string;
@@ -108,19 +112,22 @@ declare global {
 ------------------------------------------------------- */
 function getTransportType(
   vehicleType?: string,
-): "car" | "bus" | "train" | "bike" {
+): TransportType {
   const type = (vehicleType || "").toLowerCase();
 
-  if (type === "bus") {
+  if (type.includes("plane") || type.includes("flight") || type.includes("air") || type.includes("helicopter")) {
+    return "plane";
+  }
+  if (type.includes("ship") || type.includes("boat") || type.includes("ferry") || type.includes("cruise") || type.includes("water")) {
+    return "ship";
+  }
+  if (type.includes("bus") || type.includes("hiace") || type.includes("van") || type.includes("coach")) {
     return "bus";
   }
-  if (type === "ev") {
+  if (type.includes("bike") || type.includes("motorcycle") || type.includes("ev") || type.includes("scooter")) {
     return "bike";
   }
-  if (type === "bike" || type === "motorcycle") {
-    return "bike";
-  }
-  if (type === "train") {
+  if (type.includes("train") || type.includes("metro")) {
     return "train";
   }
   return "car";
@@ -464,10 +471,12 @@ const CompactTransportCard: React.FC<{
   const typeIcons: Record<string, React.ElementType> = {
     car: Car,
     bus: Bus,
+    plane: Plane,
+    ship: Ship,
     train: Train,
     bike: Bike,
   };
-  const TypeIcon = typeIcons[transport.type];
+  const TypeIcon = typeIcons[transport.type] || Car;
 
   return (
     <div
@@ -739,11 +748,13 @@ const TransportPage: React.FC = () => {
 
           {/* Transport Type Filters */}
           <div className="pb-3 flex gap-2 flex-wrap">
-            {["car", "bus", "train", "bike"].map((type) => {
+            {["plane", "ship", "car", "bus", "train", "bike"].map((type) => {
               const selected = filters.transportType.includes(type);
               const labels: Record<string, string> = {
-                car: "🚗 Car",
-                bus: "🚌 Bus",
+                plane: "✈️ Plane",
+                ship: "🚢 Ship / Ferry",
+                car: "🚗 Car / SUV",
+                bus: "🚌 Bus / Van",
                 train: "🚆 Train",
                 bike: "🏍️ Bike",
               };
