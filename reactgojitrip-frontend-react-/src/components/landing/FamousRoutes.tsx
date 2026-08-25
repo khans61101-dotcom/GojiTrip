@@ -112,7 +112,7 @@ export default function FamousRoutes() {
               <span>Verified Nepal Corridors</span>
             </div>
             <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight">
-              Famous Travel Routes & Highways
+              Travel Routes & Highways 
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
               Explore ground-verified highway distances, travel times, and scenic stopovers.

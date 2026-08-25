@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { SafeImage } from "../common/SafeImage";
 import {
   MapPin,
@@ -349,6 +350,7 @@ const LocationInput = ({
 // ============================================================
 
 export const Hero = () => {
+  const navigate = useNavigate();
   // ==========================================================
   // SOURCE
   // ==========================================================
@@ -383,136 +385,49 @@ export const Hero = () => {
   // ==========================================================
 
   const handleSearch = async () => {
-    // --------------------------------------------------------
-    // SOURCE VALIDATION
-    // --------------------------------------------------------
+    const srcName = sourceLocation?.name || source.trim();
+    const dstName = destinationLocation?.name || destination.trim();
 
-    if (!sourceLocation) {
-      alert("Please select a starting location from the suggestions.");
+    if (!srcName && !dstName) {
+      alert("Please enter a starting location or destination.");
       return;
     }
 
-    // --------------------------------------------------------
-    // DESTINATION VALIDATION
-    // --------------------------------------------------------
-
-    if (!destinationLocation) {
-      alert("Please select a destination from the suggestions.");
-      return;
-    }
-
-    // --------------------------------------------------------
-    // DATE VALIDATION
-    // --------------------------------------------------------
-
-    if (!date) {
-      alert("Please select your journey date.");
-      return;
-    }
-
-    // --------------------------------------------------------
-    // TRAVELLER VALIDATION
-    // --------------------------------------------------------
-
-    const travellerCount = Number(travellers);
-
-    if (!Number.isInteger(travellerCount) || travellerCount < 1) {
-      alert("Please enter at least 1 traveller.");
-      return;
-    }
+    const travellerCount = Number(travellers) || 1;
 
     try {
       setSearching(true);
 
-      // ======================================================
-      // FINAL SEARCH DATA
-      // ======================================================
-
       const searchData: RouteSearchData = {
         source: {
-          placeId: sourceLocation.placeId,
-          name: sourceLocation.name,
-          address: sourceLocation.address,
-          latitude: sourceLocation.latitude,
-          longitude: sourceLocation.longitude,
+          placeId: sourceLocation?.placeId || "src-1",
+          name: srcName || "Kathmandu",
+          address: sourceLocation?.address || srcName,
+          latitude: sourceLocation?.latitude || 0,
+          longitude: sourceLocation?.longitude || 0,
         },
-
         destination: {
-          placeId: destinationLocation.placeId,
-          name: destinationLocation.name,
-          address: destinationLocation.address,
-          latitude: destinationLocation.latitude,
-          longitude: destinationLocation.longitude,
+          placeId: destinationLocation?.placeId || "dst-1",
+          name: dstName || "Pokhara",
+          address: destinationLocation?.address || dstName,
+          latitude: destinationLocation?.latitude || 0,
+          longitude: destinationLocation?.longitude || 0,
         },
-
-        date,
+        date: date || new Date().toISOString().split("T")[0],
         travellers: travellerCount,
       };
 
-      // ======================================================
-      // DEBUG
-      // ======================================================
+      sessionStorage.setItem("gojitrip_route_search", JSON.stringify(searchData));
 
-      console.log("====================================");
-      console.log("REAL ROUTE SEARCH", searchData);
-      console.log("SOURCE:", sourceLocation);
-      console.log("DESTINATION:", destinationLocation);
-      console.log("====================================");
+      const params = new URLSearchParams();
+      if (srcName) params.set("source", srcName);
+      if (dstName) params.set("destination", dstName);
+      if (date) params.set("date", date);
+      if (travellers) params.set("travellers", String(travellerCount));
 
-      // ======================================================
-      // SAVE SEARCH DATA
-      // ======================================================
-
-      sessionStorage.setItem(
-        "gojitrip_route_search",
-        JSON.stringify(searchData),
-      );
-
-      // ======================================================
-      // NOTIFY COMPLETE ROUTE ANALYSIS
-      // ======================================================
-
-      window.dispatchEvent(
-        new CustomEvent("gojitrip:route-search", {
-          detail: searchData,
-        }),
-      );
-
-      // ======================================================
-      // SCROLL TO COMPLETE ROUTE ANALYSIS
-      // ======================================================
-
-      setTimeout(() => {
-        const analysisSection = document.getElementById(
-          "complete-route-analysis",
-        );
-
-        if (analysisSection) {
-          analysisSection.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        }
-      }, 100);
-
-      // ======================================================
-      // FUTURE BACKEND API
-      // ======================================================
-      //
-      // Jab actual NestJS route planning endpoint ready ho:
-      //
-      // const result = await apiRequest("/trips/plan", {
-      //   method: "POST",
-      //   body: searchData,
-      // });
-      //
-      // Phir result me actual route stops receive karke
-      // CompleteRouteAnalysis ko pass kiya ja sakta hai.
-      //
-      // ======================================================
+      navigate(`/pages/routes?${params.toString()}`);
     } catch (error) {
       console.error("Route search error:", error);
-
       alert("Unable to search route. Please try again.");
     } finally {
       setSearching(false);

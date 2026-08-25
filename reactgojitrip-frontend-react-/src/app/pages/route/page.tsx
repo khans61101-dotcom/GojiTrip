@@ -3,6 +3,7 @@
 import "@/styles/pages/route/route.css";
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest, planRoute, type RouteSearchData, type RouteStop } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
@@ -115,8 +116,10 @@ export default function RoutePage() {
   const [selectedStopName, setSelectedStopName] = useState("");
   const [nextStop, setNextStop] = useState<RouteStop | null>(null);
 
+  const [searchParams] = useSearchParams();
+
   /* ==========================================================
-     LOAD DB ROUTES
+     LOAD DB ROUTES & AUTO-POPULATE SEARCH FROM URL PARAMS
   ========================================================== */
   const fetchDbRoutes = useCallback(async () => {
     try {
@@ -153,6 +156,39 @@ export default function RoutePage() {
   useEffect(() => {
     void fetchDbRoutes();
   }, [fetchDbRoutes]);
+
+  // Read URL search params from Hero component redirect
+  useEffect(() => {
+    const srcParam = searchParams.get("source") || searchParams.get("origin") || searchParams.get("from");
+    const dstParam = searchParams.get("destination") || searchParams.get("to");
+
+    if (srcParam || dstParam) {
+      if (srcParam) setSourceSearch(srcParam);
+      if (dstParam) setDestSearch(dstParam);
+
+      const srcName = srcParam || "Kathmandu";
+      const dstName = dstParam || "Pokhara";
+
+      const searchData: RouteSearchData = {
+        source: { name: srcName, placeId: "src-1", address: srcName, latitude: 0, longitude: 0 },
+        destination: { name: dstName, placeId: "dst-1", address: dstName, latitude: 0, longitude: 0 },
+        date: searchParams.get("date") || new Date().toISOString().split("T")[0],
+        travellers: Number(searchParams.get("travellers")) || 1,
+      };
+
+      setRouteSearch(searchData);
+
+      if (dbRoutes.length > 0) {
+        const matchingRoute = dbRoutes.find((r) =>
+          (r.origin.toLowerCase().includes(srcName.toLowerCase()) || srcName.toLowerCase().includes(r.origin.toLowerCase())) ||
+          (r.destination.toLowerCase().includes(dstName.toLowerCase()) || dstName.toLowerCase().includes(r.destination.toLowerCase()))
+        );
+        if (matchingRoute) {
+          setSelectedRouteId(matchingRoute.id);
+        }
+      }
+    }
+  }, [searchParams, dbRoutes]);
 
   /* ==========================================================
      ACTIVE ROUTE ENTRY

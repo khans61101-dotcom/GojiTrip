@@ -9,8 +9,6 @@ import Features from "@/components/landing/Features";
 import Testimonials from "@/components/landing/Testimonials";
 import FinalCta from "@/components/landing/FinalCta";
 import Footer from "@/components/landing/Footer";
-import RouteTimeline from "@/components/landing/RouteTimeline";
-
 export default function Home() {
   return (
     <>
@@ -18,7 +16,6 @@ export default function Home() {
       <Hero />
       <AboutSection />
       <FamousRoutes />
-      <RouteTimeline />
       <HowItWorks />
       <AIFeatures />
       <WhyChooseGojiTrip />
