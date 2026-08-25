@@ -1,9 +1,21 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { SafeImage } from "../common/SafeImage";
 import { Star, Clock, Map, ArrowRight, Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
+import { listRoutes } from "@/lib/api";
+import { cmsStore } from "@/lib/cms-store";
 
-const routes = [
+interface DisplayRoute {
+  id?: string | number;
+  title: string;
+  distance: string;
+  time: string;
+  rating: number;
+  badge: string;
+  image: string;
+}
+
+const DEFAULT_ROUTES: DisplayRoute[] = [
   {
     title: "Pokhara to Mustang Valley",
     distance: "210 km",
@@ -44,49 +56,52 @@ const routes = [
     badge: "Wildlife",
     image: "https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&w=600&q=80",
   },
-  {
-    title: "Pokhara to Lumbini",
-    distance: "205 km",
-    time: "7h 00m",
-    rating: 4.8,
-    badge: "Cultural",
-    image: "https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    title: "Kathmandu to Nagarkot",
-    distance: "32 km",
-    time: "1h 30m",
-    rating: 4.6,
-    badge: "Sunrise View",
-    image: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    title: "Kathmandu to Bhaktapur",
-    distance: "15 km",
-    time: "45m",
-    rating: 4.7,
-    badge: "Heritage",
-    image: "https://images.unsplash.com/photo-1570168007204-dfb528c6958f?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    title: "Pokhara to Rara Lake",
-    distance: "600 km",
-    time: "18h 00m",
-    rating: 4.9,
-    badge: "Hidden Gem",
-    image: "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=600&q=80",
-  },
-  {
-    title: "Kathmandu to Janakpur",
-    distance: "225 km",
-    time: "7h 00m",
-    rating: 4.6,
-    badge: "Spiritual",
-    image: "https://images.unsplash.com/photo-1519046904884-53103b34b206?auto=format&fit=crop&w=600&q=80",
-  },
 ];
 
 export default function FamousRoutes() {
+  const [displayRoutes, setDisplayRoutes] = useState<DisplayRoute[]>(DEFAULT_ROUTES);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadRoutes() {
+      try {
+        setLoading(true);
+        const apiData = await listRoutes();
+        const cmsItems = cmsStore.getRoutes();
+
+        const combinedRaw = [...(Array.isArray(apiData) ? apiData : []), ...cmsItems];
+
+        if (combinedRaw.length > 0) {
+          const mapped: DisplayRoute[] = combinedRaw.map((item: any, idx: number) => {
+            const title = item.routeName || (item.origin && item.destination ? `${item.origin} to ${item.destination}` : `Route #${idx + 1}`);
+            const dist = item.totalDistanceKm || item.distance ? `${item.totalDistanceKm || item.distance} km` : "150 km";
+            const duration = item.estimatedTravelTime || item.duration || "5h 30m";
+            const img = item.imageUrl || (item.photos && item.photos[0]) || DEFAULT_ROUTES[idx % DEFAULT_ROUTES.length].image;
+            const badge = item.roadCondition || "Verified Corridor";
+
+            return {
+              id: item.id || idx,
+              title,
+              distance: dist,
+              time: duration,
+              rating: 4.8,
+              badge,
+              image: img,
+            };
+          });
+
+          setDisplayRoutes(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to load DB routes for home page:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadRoutes();
+  }, []);
+
   return (
     <section className="py-16 md:py-24 bg-slate-50 border-y border-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -108,26 +123,27 @@ export default function FamousRoutes() {
             to="/pages/routes"
             className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition flex items-center space-x-1 self-start sm:self-auto bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200 hover:bg-emerald-100"
           >
-            <span>Explore All Routes</span>
+            <span>Explore All Routes ({displayRoutes.length})</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5">
-          {routes.map((route, i) => (
+          {displayRoutes.map((route, i) => (
             <Link
-              key={i}
+              key={route.id || i}
               to="/pages/routes"
               className="group bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between hover:border-emerald-400"
             >
               <div>
                 <div className="relative w-full h-36 mb-3 rounded-xl overflow-hidden bg-slate-100">
-                  <img
+                  <SafeImage
                     src={route.image}
+                    fallbackSrc={DEFAULT_ROUTES[0].image}
                     alt={route.title}
                     className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                   />
-                  <span className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-emerald-400 border border-white/10 shadow-sm">
+                  <span className="absolute top-2 left-2 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-emerald-400 border border-white/10 shadow-sm truncate max-w-[120px]">
                     {route.badge}
                   </span>
                 </div>
