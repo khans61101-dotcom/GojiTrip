@@ -1278,11 +1278,49 @@ export default function RestaurantsPage() {
                 </div>
               </div>
 
+              {/* DESCRIPTION & HERITAGE STORY */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Restaurant Description & Story (Shown on Yelp Detail View)
+                </label>
+                <textarea
+                  rows={3}
+                  value={(editingRest as any).description || editingRest.contactDetails || ""}
+                  onChange={(event) =>
+                    setEditingRest({
+                      ...editingRest,
+                      description: event.target.value,
+                    } as any)
+                  }
+                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="Describe your organic Thakali set, authentic local ingredients, dining ambiance..."
+                />
+              </div>
+
+              {/* DIETARY OPTIONS & AMENITIES */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Dietary Options & Amenities (comma separated)
+                </label>
+                <input
+                  type="text"
+                  value={((editingRest as any).dietaryOptions || ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"]).join(", ")}
+                  onChange={(event) =>
+                    setEditingRest({
+                      ...editingRest,
+                      dietaryOptions: event.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                    } as any)
+                  }
+                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="Organic Ingredients, Outdoor Seating, Free Wi-Fi, Highway Parking, Vegetarian Friendly"
+                />
+              </div>
+
               {/* DISHES */}
 
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">
-                  Recommended Dishes (comma separated)
+                  Recommended Dishes & Menu Highlights (comma separated)
                 </label>
 
                 <input

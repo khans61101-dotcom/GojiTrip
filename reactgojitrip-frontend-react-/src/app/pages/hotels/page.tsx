@@ -604,30 +604,33 @@ const HotelsPage: React.FC = () => {
   const hotelListRef = useRef<HTMLDivElement>(null);
 
   const handleOpenYelpDetail = (h: Hotel) => {
+    const rawPrice = (h as any).pricePerNight || h.pricePerNight || 2500;
+    const currency = h.currency || "NRs ";
     setYelpDetailData({
       id: h.id,
       name: h.name,
-      category: "Luxury Hotel & Mountain Resort",
+      category: (h as any).propertyType || "Luxury Hotel & Mountain Resort",
       rating: h.rating || 4.8,
       reviewCount: h.reviews || 42,
       priceLevel: "$$",
       address: h.location,
       location: h.location,
-      phone: h.contact || "+977 1 4567890",
-      whatsapp: "+9779801234567",
+      phone: (h as any).phoneNumber || h.contact || "+977 1 4567890",
+      whatsapp: (h as any).whatsappNumber || "+9779801234567",
       image: h.image,
       galleryImages: (h as any).hotelPhotos || (h as any).photos || (h.image ? [h.image] : []),
-      description: h.description || `${h.name} offers magnificent mountain view accommodation, gourmet dining, and warm Nepalese hospitality.`,
-      amenities: h.amenities || ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Water", "24/7 Room Service", "Free Parking"],
-      priceTag: `${h.currency || "NRs "}${h.pricePerNight} / night`,
+      description: (h as any).description || h.description || `${h.name} offers magnificent mountain view accommodation, gourmet dining, and warm Nepalese hospitality.`,
+      amenities: (h as any).facilities || h.amenities || ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Shower", "24/7 Room Service", "Free Parking"],
+      hours: (h as any).operatingHours ? [{ day: "Front Desk & Schedule", time: (h as any).operatingHours }] : undefined,
+      priceTag: `${currency} ${rawPrice} / night`,
       entityType: "hotel",
       offerings: h.roomTypes?.map((rt: any) => ({
         title: rt.typeName || rt.type || "Deluxe Room",
-        price: `NRs ${rt.pricePerNight} / night`,
+        price: `NRs ${rt.pricePerNight || rawPrice} / night`,
         desc: `Capacity: ${rt.maxGuests || 2} Guests • ${rt.type === "AC" || rt.isAC ? "Air Conditioned" : "Standard Heating"}`,
       })) || [
-        { title: "Deluxe Mountain View Suite", price: `NRs ${h.pricePerNight}`, desc: "Spacious suite with private balcony overviewing Annapurna peaks." },
-        { title: "Standard Double Room", price: `NRs ${Math.round(h.pricePerNight * 0.8)}`, desc: "Comfortable double bed room with ensuite modern bathroom." },
+        { title: "Deluxe Mountain View Suite", price: `${currency} ${rawPrice}`, desc: "Spacious suite with private balcony overviewing Annapurna peaks." },
+        { title: "Standard Double Room", price: `${currency} ${Math.round(rawPrice * 0.8)}`, desc: "Comfortable double bed room with ensuite modern bathroom." },
       ],
     });
     setShowYelpModal(true);

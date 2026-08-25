@@ -430,59 +430,100 @@ const handleSaveHotel = async (e: React.FormEvent) => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              {/* DESCRIPTION & ABOUT THE PROPERTY */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Property Description / Story (Shown on Yelp Detail View)
+                </label>
+                <textarea
+                  rows={3}
+                  value={(editingHotel as any).description || ""}
+                  onChange={(e) =>
+                    setEditingHotel({
+                      ...editingHotel,
+                      description: e.target.value,
+                    } as any)
+                  }
+                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="Describe your hotel rooms, mountain views, host hospitality, dining..."
+                />
+              </div>
+
+              {/* PRICE PER NIGHT & WHATSAPP */}
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
-                    Location / Address
+                    Price Per Night (NRs)
+                  </label>
+                  <input
+                    type="number"
+                    value={(editingHotel as any).pricePerNight || 2500}
+                    onChange={(e) =>
+                      setEditingHotel({
+                        ...editingHotel,
+                        pricePerNight: Number(e.target.value) || 0,
+                      } as any)
+                    }
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    placeholder="2500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    WhatsApp Number
                   </label>
                   <input
                     type="text"
-                    value={editingHotel.location || ""}
+                    value={(editingHotel as any).whatsappNumber || ""}
                     onChange={(e) =>
                       setEditingHotel({
                         ...editingHotel,
-                        location: e.target.value,
-                      })
+                        whatsappNumber: e.target.value,
+                      } as any)
                     }
                     className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    placeholder="+977-9801234567"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    GPS Latitude
-                  </label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={editingHotel.latitude ?? 0}
-                    onChange={(e) =>
-                      setEditingHotel({
-                        ...editingHotel,
-                        latitude: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
+              {/* AMENITIES & FACILITIES (COMMA SEPARATED OR TAGS) */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Amenities & Facilities (comma separated)
+                </label>
+                <input
+                  type="text"
+                  value={((editingHotel as any).facilities || ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Shower", "Free Parking", "Breakfast Included"]).join(", ")}
+                  onChange={(e) =>
+                    setEditingHotel({
+                      ...editingHotel,
+                      facilities: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                    } as any)
+                  }
+                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="Free Wi-Fi, Mountain View, AC & Heating, Hot Shower, Free Parking, Breakfast Included"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    GPS Longitude
-                  </label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    value={editingHotel.longitude ?? 0}
-                    onChange={(e) =>
-                      setEditingHotel({
-                        ...editingHotel,
-                        longitude: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
+              {/* OPERATING HOURS / FRONT DESK SCHEDULE */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  Operating Hours / Front Desk Schedule
+                </label>
+                <input
+                  type="text"
+                  value={(editingHotel as any).operatingHours || "24/7 Front Desk • Check-in: 12:00 PM, Check-out: 10:00 AM"}
+                  onChange={(e) =>
+                    setEditingHotel({
+                      ...editingHotel,
+                      operatingHours: e.target.value,
+                    } as any)
+                  }
+                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  placeholder="24/7 Front Desk • Check-in: 12:00 PM"
+                />
               </div>
 
               {/* Current Photo Display */}

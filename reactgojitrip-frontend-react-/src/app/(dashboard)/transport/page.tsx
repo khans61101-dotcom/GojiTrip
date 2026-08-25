@@ -298,6 +298,28 @@ export default function TransportPage() {
                 <input value={editing.currency} onChange={e => setEditing({ ...editing, currency: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Currency" />
                 <input value={editing.luggagePolicy} onChange={e => setEditing({ ...editing, luggagePolicy: e.target.value })} className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white" placeholder="Luggage policy" />
               </div>
+
+              {/* DESCRIPTION & VEHICLE AMENITIES */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Vehicle & Service Description (Shown on Yelp Detail View)</label>
+                <textarea
+                  rows={2}
+                  value={(editing as any).description || ""}
+                  onChange={e => setEditing({ ...editing, description: e.target.value } as any)}
+                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  placeholder="Reliable passenger transport, mountain terrain driving, licensed driver..."
+                />
+              </div>
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Vehicle Amenities & Services (comma separated)</label>
+                <input
+                  type="text"
+                  value={((editing as any).amenities || ["AC Vehicle", "Reclining Seats", "Luggage Storage", "GPS Tracking", "Verified Driver"]).join(", ")}
+                  onChange={e => setEditing({ ...editing, amenities: e.target.value.split(",").map(s => s.trim()).filter(Boolean) } as any)}
+                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  placeholder="AC Vehicle, Reclining Seats, Luggage Storage, GPS Tracking, Verified Driver"
+                />
+              </div>
               {/* =============== DRIVER & VEHICLE PHOTO FILE UPLOAD =============== */}
               <div className="space-y-4 pt-2 border-t border-slate-800">
                 <ImageFileInput
