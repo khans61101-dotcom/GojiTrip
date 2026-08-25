@@ -5,7 +5,32 @@ import "@/styles/pages/guide/guide.css";
 import React from "react";
 import { cmsStore } from "@/lib/cms-store";
 import { SafeImage } from "@/components/common/SafeImage";
-import { Search, MapPin, Clock, Users } from "lucide-react";
+import {
+  Search,
+  MapPin,
+  Clock,
+  Users,
+  Star,
+  Sparkles,
+  Compass,
+  Mountain,
+  Camera,
+  Utensils,
+  Landmark,
+  TreePine,
+  Palette,
+  Globe,
+  ChevronRight,
+  Filter,
+  X,
+  Award,
+  Calendar,
+  Phone,
+  Mail,
+  Heart,
+  Share2,
+  ExternalLink,
+} from "lucide-react";
 
 /* =========================================================
    TYPES
@@ -23,6 +48,8 @@ interface Guide {
   languages: string[];
   guideContactDetails?: string;
   availability?: string;
+  experienceYears?: number;
+  certified?: boolean;
 }
 
 interface Activity {
@@ -279,6 +306,10 @@ const mapGuide = (value: unknown): Guide => {
     availability:
       toStringValue(item.availability ?? item.availableDays ?? item.status) ||
       undefined,
+
+    experienceYears: toNumberValue(item.experienceYears ?? item.yearsExperience, 5),
+
+    certified: Boolean(item.certified ?? item.isCertified ?? item.licensed),
   };
 };
 
@@ -291,10 +322,6 @@ const mapActivity = (value: unknown): Activity => {
     value && typeof value === "object"
       ? (value as Record<string, unknown>)
       : {};
-
-  /* -----------------------------
-     Difficulty
-  ----------------------------- */
 
   const rawDifficulty = toStringValue(
     item.difficultyLevel ?? item.difficulty ?? item.level,
@@ -309,10 +336,6 @@ const mapActivity = (value: unknown): Activity => {
   };
 
   const difficultyLevel = difficultyMap[rawDifficulty.toLowerCase()] || "Easy";
-
-  /* -----------------------------
-     Availability
-  ----------------------------- */
 
   const rawAvailability = toStringValue(
     item.availability ?? item.availableDays ?? item.status,
@@ -329,40 +352,19 @@ const mapActivity = (value: unknown): Activity => {
   const availability =
     availabilityMap[rawAvailability.toLowerCase()] || "On Request";
 
-  /* -----------------------------
-     Photos
-  ----------------------------- */
-
   const photos = toStringArray(item.photos ?? item.images ?? item.imageUrls);
-
-  /* -----------------------------
-     Image
-  ----------------------------- */
 
   const imageUrl = getImageUrl(
     toStringValue(item.imageUrl ?? item.image ?? item.photo ?? photos[0]),
   );
 
-  /* -----------------------------
-     Guide Name
-  ----------------------------- */
-
   let guideName = toStringValue(item.guideName);
 
-  /*
-   * Fix:
-   * item.guide is unknown, so access it
-   * only after checking its type.
-   */
   if (!guideName && item.guide && typeof item.guide === "object") {
     const guide = item.guide as Record<string, unknown>;
 
     guideName = toStringValue(guide.name) || toStringValue(guide.fullName);
   }
-
-  /* -----------------------------
-     Return Activity
-  ----------------------------- */
 
   return {
     id:
@@ -401,116 +403,218 @@ const mapActivity = (value: unknown): Activity => {
 };
 
 /* =========================================================
+   SPECIALTY ICON MAP
+========================================================= */
+
+const getSpecialtyIcon = (specialty: string) => {
+  const icons: Record<string, React.ReactNode> = {
+    hiking: <Mountain className="h-3.5 w-3.5" />,
+    trekking: <Mountain className="h-3.5 w-3.5" />,
+    photography: <Camera className="h-3.5 w-3.5" />,
+    food: <Utensils className="h-3.5 w-3.5" />,
+    culture: <Landmark className="h-3.5 w-3.5" />,
+    wildlife: <TreePine className="h-3.5 w-3.5" />,
+    art: <Palette className="h-3.5 w-3.5" />,
+    history: <Landmark className="h-3.5 w-3.5" />,
+    adventure: <Compass className="h-3.5 w-3.5" />,
+    architecture: <Landmark className="h-3.5 w-3.5" />,
+  };
+
+  const key = specialty.toLowerCase();
+  return icons[key] || <Sparkles className="h-3.5 w-3.5" />;
+};
+
+/* =========================================================
+   DIFFICULTY COLOR MAP
+========================================================= */
+
+const getDifficultyColor = (level: Activity["difficultyLevel"]) => {
+  const colors = {
+    Easy: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    Moderate: "bg-amber-100 text-amber-700 border-amber-200",
+    Challenging: "bg-orange-100 text-orange-700 border-orange-200",
+    Extreme: "bg-red-100 text-red-700 border-red-200",
+  };
+  return colors[level] || colors.Easy;
+};
+
+const getDifficultyIcon = (level: Activity["difficultyLevel"]) => {
+  const icons = {
+    Easy: "🟢",
+    Moderate: "🟡",
+    Challenging: "🟠",
+    Extreme: "🔴",
+  };
+  return icons[level] || "🟢";
+};
+
+/* =========================================================
    GUIDE CARD
 ========================================================= */
 
 const GuideCard: React.FC<{
   guide: Guide;
-}> = ({ guide }) => {
-  return (
-    <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg transition-shadow">
-      {/* Image */}
+  index: number;
+}> = ({ guide, index }) => {
+  const [isLiked, setIsLiked] = React.useState(false);
 
-      <div className="relative h-64 bg-gray-100">
+  return (
+    <div
+      className="group bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-gray-100/80 relative animate-fadeInUp"
+      style={{ animationDelay: `${index * 0.1}s` }}
+    >
+      {/* Gradient overlay on hover */}
+      <div className="absolute inset-0 bg-gradient-to-t from-blue-600/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-10" />
+
+      {/* Image */}
+      <div className="relative h-64 bg-gray-100 overflow-hidden">
         <SafeImage
           src={guide.image}
           fallbackSrc="/logo/gojitriplogo.jpg"
           alt={guide.name || "Travel guide"}
           fill
-          className="object-cover"
+          className="object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
           sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
         />
 
-        {/* Rating */}
+        {/* Gradient overlay on image */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
 
+        {/* Rating */}
         {guide.rating > 0 && (
-          <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm">
-            <span className="flex items-center gap-1 text-yellow-500 font-semibold text-sm">
-              ⭐ {guide.rating.toFixed(1)}
+          <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg z-20">
+            <span className="flex items-center gap-1.5 text-yellow-500 font-semibold text-sm">
+              <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+              {guide.rating.toFixed(1)}
             </span>
           </div>
         )}
+
+        {/* Certified Badge */}
+        {guide.certified && (
+          <div className="absolute top-3 left-3 bg-emerald-500/95 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg z-20">
+            <span className="flex items-center gap-1.5 text-white font-medium text-xs">
+              <Award className="h-3.5 w-3.5" />
+              Certified
+            </span>
+          </div>
+        )}
+
+        {/* Experience Years */}
+        {guide.experienceYears && (
+          <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full z-20">
+            <span className="flex items-center gap-1.5 text-white text-xs">
+              <Calendar className="h-3.5 w-3.5" />
+              {guide.experienceYears}+ years
+            </span>
+          </div>
+        )}
+
+        {/* Quick action buttons - visible on hover */}
+        <div className="absolute top-3 right-16 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-20">
+          <button
+            type="button"
+            onClick={() => setIsLiked(!isLiked)}
+            className="p-2 bg-white/90 backdrop-blur-md rounded-full hover:bg-white shadow-lg transition-all hover:scale-110"
+          >
+            <Heart
+              className={`h-4 w-4 transition-colors ${isLiked ? "fill-red-500 text-red-500" : "text-gray-600"}`}
+            />
+          </button>
+          <button
+            type="button"
+            className="p-2 bg-white/90 backdrop-blur-md rounded-full hover:bg-white shadow-lg transition-all hover:scale-110"
+          >
+            <Share2 className="h-4 w-4 text-gray-600" />
+          </button>
+        </div>
       </div>
 
       {/* Content */}
-
-      <div className="p-5">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+      <div className="p-5 relative z-10">
+        <h3 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">
           {guide.name}
         </h3>
 
         {/* Location */}
-
-        <p className="text-gray-600 text-sm mb-3 flex items-center gap-1">
-          <MapPin className="h-4 w-4" />
+        <p className="text-gray-500 text-sm mb-3 flex items-center gap-1.5">
+          <MapPin className="h-4 w-4 text-blue-500" />
           {guide.location}
         </p>
 
         {/* Description */}
-
-        <p className="text-gray-600 text-sm mb-4 line-clamp-2">
+        <p className="text-gray-600 text-sm mb-4 line-clamp-2 leading-relaxed">
           {guide.description}
         </p>
 
         {/* Specialties */}
-
         {guide.specialties.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-3">
-            {guide.specialties.map((specialty) => (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {guide.specialties.slice(0, 4).map((specialty) => (
               <span
                 key={`${guide.id}-specialty-${specialty}`}
-                className="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full"
+                className="inline-flex items-center gap-1 text-xs bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 px-2.5 py-1 rounded-full border border-blue-100/50"
               >
+                {getSpecialtyIcon(specialty)}
                 {specialty}
               </span>
             ))}
+            {guide.specialties.length > 4 && (
+              <span className="text-xs text-gray-400 font-medium px-1">
+                +{guide.specialties.length - 4}
+              </span>
+            )}
           </div>
         )}
 
         {/* Languages */}
-
         {guide.languages.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
+          <div className="flex flex-wrap gap-1.5 mb-4">
             {guide.languages.slice(0, 3).map((language) => (
               <span
                 key={`${guide.id}-language-${language}`}
-                className="text-xs bg-green-50 text-green-700 px-2.5 py-1 rounded-full"
+                className="inline-flex items-center gap-1 text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full border border-emerald-100/50"
               >
+                <Globe className="h-3 w-3" />
                 {language}
               </span>
             ))}
+            {guide.languages.length > 3 && (
+              <span className="text-xs text-gray-400 font-medium px-1">
+                +{guide.languages.length - 3}
+              </span>
+            )}
           </div>
         )}
 
         {/* Availability */}
-
         {guide.availability && (
-          <div className="flex items-center gap-1 text-gray-500 text-sm mb-4">
-            <Clock className="h-4 w-4" />
-            {guide.availability}
+          <div className="flex items-center gap-1.5 text-gray-500 text-sm mb-4 bg-gray-50/80 px-3 py-1.5 rounded-lg">
+            <Clock className="h-4 w-4 text-blue-500" />
+            <span className="text-xs font-medium">{guide.availability}</span>
           </div>
         )}
 
         {/* Bottom */}
-
-        <div className="flex justify-between items-center pt-4 border-t border-gray-100">
+        <div className="flex justify-between items-center pt-4 border-t border-gray-100/80">
           <div>
-            <span className="text-xl font-bold text-blue-600">
+            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
               {guide.price > 0
                 ? `NPR ${guide.price.toLocaleString()}`
                 : "Contact"}
             </span>
 
             {guide.price > 0 && (
-              <span className="text-gray-500 text-sm">/day</span>
+              <span className="text-gray-400 text-sm font-medium ml-1">/day</span>
             )}
           </div>
 
           <button
             type="button"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            className="group/btn px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-500/30 transition-all duration-300 text-sm font-medium flex items-center gap-2 hover:scale-105"
           >
             Book Guide
+            <ChevronRight className="h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
           </button>
         </div>
       </div>
@@ -524,58 +628,70 @@ const GuideCard: React.FC<{
 
 const ActivityCard: React.FC<{
   activity: Activity;
-}> = ({ activity }) => {
+  index: number;
+}> = ({ activity, index }) => {
   const activityImage = activity.imageUrl || getImageUrl(activity.photos?.[0]);
 
   return (
-    <div className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-lg transition-shadow">
+    <div
+      className="group bg-white rounded-2xl overflow-hidden shadow-md hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-gray-100/80 animate-fadeInUp"
+      style={{ animationDelay: `${index * 0.1 + 0.1}s` }}
+    >
       {/* Image */}
-
-      <div className="relative h-64 bg-gray-100">
+      <div className="relative h-56 bg-gray-100 overflow-hidden">
         <SafeImage
           src={activityImage}
           fallbackSrc="/logo/gojitriplogo.jpg"
           alt={activity.activityName || "Activity"}
           fill
-          className="object-cover"
+          className="object-cover group-hover:scale-110 transition-transform duration-700 ease-out"
           sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
         />
 
-        <div className="absolute top-3 left-3 bg-blue-600 text-white px-3 py-1.5 rounded-full text-xs font-semibold">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+
+        <div className="absolute top-3 left-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg flex items-center gap-1.5">
+          <Sparkles className="h-3.5 w-3.5" />
           Activity
+        </div>
+
+        {/* Difficulty Badge */}
+        <div className="absolute bottom-3 left-3 flex items-center gap-2">
+          <span
+            className={`px-3 py-1 rounded-full text-xs font-semibold backdrop-blur-md border ${getDifficultyColor(activity.difficultyLevel)} shadow-lg`}
+          >
+            {getDifficultyIcon(activity.difficultyLevel)} {activity.difficultyLevel}
+          </span>
         </div>
       </div>
 
       {/* Content */}
-
       <div className="p-5">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
+        <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors line-clamp-1">
           {activity.activityName}
         </h3>
 
         {activity.guideName && (
-          <p className="text-gray-600 text-sm mb-3 flex items-center gap-1">
-            <Users className="h-4 w-4" />
-            Guide: {activity.guideName}
+          <p className="text-gray-500 text-sm mb-3 flex items-center gap-1.5">
+            <Users className="h-4 w-4 text-blue-500" />
+            Guide: <span className="font-medium text-gray-700">{activity.guideName}</span>
           </p>
         )}
 
         <div className="flex flex-wrap gap-2 mb-4">
-          <span className="px-2.5 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
-            {activity.difficultyLevel}
-          </span>
-
-          <span className="px-2.5 py-1 bg-purple-50 text-purple-700 rounded-full text-xs font-medium">
+          <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-lg text-xs font-medium border border-purple-100/50">
+            <Clock className="h-3.5 w-3.5" />
             {activity.duration}
           </span>
 
-          <span className="px-2.5 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">
+          <span className="inline-flex items-center gap-1 px-3 py-1.5 bg-green-50 text-green-700 rounded-lg text-xs font-medium border border-green-100/50">
+            <Calendar className="h-3.5 w-3.5" />
             {activity.availability}
           </span>
         </div>
 
-        <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-          <span className="text-xl font-bold text-blue-600">
+        <div className="flex justify-between items-center pt-4 border-t border-gray-100/80">
+          <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
             {activity.pricing > 0
               ? `NPR ${activity.pricing.toLocaleString()}`
               : "Contact"}
@@ -583,9 +699,10 @@ const ActivityCard: React.FC<{
 
           <button
             type="button"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+            className="group/btn px-5 py-2.5 bg-white border-2 border-blue-600 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all duration-300 text-sm font-medium flex items-center gap-2 hover:shadow-lg hover:shadow-blue-500/20 hover:scale-105"
           >
             View Activity
+            <ExternalLink className="h-4 w-4 group-hover/btn:translate-x-1 group-hover/btn:-translate-y-1 transition-transform" />
           </button>
         </div>
       </div>
@@ -603,27 +720,22 @@ const LoadingSkeleton = () => {
       {[1, 2, 3, 4, 5, 6].map((item) => (
         <div
           key={item}
-          className="bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 animate-pulse"
+          className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 animate-pulse"
         >
-          <div className="h-64 bg-gray-200" />
+          <div className="h-64 bg-gradient-to-r from-gray-200 to-gray-300" />
 
           <div className="p-5 space-y-3">
-            <div className="h-6 bg-gray-200 rounded w-3/4" />
-
-            <div className="h-4 bg-gray-200 rounded w-1/3" />
-
-            <div className="h-4 bg-gray-200 rounded w-full" />
-
-            <div className="h-4 bg-gray-200 rounded w-5/6" />
-
+            <div className="h-6 bg-gradient-to-r from-gray-200 to-gray-300 rounded w-3/4" />
+            <div className="h-4 bg-gradient-to-r from-gray-200 to-gray-300 rounded w-1/3" />
+            <div className="h-4 bg-gradient-to-r from-gray-200 to-gray-300 rounded w-full" />
+            <div className="h-4 bg-gradient-to-r from-gray-200 to-gray-300 rounded w-5/6" />
             <div className="flex gap-2">
-              <div className="h-6 bg-gray-200 rounded-full w-16" />
-              <div className="h-6 bg-gray-200 rounded-full w-20" />
+              <div className="h-6 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full w-16" />
+              <div className="h-6 bg-gradient-to-r from-gray-200 to-gray-300 rounded-full w-20" />
             </div>
-
             <div className="flex justify-between pt-3">
-              <div className="h-7 bg-gray-200 rounded w-24" />
-              <div className="h-9 bg-gray-200 rounded w-28" />
+              <div className="h-7 bg-gradient-to-r from-gray-200 to-gray-300 rounded w-24" />
+              <div className="h-9 bg-gradient-to-r from-gray-200 to-gray-300 rounded w-28" />
             </div>
           </div>
         </div>
@@ -641,21 +753,23 @@ const EmptyState: React.FC<{
   onClear: () => void;
 }> = ({ message, onClear }) => {
   return (
-    <div className="text-center py-16 bg-white rounded-xl border border-gray-100">
-      <div className="text-5xl mb-4">🧭</div>
+    <div className="text-center py-16 bg-white rounded-2xl border border-gray-100/80 shadow-sm">
+      <div className="text-6xl mb-4 animate-bounce">🧭</div>
 
-      <h3 className="text-2xl font-semibold text-gray-800 mb-2">
+      <h3 className="text-2xl font-bold text-gray-800 mb-2">
         No Guides Found
       </h3>
 
-      <p className="text-gray-500 mb-6">{message}</p>
+      <p className="text-gray-500 mb-6 max-w-md mx-auto">{message}</p>
 
       <button
         type="button"
         onClick={onClear}
-        className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        className="group px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-500/30 transition-all duration-300 font-medium flex items-center gap-2 mx-auto hover:scale-105"
       >
+        <Filter className="h-4 w-4" />
         Clear Filters
+        <X className="h-4 w-4 group-hover:rotate-90 transition-transform duration-300" />
       </button>
     </div>
   );
@@ -693,10 +807,6 @@ const GuidePage: React.FC = () => {
     let guideData: Guide[] = [];
     let activityData: Activity[] = [];
 
-    /* ---------------------------
-         Guides
-      --------------------------- */
-
     try {
       const guidesResponse = await fetchJson<ApiResponse<unknown[]>>(
         `${API_BASE_URL}/api/v1/guides`,
@@ -723,12 +833,10 @@ const GuidePage: React.FC = () => {
         languages: g.languages && g.languages.length > 0 ? g.languages : ["Nepali", "English"],
         guideContactDetails: g.contactNumber,
         availability: "Available Daily",
+        experienceYears: g.experienceYears || 5,
+        certified: true,
       }));
     }
-
-    /* ---------------------------
-         Activities
-      --------------------------- */
 
     try {
       const activitiesResponse = await fetchJson<ApiResponse<unknown[]>>(
@@ -855,38 +963,58 @@ const GuidePage: React.FC = () => {
   ======================================================= */
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-50/50">
+      {/* Animated background decorations */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-blue-200/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-indigo-200/20 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-purple-100/10 rounded-full blur-3xl" />
+      </div>
+
       {/* =================================================
           HERO
       ================================================= */}
 
-      <section className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <section className="relative bg-gradient-to-br from-blue-600 via-indigo-700 to-purple-800 text-white overflow-hidden">
+        {/* Animated background shapes */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-white/5 rounded-full blur-3xl animate-pulse" />
+          <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+          <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-blue-400/10 rounded-full blur-2xl animate-float" />
+          <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-indigo-400/10 rounded-full blur-2xl animate-float delay-700" />
+        </div>
+
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 md:py-28">
           <div className="max-w-3xl">
-            <div className="text-blue-100 font-medium mb-3">
+            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md px-4 py-2 rounded-full text-sm font-medium mb-4 border border-white/10">
+              <Sparkles className="h-4 w-4 text-yellow-300" />
               Local Travel Experts
+              <span className="w-1 h-1 bg-white/30 rounded-full" />
+              <span className="text-blue-200">Nepal</span>
             </div>
 
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Find Your Perfect Guide
+            <h1 className="text-4xl md:text-6xl font-bold mb-4 leading-tight">
+              Find Your Perfect
+              <span className="block text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 to-orange-300">
+                Local Guide
+              </span>
             </h1>
 
-            <p className="text-blue-100 text-lg mb-8">
-              Connect with expert local guides and discover activities from
-              GojiTrip.
+            <p className="text-blue-100 text-lg md:text-xl mb-8 max-w-2xl leading-relaxed">
+              Connect with expert local guides and discover authentic activities from
+              GojiTrip. Explore Nepal like never before.
             </p>
 
             {/* SEARCH */}
-
-            <div className="bg-white rounded-xl p-4 shadow-xl">
-              <div className="flex flex-col md:flex-row gap-4">
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-3 shadow-2xl border border-white/10">
+              <div className="flex flex-col md:flex-row gap-3">
                 <div className="relative flex-1">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/60 h-5 w-5" />
 
                   <input
                     type="text"
                     placeholder="Search guides, activities, location, or specialty..."
-                    className="w-full pl-12 pr-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 bg-white"
+                    className="w-full pl-12 pr-4 py-3.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 focus:outline-none focus:ring-2 focus:ring-white/50 text-white placeholder-white/60 transition-all"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                   />
@@ -894,13 +1022,52 @@ const GuidePage: React.FC = () => {
 
                 <button
                   type="button"
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  className="group px-8 py-3.5 bg-white text-blue-600 rounded-xl hover:shadow-lg hover:shadow-white/20 transition-all duration-300 font-semibold flex items-center gap-2 justify-center hover:scale-105"
                 >
                   Find Guides
+                  <ChevronRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
             </div>
+
+            {/* Stats */}
+            <div className="flex flex-wrap gap-6 mt-8">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-xl">{guides.length}+</div>
+                  <div className="text-blue-200 text-sm">Expert Guides</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
+                  <Compass className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-xl">{activities.length}+</div>
+                  <div className="text-blue-200 text-sm">Activities</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
+                  <Star className="h-5 w-5 fill-yellow-300 text-yellow-300" />
+                </div>
+                <div>
+                  <div className="font-bold text-xl">4.9</div>
+                  <div className="text-blue-200 text-sm">Average Rating</div>
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+
+        {/* Decorative wave */}
+        <div className="absolute bottom-0 left-0 right-0">
+          <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
+            <path d="M0 60L60 55C120 50 240 40 360 45C480 50 600 70 720 75C840 80 960 70 1080 60C1200 50 1320 40 1380 35L1440 30V120H1380C1320 120 1200 120 1080 120H360C240 120 120 120 60 120H0V60Z" fill="#F9FAFB" />
+          </svg>
         </div>
       </section>
 
@@ -908,76 +1075,70 @@ const GuidePage: React.FC = () => {
           FILTERS
       ================================================= */}
 
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100">
+      <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-6 z-10">
+        <div className="bg-white rounded-2xl p-5 shadow-xl border border-gray-100/80 backdrop-blur-sm">
           <div className="flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
             <div className="flex flex-col sm:flex-row flex-wrap gap-3">
               {/* Specialty */}
-
               <select
                 value={specialtyFilter}
                 onChange={(e) => setSpecialtyFilter(e.target.value)}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50/50 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer hover:bg-gray-50"
               >
                 <option value="">All Specialties</option>
-                <option value="history">History</option>
-                <option value="food">Food</option>
-                <option value="adventure">Adventure</option>
-                <option value="art">Art</option>
-                <option value="architecture">Architecture</option>
-                <option value="hiking">Hiking</option>
-                <option value="photography">Photography</option>
-                <option value="wildlife">Wildlife</option>
-                <option value="culture">Culture</option>
+                <option value="history">🏛️ History</option>
+                <option value="food">🍜 Food</option>
+                <option value="adventure">🧗 Adventure</option>
+                <option value="art">🎨 Art</option>
+                <option value="architecture">🏗️ Architecture</option>
+                <option value="hiking">🥾 Hiking</option>
+                <option value="photography">📸 Photography</option>
+                <option value="wildlife">🐘 Wildlife</option>
+                <option value="culture">🎭 Culture</option>
               </select>
 
               {/* Language */}
-
               <select
                 value={languageFilter}
                 onChange={(e) => setLanguageFilter(e.target.value)}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50/50 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer hover:bg-gray-50"
               >
                 <option value="">All Languages</option>
-                <option value="english">English</option>
-                <option value="spanish">Spanish</option>
-                <option value="french">French</option>
-                <option value="maori">Maori</option>
-                <option value="nepali">Nepali</option>
-                <option value="italian">Italian</option>
+                <option value="english">🇬🇧 English</option>
+                <option value="spanish">🇪🇸 Spanish</option>
+                <option value="french">🇫🇷 French</option>
+                <option value="maori">🇳🇿 Maori</option>
+                <option value="nepali">🇳🇵 Nepali</option>
+                <option value="italian">🇮🇹 Italian</option>
               </select>
 
               {/* Price */}
-
               <select
                 value={priceFilter}
                 onChange={(e) => setPriceFilter(e.target.value)}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-4 py-2.5 border border-gray-200 rounded-xl bg-gray-50/50 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer hover:bg-gray-50"
               >
                 <option value="">All Prices</option>
-
-                <option value="budget">Budget - Under NPR 150</option>
-
-                <option value="standard">Standard - NPR 150 - 200</option>
-
-                <option value="premium">Premium - NPR 200+</option>
+                <option value="budget">💰 Budget - Under NPR 150</option>
+                <option value="standard">💰💰 Standard - NPR 150 - 200</option>
+                <option value="premium">💰💰💰 Premium - NPR 200+</option>
               </select>
 
               {/* Clear */}
-
               {hasFilters && (
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="px-4 py-2.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                  className="group px-4 py-2.5 text-sm font-medium text-red-600 border border-red-200 rounded-xl hover:bg-red-50 transition-all duration-300 flex items-center gap-2"
                 >
+                  <X className="h-4 w-4 group-hover:rotate-90 transition-transform duration-300" />
                   Clear Filters
                 </button>
               )}
             </div>
 
-            <div className="text-sm text-gray-600 whitespace-nowrap">
-              <span className="font-semibold text-gray-900">
+            <div className="text-sm text-gray-600 whitespace-nowrap bg-gray-50/80 px-4 py-2 rounded-xl border border-gray-100">
+              <span className="font-bold text-gray-900 text-base">
                 {filteredGuides.length}
               </span>{" "}
               {filteredGuides.length === 1 ? "guide" : "guides"} available
@@ -991,16 +1152,24 @@ const GuidePage: React.FC = () => {
       ================================================= */}
 
       {error && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-6">
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4">
+        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+          <div className="bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 text-red-700 rounded-2xl p-5 shadow-md">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <p>{error}</p>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <span className="text-xl">⚠️</span>
+                </div>
+                <p className="font-medium">{error}</p>
+              </div>
 
               <button
                 type="button"
                 onClick={fetchGuideAndActivityData}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                className="group px-5 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 text-white rounded-xl hover:shadow-lg hover:shadow-red-500/30 transition-all duration-300 font-medium flex items-center gap-2 hover:scale-105"
               >
+                <svg className="h-4 w-4 group-hover:rotate-180 transition-transform duration-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
                 Retry
               </button>
             </div>
@@ -1012,15 +1181,26 @@ const GuidePage: React.FC = () => {
           GUIDES
       ================================================= */}
 
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-        <div className="flex items-center justify-between mb-6">
+      <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 pb-16">
+        <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Local Guides</h2>
+            <h2 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+              <Compass className="h-8 w-8 text-blue-600" />
+              Local Guides
+            </h2>
 
-            <p className="text-gray-500 text-sm mt-1">
+            <p className="text-gray-500 text-sm mt-1 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
               Guides added and managed from the Admin Dashboard
             </p>
           </div>
+
+          {filteredGuides.length > 0 && (
+            <div className="hidden md:flex items-center gap-1 text-sm text-gray-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              {filteredGuides.length} guides available
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -1030,14 +1210,14 @@ const GuidePage: React.FC = () => {
             message={
               guides.length === 0
                 ? "No guides have been added from the Admin Dashboard yet."
-                : "Try adjusting your search or filters."
+                : "Try adjusting your search or filters to find the perfect guide."
             }
             onClear={clearFilters}
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredGuides.map((guide) => (
-              <GuideCard key={guide.id} guide={guide} />
+            {filteredGuides.map((guide, index) => (
+              <GuideCard key={guide.id} guide={guide} index={index} />
             ))}
           </div>
         )}
@@ -1048,25 +1228,29 @@ const GuidePage: React.FC = () => {
       ================================================= */}
 
       {!loading && filteredActivities.length > 0 && (
-        <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-          <div className="flex items-center justify-between mb-6">
+        <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+          <div className="flex items-center justify-between mb-8">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Activities</h2>
+              <h2 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+                <Sparkles className="h-8 w-8 text-purple-600" />
+                Activities
+              </h2>
 
-              <p className="text-gray-500 text-sm mt-1">
+              <p className="text-gray-500 text-sm mt-1 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
                 Activities added and managed from the Admin Dashboard
               </p>
             </div>
 
-            <span className="text-sm text-gray-600">
+            <span className="px-4 py-2 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl text-sm font-medium text-purple-700 border border-purple-100">
               {filteredActivities.length}{" "}
               {filteredActivities.length === 1 ? "activity" : "activities"}
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredActivities.map((activity) => (
-              <ActivityCard key={activity.id} activity={activity} />
+            {filteredActivities.map((activity, index) => (
+              <ActivityCard key={activity.id} activity={activity} index={index} />
             ))}
           </div>
         </section>
@@ -1075,4 +1259,4 @@ const GuidePage: React.FC = () => {
   );
 };
 
-export default GuidePage;
+export default GuidePage; 

@@ -6,7 +6,8 @@ import React from "react";
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
-import { MapPin, Search, Star, Navigation, Clock, X } from "lucide-react";
+import { MapPin, Search, Star, Navigation, Clock, X, ChevronRight } from "lucide-react";
+import RouteTimeline from "@/components/landing/RouteTimeline";
 
 /* ============================================================
    TYPES
@@ -195,6 +196,23 @@ const RoutePage = () => {
   const [durationFilter, setDurationFilter] = React.useState("");
 
   const [ratingFilter, setRatingFilter] = React.useState("");
+
+  const handleSelectRoutePreset = React.useCallback((source: string, destination: string) => {
+    const routeData = {
+      source: { name: source },
+      destination: { name: destination },
+      date: new Date().toISOString().split("T")[0],
+      travellers: 2,
+    };
+    sessionStorage.setItem("gojitrip_route_search", JSON.stringify(routeData));
+    window.dispatchEvent(
+      new CustomEvent("gojitrip:route-search", { detail: routeData })
+    );
+    const el = document.getElementById("complete-route-analysis");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
 
   /* ==========================================================
      FETCH ROUTES
@@ -489,19 +507,24 @@ const RoutePage = () => {
           HERO
       ===================================================== */}
 
-      <section className="relative bg-gradient-to-r from-blue-700 to-cyan-600">
+      <section className="relative bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-600">
         <div className="max-w-7xl mx-auto px-4 py-16 md:py-20 text-center">
-          <h1 className="text-3xl md:text-5xl font-bold text-white mb-3">
-            Plan Your Route
+          <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/20 text-white text-xs font-bold tracking-wider uppercase mb-4 backdrop-blur-md">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            🗺️ NEPAL HIGHWAY & ROUTE ANALYSIS
+          </span>
+
+          <h1 className="text-3xl md:text-5xl font-extrabold text-white mb-3 tracking-tight">
+            Explore & Plan Nepal Travel Routes
           </h1>
 
-          <p className="text-base md:text-lg text-white/90 mb-8">
-            Discover routes and famous places near your destination
+          <p className="text-base md:text-lg text-white/90 mb-8 max-w-2xl mx-auto">
+            Get step-by-step route breakdown, altitude changes, emergency stops, hotels & restaurants for your trip.
           </p>
 
           {/* SEARCH BOX */}
 
-          <div className="relative bg-white rounded-xl p-3 md:p-4 shadow-lg max-w-3xl mx-auto">
+          <div className="relative bg-white rounded-2xl p-3 md:p-4 shadow-2xl max-w-3xl mx-auto">
             <div className="flex flex-col md:flex-row gap-3 md:gap-4">
               <div className="relative flex-1">
                 <div className="relative">
@@ -512,8 +535,8 @@ const RoutePage = () => {
 
                   <input
                     type="text"
-                    placeholder="Search location e.g. Pokhara, Mustang..."
-                    className="w-full pl-11 pr-11 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm md:text-base"
+                    placeholder="Search location e.g. Pokhara, Mustang, Beni..."
+                    className="w-full pl-11 pr-11 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 text-sm md:text-base"
                     value={searchTerm}
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
@@ -590,14 +613,54 @@ const RoutePage = () => {
                     void searchLocations(searchTerm);
                   }
                 }}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap font-medium"
+                className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors whitespace-nowrap font-bold shadow-md"
               >
                 Search Location
               </button>
             </div>
           </div>
+
+          {/* POPULAR ROUTE PRESETS */}
+          <div className="mt-6 flex flex-wrap justify-center gap-2">
+            <span className="text-xs font-bold text-white/80 self-center mr-1">
+              ⚡ Popular Nepal Highways:
+            </span>
+            <button
+              type="button"
+              onClick={() => handleSelectRoutePreset("Kathmandu", "Muktinath")}
+              className="px-3.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-semibold transition-all backdrop-blur-sm shadow-sm"
+            >
+              🏔️ Kathmandu → Muktinath (375 km)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectRoutePreset("Kathmandu", "Pokhara")}
+              className="px-3.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-semibold transition-all backdrop-blur-sm shadow-sm"
+            >
+              🇳🇵 Kathmandu → Pokhara (200 km)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectRoutePreset("Pokhara", "Chitwan")}
+              className="px-3.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-semibold transition-all backdrop-blur-sm shadow-sm"
+            >
+              🦏 Pokhara → Chitwan (148 km)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSelectRoutePreset("Pokhara", "Muktinath")}
+              className="px-3.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 border border-white/20 text-white text-xs font-semibold transition-all backdrop-blur-sm shadow-sm"
+            >
+              🚜 Pokhara → Muktinath 4x4 (174 km)
+            </button>
+          </div>
         </div>
       </section>
+
+      {/* =====================================================
+          COMPLETE ROUTE ANALYSIS SECTION (SAME AS HOMEPAGE)
+      ===================================================== */}
+      <RouteTimeline />
 
       {/* =====================================================
           SELECTED LOCATION
@@ -988,9 +1051,16 @@ const RoutePage = () => {
 
                     <button
                       type="button"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm shadow-md hover:shadow-lg whitespace-nowrap"
+                      onClick={() => {
+                        const parts = item.name.split("→");
+                        const src = parts[0]?.trim() || item.location.split("→")[0]?.trim() || "Kathmandu";
+                        const dest = parts[1]?.trim() || item.location.split("→")[1]?.trim() || "Pokhara";
+                        handleSelectRoutePreset(src, dest);
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all text-xs shadow-md hover:shadow-lg whitespace-nowrap flex items-center gap-1 group"
                     >
-                      View Route →
+                      <span>Analyze Route</span>
+                      <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                     </button>
                   </div>
                 </div>
