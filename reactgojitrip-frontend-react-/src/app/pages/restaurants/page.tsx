@@ -8,6 +8,7 @@ import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
 import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
+import { InteractiveMap, MapMarkerItem } from "@/components/common/InteractiveMap";
 
 import { Search, Filter, Star, MapPin, Clock, Leaf, ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
 
@@ -346,72 +347,95 @@ const CompactRestaurantCard: React.FC<{
   onClick: () => void;
   onViewDetails?: () => void;
 }> = ({ restaurant, isSelected, onClick, onViewDetails }) => {
+  const dietaryList = Array.isArray(restaurant.dietaryOptions) && restaurant.dietaryOptions.length > 0
+    ? restaurant.dietaryOptions
+    : ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking"];
+
   return (
     <div
-      className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md ${
-        isSelected ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md" : "border-gray-200 hover:border-blue-300"
+      className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md group ${
+        isSelected ? "border-red-500 ring-2 ring-red-500/30 shadow-md" : "border-gray-200 hover:border-red-300"
       }`}
       onClick={() => {
         onClick();
         if (onViewDetails) onViewDetails();
       }}
     >
-      <div className="flex gap-3 p-3">
-        <div className="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-200">
+      <div className="flex flex-col sm:flex-row gap-3.5 p-3.5">
+        <div className="flex-shrink-0 w-full sm:w-32 h-32 rounded-xl overflow-hidden bg-gray-100 relative">
           <img
             src={restaurant.image || "/logo/gojitriplogo.jpg"}
             alt={restaurant.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             onError={(e) => {
               (e.target as HTMLImageElement).src = "/logo/gojitriplogo.jpg";
             }}
           />
+          {restaurant.cuisine[0] && (
+            <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-md text-[10px] font-bold text-white uppercase tracking-wider">
+              {restaurant.cuisine[0]}
+            </span>
+          )}
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-semibold text-gray-900 truncate">
-              {restaurant.name}
-            </h3>
-            <div className="flex items-center gap-0.5 flex-shrink-0">
-              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-              <span className="text-sm font-semibold text-gray-900">{restaurant.rating}</span>
+
+        <div className="flex-1 min-w-0 flex flex-col justify-between space-y-2">
+          <div>
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <h3 className="text-base font-extrabold text-slate-900 truncate group-hover:text-red-600 transition-colors">
+                {restaurant.name}
+              </h3>
+              <div className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full flex-shrink-0">
+                <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
+                <span className="text-xs font-extrabold text-amber-900">{restaurant.rating || 4.7}</span>
+                <span className="text-[10px] text-slate-500">({restaurant.reviews || 36})</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 text-slate-600 text-xs mb-2 flex-wrap">
+              <div className="flex items-center gap-1">
+                <MapPin className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                <span className="truncate font-medium">{restaurant.location}</span>
+              </div>
+              {restaurant.openingHours && (
+                <div className="flex items-center gap-1 text-slate-500">
+                  <Clock className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                  <span>{restaurant.openingHours}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Dietary & Cuisine Options */}
+            <div className="flex gap-1.5 flex-wrap">
+              {restaurant.cuisine.map((c) => (
+                <span key={c} className="px-2 py-0.5 bg-red-50 text-red-700 rounded-md text-[10px] font-bold border border-red-200/60">
+                  {c}
+                </span>
+              ))}
+              {dietaryList.slice(0, 2).map((diet, idx) => (
+                <span key={idx} className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-medium border border-slate-200/60">
+                  {diet}
+                </span>
+              ))}
             </div>
           </div>
-          <div className="flex items-center gap-1 text-gray-600 text-xs mb-1">
-            <MapPin className="h-3 w-3 text-gray-500 flex-shrink-0" />
-            <span className="truncate">{restaurant.location}</span>
-          </div>
-          <div className="flex items-center gap-1 text-gray-600 text-xs mb-1">
-            <Clock className="h-3 w-3 text-gray-500 flex-shrink-0" />
-            <span className="truncate">{restaurant.openingHours}</span>
-          </div>
-          <div className="flex gap-1 mb-2 flex-wrap">
-            {restaurant.cuisine.slice(0, 2).map((cuisine) => (
-              <span key={cuisine} className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px] font-medium">
-                {cuisine}
-              </span>
-            ))}
-            {restaurant.cuisine.length > 2 && (
-              <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-medium">
-                +{restaurant.cuisine.length - 2}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center justify-between">
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
             <div>
-              <span className="text-sm font-semibold text-gray-800">
-                {restaurant.priceRange}
+              <span className="text-sm font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
+                {restaurant.priceRange || "$$"}
               </span>
+              <span className="text-slate-500 text-xs ml-1.5">NRs 450 - 1,200 / meal</span>
             </div>
+
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 if (onViewDetails) onViewDetails();
               }}
-              className="px-3 py-1 rounded-lg text-xs font-bold transition-colors bg-red-600 hover:bg-red-700 text-white shadow-sm"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-red-600 hover:bg-red-700 text-white shadow-sm hover:scale-105 active:scale-95"
             >
-              View Details
+              View Details →
             </button>
           </div>
         </div>
@@ -693,11 +717,24 @@ const RestaurantsPage: React.FC = () => {
           className={`${isMapExpanded ? "h-1/2" : "w-1/2"} bg-gray-100 p-3`}
           style={{ height: isMapExpanded ? "50%" : "calc(100vh - 120px)" }}
         >
-          <MapComponent
-            restaurants={filteredRestaurants}
-            selectedRestaurantId={selectedRestaurantId}
-            onMarkerClick={handleMarkerClick}
-            center={{ lat: 27.7172, lng: 85.324 }}
+          <InteractiveMap
+            items={filteredRestaurants.map((r) => ({
+              id: r.id,
+              name: r.name,
+              location: r.location,
+              priceTag: r.priceRange || "$$",
+              rating: r.rating || 4.7,
+              image: r.image,
+              lat: r.lat,
+              lng: r.lng,
+              category: "restaurant",
+            }))}
+            selectedId={selectedRestaurantId}
+            onMarkerClick={(id) => {
+              setSelectedRestaurantId(id);
+              handleMarkerClick(id);
+            }}
+            center={{ lat: 28.2096, lng: 83.9856 }}
           />
         </div>
       </div>

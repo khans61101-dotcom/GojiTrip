@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
 import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
+import { InteractiveMap, MapMarkerItem } from "@/components/common/InteractiveMap";
 import {
   Search,
   Filter,
@@ -480,73 +481,74 @@ const CompactTransportCard: React.FC<{
 
   return (
     <div
-      className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md ${
-        isSelected ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md" : "border-gray-200 hover:border-blue-300"
+      className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md group ${
+        isSelected ? "border-emerald-500 ring-2 ring-emerald-500/30 shadow-md" : "border-gray-200 hover:border-emerald-300"
       }`}
       onClick={() => {
         onClick();
         if (onViewDetails) onViewDetails();
       }}
     >
-      <div className="flex gap-3 p-3">
-        <div className="flex-shrink-0 w-24 h-24 rounded-lg overflow-hidden bg-gray-200">
+      <div className="flex flex-col sm:flex-row gap-3.5 p-3.5">
+        <div className="flex-shrink-0 w-full sm:w-32 h-32 rounded-xl overflow-hidden bg-gray-100 relative">
           <img
             src={transport.image || "/logo/gojitriplogo.jpg"}
             alt={transport.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             onError={(e) => {
               (e.target as HTMLImageElement).src = "/logo/gojitriplogo.jpg";
             }}
           />
+          <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-md text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+            <TypeIcon className="h-3 w-3 text-emerald-400" />
+            {transport.type.toUpperCase()}
+          </span>
         </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-semibold text-gray-900 truncate flex items-center gap-1">
-              <TypeIcon className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-              {transport.name}
-            </h3>
-            <span className="text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full flex-shrink-0">
-              {transport.type.toUpperCase()}
-            </span>
+
+        <div className="flex-1 min-w-0 flex flex-col justify-between space-y-2">
+          <div>
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <h3 className="text-base font-extrabold text-slate-900 truncate group-hover:text-emerald-600 transition-colors flex items-center gap-1.5">
+                <TypeIcon className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                {transport.name}
+              </h3>
+              <div className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full flex-shrink-0">
+                <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
+                <span className="text-xs font-extrabold text-amber-900">{transport.rating || 4.8}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 text-slate-600 text-xs mb-2 flex-wrap">
+              <div className="flex items-center gap-1 font-bold text-slate-800">
+                <MapPin className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+                <span>{transport.from} ➔ {transport.to}</span>
+              </div>
+              <div className="flex items-center gap-1 text-slate-500">
+                <Clock className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                <span>Dept: {transport.departureTime}</span>
+              </div>
+            </div>
+
+            {/* Amenities pills */}
+            <div className="flex gap-1.5 flex-wrap">
+              {transport.amenities.slice(0, 3).map((amenity, index) => (
+                <span key={index} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md text-[10px] font-bold border border-emerald-200/60">
+                  {amenity}
+                </span>
+              ))}
+              {transport.amenities.length > 3 && (
+                <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-medium">
+                  +{transport.amenities.length - 3} more
+                </span>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-1 text-gray-600 text-xs mb-1">
-            <MapPin className="h-3 w-3 text-gray-500 flex-shrink-0" />
-            <span className="truncate">{transport.from} → {transport.to}</span>
-          </div>
-          <div className="flex items-center gap-1 text-gray-600 text-xs mb-1">
-            <Clock className="h-3 w-3 text-gray-500 flex-shrink-0" />
-            <span className="truncate">{transport.departureTime}</span>
-          </div>
-          <div className="flex gap-1 mb-2 flex-wrap">
-            {transport.amenities.slice(0, 2).map((amenity, index) => (
-              <span key={index} className="px-1.5 py-0.5 bg-green-50 text-green-700 rounded text-[10px] font-medium">
-                {amenity}
-              </span>
-            ))}
-            {transport.amenities.length > 2 && (
-              <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-medium">
-                +{transport.amenities.length - 2}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center justify-between">
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
             <div>
-              <span className="text-sm font-bold text-gray-900">
+              <span className="text-base font-extrabold text-slate-900">
                 {transport.currency} {transport.price.toLocaleString()}
               </span>
-              <span className="text-xs text-gray-500 ml-1">/trip</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onViewDetails) onViewDetails();
-                }}
-                className="px-2.5 py-1 rounded-lg text-xs font-bold transition-colors bg-slate-100 hover:bg-slate-200 text-slate-800"
-              >
-                Details
-              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -841,11 +843,24 @@ const TransportPage: React.FC = () => {
           className={`${isMapExpanded ? "h-1/2" : "w-1/2"} bg-gray-100 p-3`}
           style={{ height: isMapExpanded ? "50%" : "calc(100vh - 120px)" }}
         >
-          <MapComponent
-            transports={sortedTransports}
-            selectedTransportId={selectedTransportId}
-            onMarkerClick={handleMarkerClick}
-            center={{ lat: 27.7172, lng: 85.324 }}
+          <InteractiveMap
+            items={sortedTransports.map((t) => ({
+              id: t.id,
+              name: t.name,
+              location: `${t.from} → ${t.to}`,
+              priceTag: `${t.currency} ${t.price}`,
+              rating: t.rating || 4.8,
+              image: t.image,
+              lat: t.lat,
+              lng: t.lng,
+              category: "transport",
+            }))}
+            selectedId={selectedTransportId}
+            onMarkerClick={(id) => {
+              setSelectedTransportId(id);
+              handleMarkerClick(id);
+            }}
+            center={{ lat: 28.2096, lng: 83.9856 }}
           />
         </div>
       </div>
