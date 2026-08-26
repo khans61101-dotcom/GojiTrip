@@ -1,8 +1,24 @@
+// FuelStationPage.tsx - With Split-Screen Layout (Left Cards List + Right Interactive Map)
 "use client";
 
-import "@/styles/pages/fuel-station/fuel-station.css";
-import React from "react";
-import { SafeImage } from "@/components/common/SafeImage";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Search,
+  Filter,
+  Star,
+  MapPin,
+  Clock,
+  Fuel,
+  Zap,
+  ArrowLeft,
+  Maximize2,
+  Minimize2,
+  Phone,
+  ShieldCheck,
+} from "lucide-react";
+import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
+import { InteractiveMap, MapMarkerItem } from "@/components/common/InteractiveMap";
 
 interface FuelStation {
   id: string;
@@ -10,439 +26,434 @@ interface FuelStation {
   description: string;
   image: string;
   rating: number;
+  reviews?: number;
   location: string;
   price: number;
+  currency?: string;
   fuelTypes: string[];
   amenities: string[];
   hours: string;
+  contact?: string;
+  lat?: number;
+  lng?: number;
 }
 
-const FuelStationPage = () => {
-  const [loading, setLoading] = React.useState(true);
-  const [stations, setStations] = React.useState<FuelStation[]>([]);
-  const [searchTerm, setSearchTerm] = React.useState("");
+const mockStations: FuelStation[] = [
+  {
+    id: "1",
+    name: "Nepal Oil Corporation Highway Hub",
+    description: "Official NOC 24/7 highway fuel station featuring Petrol, Diesel, high-speed EV chargers, and traveler rest amenities.",
+    image: "https://images.unsplash.com/photo-1545454675-3531b543be5d?auto=format&fit=crop&w=800&q=80",
+    rating: 4.8,
+    reviews: 54,
+    location: "Prithvi Highway, Pokhara",
+    price: 175,
+    currency: "NRs",
+    fuelTypes: ["Petrol (Euro 6)", "Diesel", "60kW DC Fast EV Charger"],
+    amenities: ["24/7 Restrooms", "ATM", "Air & Water Pump", "Highway Mart", "Cafe"],
+    hours: "24/7 Open",
+    contact: "+977 61 520000",
+    lat: 28.2096,
+    lng: 83.9856,
+  },
+  {
+    id: "2",
+    name: "Himalayan Eco EV Charging Park",
+    description: "Ultra-fast solar-powered electric vehicle charging station with comfortable lounge, Wi-Fi, and organic Nepalese coffee.",
+    image: "https://images.unsplash.com/photo-1563720223185-11003d516935?auto=format&fit=crop&w=800&q=80",
+    rating: 4.9,
+    reviews: 42,
+    location: "Lakeside Center, Pokhara",
+    price: 15,
+    currency: "NRs",
+    fuelTypes: ["120kW Supercharger", "Type 2 AC Charger", "CCS2 Fast EV Plug"],
+    amenities: ["Free High-Speed Wi-Fi", "Coffee Lounge", "Clean Washrooms", "EV Cable Rental"],
+    hours: "06:00 AM - 11:00 PM",
+    contact: "+977 61 460011",
+    lat: 28.2120,
+    lng: 83.9580,
+  },
+  {
+    id: "3",
+    name: "Kathmandu-Pokhara Highway Fuel Station",
+    description: "Major highway pitstop with heavy vehicle diesel pumps, passenger car petrol bays, and vehicle wash facility.",
+    image: "https://images.unsplash.com/photo-1527018601619-a508a2be00ed?auto=format&fit=crop&w=800&q=80",
+    rating: 4.6,
+    reviews: 31,
+    location: "Mugling Junction, Highway Corridor",
+    price: 175,
+    currency: "NRs",
+    fuelTypes: ["Petrol", "Diesel", "LPG Cylinder Refill"],
+    amenities: ["Truck Parking", "24/7 Restaurant", "Mechanic Repair Bay", "Clean Restrooms"],
+    hours: "24/7 Open",
+    contact: "+977 56 410022",
+    lat: 27.8540,
+    lng: 84.5550,
+  },
+  {
+    id: "4",
+    name: "Annapurna Valley Energy & Fuel Depot",
+    description: "Scenic valley fuel stop providing high altitude grade fuel, emergency towing assistance, and traveler refreshments.",
+    image: "https://images.unsplash.com/photo-1578844251758-2f71da64c96f?auto=format&fit=crop&w=800&q=80",
+    rating: 4.7,
+    reviews: 28,
+    location: "Beni Highway Road, Mustang Gateway",
+    price: 178,
+    currency: "NRs",
+    fuelTypes: ["Winterized Diesel", "High Octane Petrol"],
+    amenities: ["Emergency Towing", "Hot Shower Restrooms", "Tire Inflation", "Grocery Shop"],
+    hours: "05:00 AM - 09:00 PM",
+    contact: "+977 69 520111",
+    lat: 28.3490,
+    lng: 83.5650,
+  },
+  {
+    id: "5",
+    name: "Smart Green EV Charge Hub - Kathmandu",
+    description: "State-of-the-art dual port DC fast charger network hub for electric cars, SUVs, and passenger buses.",
+    image: "https://images.unsplash.com/photo-1558441719-6705c67073b7?auto=format&fit=crop&w=800&q=80",
+    rating: 4.9,
+    reviews: 65,
+    location: "Kalanki Highway Ring Road, Kathmandu",
+    price: 12,
+    currency: "NRs",
+    fuelTypes: ["150kW Ultra Fast DC Charger", "GB/T EV Plug", "CCS2 Plug"],
+    amenities: ["24/7 Security", "Waiting Lounge", "Tea & Snacks Bar", "Free Parking"],
+    hours: "24/7 Open",
+    contact: "+977 1 4270088",
+    lat: 27.6930,
+    lng: 85.2810,
+  },
+];
 
-  const [fuelTypeFilter, setFuelTypeFilter] = React.useState("");
-  const [amenityFilter, setAmenityFilter] = React.useState("");
+export default function FuelStationPage() {
+  const navigate = useNavigate();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [stations, setStations] = useState<FuelStation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedStationId, setSelectedStationId] = useState<string | null>(null);
+  const [fuelTypeFilter, setFuelTypeFilter] = useState("all");
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
-  // =====================================================
-  // MOCK DATA
-  // IMPORTANT: Images are direct URLs, not Markdown links
-  // =====================================================
+  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(null);
+  const [showYelpModal, setShowYelpModal] = useState(false);
 
-  const mockStations: FuelStation[] = [
-    {
-      id: "1",
-      name: "Highway Fuel Stop",
-      description:
-        "Full-service fuel station with convenience store and essential travel facilities.",
-      image: "https://picsum.photos/seed/fuel1/400/300",
-      rating: 4.5,
-      location: "Highway 101",
-      price: 3.45,
-      fuelTypes: ["Gasoline", "Diesel", "Premium"],
-      amenities: ["Store", "Restrooms", "Car Wash"],
-      hours: "24/7",
-    },
-    {
-      id: "2",
-      name: "Green Energy Station",
-      description:
-        "Eco-friendly station with electric charging, biofuel and modern traveler facilities.",
-      image: "https://picsum.photos/seed/fuel2/400/300",
-      rating: 4.7,
-      location: "Downtown",
-      price: 3.89,
-      fuelTypes: ["Electric", "Biofuel", "Premium"],
-      amenities: ["Charging", "Cafe", "WiFi"],
-      hours: "6 AM - 11 PM",
-    },
-    {
-      id: "3",
-      name: "Mountain Highway Fuel",
-      description:
-        "Convenient fuel stop for travelers heading toward mountain destinations.",
-      image: "https://picsum.photos/seed/fuel3/400/300",
-      rating: 4.6,
-      location: "Mountain Highway",
-      price: 3.59,
-      fuelTypes: ["Gasoline", "Diesel"],
-      amenities: ["Store", "Restrooms"],
-      hours: "24/7",
-    },
-    {
-      id: "4",
-      name: "City Express Fuel",
-      description:
-        "Modern fuel station located near the city center with quick service.",
-      image: "https://picsum.photos/seed/fuel4/400/300",
-      rating: 4.4,
-      location: "City Center",
-      price: 3.72,
-      fuelTypes: ["Gasoline", "Premium"],
-      amenities: ["Store", "Cafe", "WiFi"],
-      hours: "5 AM - 12 AM",
-    },
-    {
-      id: "5",
-      name: "Eco Charge Hub",
-      description:
-        "Electric vehicle charging hub with comfortable waiting and refreshment facilities.",
-      image: "https://picsum.photos/seed/fuel5/400/300",
-      rating: 4.8,
-      location: "Green Valley",
-      price: 2.95,
-      fuelTypes: ["Electric", "Biofuel"],
-      amenities: ["Charging", "Cafe", "WiFi"],
-      hours: "24/7",
-    },
-    {
-      id: "6",
-      name: "Travelers Fuel Point",
-      description:
-        "Large roadside fuel station with restrooms, food and vehicle services.",
-      image: "https://picsum.photos/seed/fuel6/400/300",
-      rating: 4.6,
-      location: "National Highway",
-      price: 3.49,
-      fuelTypes: ["Gasoline", "Diesel", "Premium"],
-      amenities: ["Store", "Restrooms", "Car Wash", "Cafe"],
-      hours: "24/7",
-    },
-  ];
+  const stationListRef = useRef<HTMLDivElement>(null);
 
-  // =====================================================
-  // LOAD DATA
-  // =====================================================
-
-  React.useEffect(() => {
+  useEffect(() => {
     setLoading(true);
-
     const timer = setTimeout(() => {
       setStations(mockStations);
+      if (mockStations.length > 0) {
+        setSelectedStationId(mockStations[0].id);
+      }
       setLoading(false);
-    }, 700);
+    }, 400);
 
     return () => clearTimeout(timer);
   }, []);
 
-  // =====================================================
-  // FILTER + SEARCH
-  // =====================================================
+  const handleOpenYelpDetail = (station: FuelStation) => {
+    setYelpDetailData({
+      id: station.id,
+      name: station.name,
+      category: "Fuel & EV Charging Station",
+      rating: station.rating || 4.7,
+      reviewCount: station.reviews || 38,
+      priceLevel: "$$",
+      address: station.location,
+      location: station.location,
+      phone: station.contact || "+977 61 520000",
+      whatsapp: "+9779801234567",
+      image: station.image,
+      galleryImages: [station.image],
+      description: station.description || `${station.name} offers high quality fuel, fast EV charging stations, 24/7 restrooms, and refreshment options along the Nepal travel corridors.`,
+      amenities: station.amenities || ["24/7 Restrooms", "Air & Water Pump", "ATM", "Highway Mart", "EV Fast Charging"],
+      hours: station.hours ? [{ day: "Operating Schedule", time: station.hours }] : undefined,
+      priceTag: `${station.currency || "NRs"} ${station.price} / L`,
+      entityType: "hotel",
+      offerings: station.fuelTypes.map((ft) => ({
+        title: ft,
+        price: ft.toLowerCase().includes("ev") || ft.toLowerCase().includes("charger") ? "NRs 12 - 15 / kWh" : `NRs ${station.price} / Litre`,
+        desc: `Verified ${ft} dispensing unit with automatic digital meter & certified purity.`,
+      })),
+    });
+    setShowYelpModal(true);
+  };
 
-  const filteredStations = React.useMemo(() => {
+  const filteredStations = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
 
     return stations.filter((item) => {
-      // Search
       const matchesSearch =
         !query ||
-        (item.name || "").toLowerCase().includes(query) ||
-        (item.location || "").toLowerCase().includes(query) ||
-        (item.description || "").toLowerCase().includes(query) ||
-        (item.fuelTypes || []).some((fuel) =>
-          fuel.toLowerCase().includes(query),
-        ) ||
-        (item.amenities || []).some((amenity) =>
-          amenity.toLowerCase().includes(query),
-        );
+        item.name.toLowerCase().includes(query) ||
+        item.location.toLowerCase().includes(query) ||
+        item.fuelTypes.some((f) => f.toLowerCase().includes(query)) ||
+        item.amenities.some((a) => a.toLowerCase().includes(query));
 
-      // Fuel type
-      const matchesFuelType =
-        !fuelTypeFilter ||
-        item.fuelTypes.some(
-          (fuel) => fuel.toLowerCase() === fuelTypeFilter.toLowerCase(),
-        );
+      const matchesType =
+        fuelTypeFilter === "all" ||
+        (fuelTypeFilter === "ev" && item.fuelTypes.some((f) => f.toLowerCase().includes("ev") || f.toLowerCase().includes("charger"))) ||
+        (fuelTypeFilter === "petrol" && item.fuelTypes.some((f) => f.toLowerCase().includes("petrol") || f.toLowerCase().includes("gasoline"))) ||
+        (fuelTypeFilter === "diesel" && item.fuelTypes.some((f) => f.toLowerCase().includes("diesel")));
 
-      // Amenity
-      const matchesAmenity =
-        !amenityFilter ||
-        item.amenities.some(
-          (amenity) => amenity.toLowerCase() === amenityFilter.toLowerCase(),
-        );
-
-      return matchesSearch && matchesFuelType && matchesAmenity;
+      return matchesSearch && matchesType;
     });
-  }, [stations, searchTerm, fuelTypeFilter, amenityFilter]);
+  }, [stations, searchTerm, fuelTypeFilter]);
 
-  // =====================================================
-  // CLEAR FILTERS
-  // =====================================================
-
-  const clearFilters = () => {
-    setSearchTerm("");
-    setFuelTypeFilter("");
-    setAmenityFilter("");
+  const handleMarkerClick = (stationId: string) => {
+    setSelectedStationId(stationId);
+    if (stationListRef.current) {
+      const cards = stationListRef.current.querySelectorAll("[data-station-id]");
+      cards.forEach((card) => {
+        if (card.getAttribute("data-station-id") === stationId) {
+          card.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      });
+    }
   };
 
-  // =====================================================
-  // LOADING SKELETON
-  // =====================================================
-
-  const LoadingSkeleton = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {[1, 2, 3, 4, 5, 6].map((item) => (
-        <div
-          key={item}
-          className="bg-white rounded-xl shadow-sm overflow-hidden animate-pulse"
-        >
-          <div className="h-48 bg-gray-200" />
-
-          <div className="p-5 space-y-3">
-            <div className="h-6 bg-gray-200 rounded w-3/4" />
-            <div className="h-4 bg-gray-200 rounded w-1/3" />
-            <div className="h-4 bg-gray-200 rounded w-full" />
-            <div className="h-4 bg-gray-200 rounded w-5/6" />
-
-            <div className="flex gap-2">
-              <div className="h-6 bg-gray-200 rounded-full w-16" />
-              <div className="h-6 bg-gray-200 rounded-full w-20" />
-            </div>
-
-            <div className="flex justify-between pt-3">
-              <div className="h-7 bg-gray-200 rounded w-24" />
-              <div className="h-9 bg-gray-200 rounded w-28" />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  // =====================================================
-  // PAGE
-  // =====================================================
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* =================================================
-          HERO SECTION
-      ================================================= */}
+    <div className="h-screen flex flex-col bg-gray-50 overflow-hidden font-sans">
+      {/* Header Bar */}
+      <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white flex-shrink-0 shadow-lg z-30">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 gap-3">
+            <button
+              onClick={() => navigate(-1)}
+              className="flex items-center gap-2 px-3 py-2 bg-white/20 backdrop-blur-sm hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all hover:scale-105 active:scale-95 group flex-shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+              <span className="hidden sm:inline text-sm">Back</span>
+            </button>
 
-      <section className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-          <div className="max-w-3xl">
-            <p className="text-blue-100 text-sm font-semibold uppercase tracking-wide mb-3">
-              Road Trip Essentials
-            </p>
-
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              Fuel Stations
-            </h1>
-
-            <p className="text-blue-100 text-lg mb-8">
-              Find fuel stations and charging points along your route.
-            </p>
-
-            {/* Search */}
-            <div className="bg-white rounded-xl p-4 shadow-xl">
-              <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 max-w-2xl mx-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <input
                   type="text"
-                  placeholder="Search stations by name or location..."
-                  className="flex-1 px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 bg-white"
+                  placeholder="Search fuel stations & EV chargers by name, location, or fuel type..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-white/95 text-gray-900 placeholder-gray-500 border-0 rounded-xl focus:ring-2 focus:ring-white/50 outline-none transition-all shadow-sm text-sm"
                 />
-
-                <button
-                  type="button"
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Find Stations
-                </button>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {/* =================================================
-          FILTERS
-      ================================================= */}
-
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-100">
-          <div className="flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
-            <div className="flex flex-col sm:flex-row flex-wrap gap-3">
-              {/* Fuel Type */}
-              <select
-                value={fuelTypeFilter}
-                onChange={(e) => setFuelTypeFilter(e.target.value)}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-sm font-medium ${
+                  showFilters ? "bg-white text-blue-600" : "bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white border border-white/30"
+                }`}
               >
-                <option value="">All Fuel Types</option>
-                <option value="gasoline">Gasoline</option>
-                <option value="diesel">Diesel</option>
-                <option value="electric">Electric</option>
-                <option value="premium">Premium</option>
-                <option value="biofuel">Biofuel</option>
-              </select>
+                <Filter className="h-4 w-4" />
+                <span className="hidden sm:inline">Filter</span>
+              </button>
 
-              {/* Amenities */}
-              <select
-                value={amenityFilter}
-                onChange={(e) => setAmenityFilter(e.target.value)}
-                className="px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              <button
+                onClick={() => setIsMapExpanded(!isMapExpanded)}
+                className="flex items-center gap-2 px-3 py-2 bg-white/20 backdrop-blur-sm hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all hover:scale-105 text-sm"
               >
-                <option value="">All Amenities</option>
-                <option value="store">Store</option>
-                <option value="restrooms">Restrooms</option>
-                <option value="car wash">Car Wash</option>
-                <option value="charging">Charging</option>
-                <option value="cafe">Cafe</option>
-                <option value="wifi">WiFi</option>
-              </select>
-
-              {/* Clear */}
-              {(searchTerm || fuelTypeFilter || amenityFilter) && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="px-4 py-2.5 text-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-                >
-                  Clear Filters
-                </button>
-              )}
-            </div>
-
-            <div className="text-sm text-gray-600 whitespace-nowrap">
-              <span className="font-semibold text-gray-900">
-                {filteredStations.length}
-              </span>{" "}
-              {filteredStations.length === 1
-                ? "station found"
-                : "stations found"}
+                {isMapExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                <span className="hidden sm:inline">{isMapExpanded ? "Split View" : "Expand Map"}</span>
+              </button>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* =================================================
-          STATIONS GRID
-      ================================================= */}
-
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-        {loading ? (
-          <LoadingSkeleton />
-        ) : filteredStations.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-sm text-center py-16 px-6">
-            <div className="text-6xl mb-4">⛽</div>
-
-            <h3 className="text-2xl font-semibold text-gray-800 mb-2">
-              No Fuel Stations Found
-            </h3>
-
-            <p className="text-gray-500 mb-6">
-              Try adjusting your search or filters to find stations.
-            </p>
-
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Clear Filters
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredStations.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-lg transition-shadow duration-300 border border-gray-100"
+          {/* Filter Pills */}
+          <div className="pb-3 flex gap-2 flex-wrap border-t border-white/10 pt-2.5">
+            {[
+              { id: "all", label: "All Stations" },
+              { id: "petrol", label: "⛽ Petrol" },
+              { id: "diesel", label: "🚛 Diesel" },
+              { id: "ev", label: "⚡ EV Charging" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setFuelTypeFilter(tab.id)}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                  fuelTypeFilter === tab.id
+                    ? "bg-white text-blue-700 shadow-md scale-105"
+                    : "bg-white/15 text-white hover:bg-white/25"
+                }`}
               >
-                {/* Image */}
-                <div className="relative w-full h-52 bg-gray-100">
-                  <SafeImage
-                    src={item.image}
-                    alt={item.name || "Fuel station"}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  />
-
-                  {/* Rating */}
-                  <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm">
-                    <span className="flex items-center gap-1 text-yellow-500 font-semibold text-sm">
-                      ⭐ {item.rating}
-                    </span>
-                  </div>
-
-                  {/* Open Badge */}
-                  <div className="absolute bottom-3 left-3 bg-green-600 text-white px-3 py-1 rounded-full text-xs font-semibold">
-                    Open {item.hours}
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className="p-5">
-                  <div className="flex justify-between items-start gap-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">
-                      {item.name}
-                    </h3>
-                  </div>
-
-                  {/* Location */}
-                  <p className="text-gray-600 text-sm mb-3 flex items-center gap-1">
-                    <span>📍</span>
-                    {item.location}
-                  </p>
-
-                  {/* Description */}
-                  <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                    {item.description}
-                  </p>
-
-                  {/* Fuel Types */}
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {item.fuelTypes.slice(0, 3).map((fuel) => (
-                      <span
-                        key={`${item.id}-${fuel}`}
-                        className="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full"
-                      >
-                        {fuel}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Amenities */}
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {item.amenities.slice(0, 3).map((amenity) => (
-                      <span
-                        key={`${item.id}-${amenity}`}
-                        className="text-xs bg-green-50 text-green-700 px-2.5 py-1 rounded-full"
-                      >
-                        {amenity}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Bottom */}
-                  <div className="flex justify-between items-center pt-4 border-t border-gray-100">
-                    <div>
-                      <span className="text-xl font-bold text-blue-600">
-                        ${item.price}
-                      </span>
-
-                      <span className="text-gray-500 text-sm">/gal</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                    >
-                      Directions
-                    </button>
-                  </div>
-                </div>
-              </div>
+                {tab.label}
+              </button>
             ))}
           </div>
-        )}
-      </section>
+        </div>
+      </div>
+
+      {/* Main Split Layout */}
+      <div className={`flex-1 flex transition-all duration-300 ${isMapExpanded ? "flex-col-reverse" : "flex-row"}`}>
+        {/* Left Listing Column */}
+        <div
+          className={`${isMapExpanded ? "h-1/2" : "w-1/2"} overflow-y-auto bg-gray-50 border-r border-gray-200`}
+          style={{ height: isMapExpanded ? "50%" : "calc(100vh - 125px)" }}
+          ref={stationListRef}
+        >
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                {loading ? "Loading..." : `${filteredStations.length} Fuel & EV Stations Found`}
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-36 bg-gray-200 rounded-2xl animate-pulse" />
+                ))}
+              </div>
+            ) : filteredStations.length === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center border border-slate-200">
+                <Fuel className="h-10 w-10 text-slate-400 mx-auto mb-2" />
+                <h3 className="font-bold text-slate-800 text-sm">No Stations Found</h3>
+                <p className="text-xs text-slate-500 mt-1">Try clearing your filters or changing search query.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredStations.map((station) => {
+                  const isSelected = selectedStationId === station.id;
+                  const isEV = station.fuelTypes.some((f) => f.toLowerCase().includes("ev") || f.toLowerCase().includes("charger"));
+
+                  return (
+                    <div
+                      key={station.id}
+                      data-station-id={station.id}
+                      className={`bg-white rounded-2xl border transition-all cursor-pointer hover:shadow-md group ${
+                        isSelected ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md" : "border-gray-200 hover:border-blue-300"
+                      }`}
+                      onClick={() => {
+                        setSelectedStationId(station.id);
+                        handleMarkerClick(station.id);
+                        handleOpenYelpDetail(station);
+                      }}
+                    >
+                      <div className="flex flex-col sm:flex-row gap-3.5 p-3.5">
+                        <div className="flex-shrink-0 w-full sm:w-32 h-32 rounded-xl overflow-hidden bg-gray-100 relative">
+                          <img
+                            src={station.image}
+                            alt={station.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "/logo/gojitriplogo.jpg";
+                            }}
+                          />
+                          <span className={`absolute top-2 left-2 px-2 py-0.5 backdrop-blur-md rounded-md text-[10px] font-bold text-white uppercase tracking-wider flex items-center gap-1 ${isEV ? "bg-emerald-600/90" : "bg-blue-600/90"}`}>
+                            {isEV ? <Zap className="h-3 w-3" /> : <Fuel className="h-3 w-3" />}
+                            {isEV ? "EV STATION" : "FUEL STATION"}
+                          </span>
+                        </div>
+
+                        <div className="flex-1 min-w-0 flex flex-col justify-between space-y-2">
+                          <div>
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <h3 className="text-base font-extrabold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
+                                {station.name}
+                              </h3>
+                              <div className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full flex-shrink-0">
+                                <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
+                                <span className="text-xs font-extrabold text-amber-900">{station.rating}</span>
+                                <span className="text-[10px] text-slate-500">({station.reviews || 38})</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 text-slate-600 text-xs mb-2 flex-wrap">
+                              <div className="flex items-center gap-1 font-medium">
+                                <MapPin className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                                <span className="truncate">{station.location}</span>
+                              </div>
+                              <div className="flex items-center gap-1 text-slate-500">
+                                <Clock className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                                <span>{station.hours}</span>
+                              </div>
+                            </div>
+
+                            {/* Fuel Types Badges */}
+                            <div className="flex gap-1.5 flex-wrap mb-1">
+                              {station.fuelTypes.map((type, idx) => (
+                                <span key={idx} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-md text-[10px] font-bold border border-blue-200/60">
+                                  {type}
+                                </span>
+                              ))}
+                            </div>
+
+                            {/* Amenities List */}
+                            <div className="flex gap-1 flex-wrap">
+                              {station.amenities.slice(0, 3).map((amenity, idx) => (
+                                <span key={idx} className="px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
+                                  {amenity}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                            <div>
+                              <span className="text-base font-extrabold text-slate-900">
+                                {station.currency || "NRs"} {station.price}
+                              </span>
+                              <span className="text-slate-500 text-xs ml-1">{isEV ? "/ kWh" : "/ Litre"}</span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenYelpDetail(station);
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:scale-105 active:scale-95"
+                            >
+                              View Details →
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right Map Column */}
+        <div
+          className={`${isMapExpanded ? "h-1/2" : "w-1/2"} bg-gray-100 p-3`}
+          style={{ height: isMapExpanded ? "50%" : "calc(100vh - 125px)" }}
+        >
+          <InteractiveMap
+            items={filteredStations.map((s) => ({
+              id: s.id,
+              name: s.name,
+              location: s.location,
+              priceTag: `${s.currency || "NRs"} ${s.price}`,
+              rating: s.rating,
+              image: s.image,
+              lat: s.lat,
+              lng: s.lng,
+              category: "place",
+            }))}
+            selectedId={selectedStationId}
+            onMarkerClick={(id) => {
+              setSelectedStationId(id);
+              handleMarkerClick(id);
+            }}
+            center={{ lat: 28.2096, lng: 83.9856 }}
+          />
+        </div>
+      </div>
+
+      {/* Yelp Business Detail Modal */}
+      <YelpDetailModal
+        isOpen={showYelpModal}
+        onClose={() => setShowYelpModal(false)}
+        data={yelpDetailData}
+      />
     </div>
   );
-};
-
-export default FuelStationPage;
+}
