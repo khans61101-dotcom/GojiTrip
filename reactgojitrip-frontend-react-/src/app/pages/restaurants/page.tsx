@@ -35,6 +35,7 @@ interface Restaurant {
   name: string;
   description: string;
   image: string;
+  photos: string[];
   rating: number;
   reviews: number;
   location: string;
@@ -59,7 +60,7 @@ declare global {
  * Convert backend restaurant response
  * into frontend Restaurant card format.
  */
-const mapRestaurant = (restaurant: BackendRestaurant): Restaurant => {
+const mapRestaurant = (restaurant: any): Restaurant => {
   let lat: number | undefined;
   let lng: number | undefined;
   if (restaurant.gpsCoordinates) {
@@ -72,23 +73,36 @@ const mapRestaurant = (restaurant: BackendRestaurant): Restaurant => {
     }
   }
 
+  const rawPhotos: string[] = Array.isArray(restaurant.photos) && restaurant.photos.length > 0
+    ? restaurant.photos
+    : Array.isArray(restaurant.restaurantPhotos) && restaurant.restaurantPhotos.length > 0
+    ? restaurant.restaurantPhotos
+    : restaurant.imageUrl
+    ? [restaurant.imageUrl]
+    : [];
+
+  const mainImage = restaurant.imageUrl?.trim() || rawPhotos[0] || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
+
   return {
     id: String(restaurant.id),
-    name: restaurant.restaurantName?.trim() || "Unnamed Restaurant",
-    description: restaurant.contactDetails?.trim() || "Discover a great dining experience along your journey.",
-    image: restaurant.imageUrl?.trim() || "/logo/gojitriplogo.jpg",
-    rating: 4.5,
-    reviews: 28,
+    name: restaurant.restaurantName?.trim() || restaurant.name?.trim() || "Unnamed Restaurant",
+    description: restaurant.contactDetails?.trim() || restaurant.description?.trim() || "Discover a great dining experience along your journey.",
+    image: mainImage,
+    photos: rawPhotos.length > 0 ? rawPhotos : [mainImage],
+    rating: 4.8,
+    reviews: 36,
     location: restaurant.location?.trim() || "Location unavailable",
     cuisine: Array.isArray(restaurant.cuisineTypes) && restaurant.cuisineTypes.length > 0
       ? restaurant.cuisineTypes
-      : ["Restaurant"],
+      : Array.isArray(restaurant.cuisine) && restaurant.cuisine.length > 0
+      ? restaurant.cuisine
+      : ["Thakali", "Nepali"],
     priceRange: restaurant.priceRange && ["NPR", "NPR NPR", "NPR NPR NPR", "NPR NPR NPR NPR"].includes(restaurant.priceRange)
       ? restaurant.priceRange
       : "NPR NPR",
-    openingHours: restaurant.openingHours?.trim() || "Opening hours unavailable",
-    distance: "",
-    dietaryOptions: [],
+    openingHours: restaurant.openingHours?.trim() || "07:00 AM - 09:30 PM",
+    distance: "1.5 km",
+    dietaryOptions: ["Vegetarian", "Organic"],
     featured: restaurant.approvalStatus === "Published" || restaurant.approvalStatus === "Approved",
     lat,
     lng,
@@ -458,6 +472,10 @@ const RestaurantsPage: React.FC = () => {
   const restaurantListRef = useRef<HTMLDivElement>(null);
 
   const handleOpenYelpDetail = (r: Restaurant) => {
+    const galleryImages = (Array.isArray(r.photos) && r.photos.length > 0)
+      ? r.photos
+      : (r.image ? [r.image] : []);
+
     setYelpDetailData({
       id: r.id,
       name: r.name,
@@ -469,8 +487,8 @@ const RestaurantsPage: React.FC = () => {
       location: r.location,
       phone: (r as any).contactDetails || r.description || "+977 1 4220000",
       whatsapp: (r as any).whatsappNumber || "+9779801112233",
-      image: r.image,
-      galleryImages: (r as any).photos || (r as any).restaurantPhotos || (r.image ? [r.image] : []),
+      image: r.image || galleryImages[0],
+      galleryImages: galleryImages,
       description: (r as any).description || `${r.name} is a renowned dining spot along the Nepal highway corridor, serving authentic organic Thakali thali, Himalayan coffee, and local delicacies.`,
       amenities: (r as any).dietaryOptions || r.dietaryOptions || ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"],
       hours: r.openingHours ? [{ day: "Daily Operating Hours", time: r.openingHours }] : undefined,
@@ -494,17 +512,76 @@ const RestaurantsPage: React.FC = () => {
       setLoading(true);
       setError("");
 
-      const response = await apiRequest<BackendRestaurant[]>("/restaurants");
+      const storeItems = cmsStore.getRestaurants();
+      const response = await apiRequest<BackendRestaurant[]>("/restaurants").catch(() => null);
       const backendRestaurants = Array.isArray(response) ? response : [];
-      let mappedRestaurants = backendRestaurants.map(mapRestaurant);
+
+      let mappedRestaurants: Restaurant[] = [];
+
+      if (backendRestaurants.length > 0) {
+        mappedRestaurants = backendRestaurants.map((bItem: any) => {
+          const storeMatch = storeItems.find((s) => String(s.id) === String(bItem.id));
+          const photos = (Array.isArray(storeMatch?.photos) && storeMatch.photos.length > 0)
+            ? storeMatch.photos
+            : (Array.isArray(bItem.photos) && bItem.photos.length > 0)
+            ? bItem.photos
+            : (bItem.imageUrl ? [bItem.imageUrl] : (storeMatch?.imageUrl ? [storeMatch.imageUrl] : []));
+
+          const imageUrl = bItem.imageUrl || photos[0] || storeMatch?.imageUrl || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
+
+          const base = mapRestaurant(bItem);
+          return {
+            ...base,
+            image: imageUrl,
+            photos: photos.length > 0 ? photos : [imageUrl],
+          };
+        });
+      }
 
       if (mappedRestaurants.length === 0) {
-        const storeItems = cmsStore.getRestaurants();
-        mappedRestaurants = storeItems.map((r) => ({
+        mappedRestaurants = storeItems.map((r) => {
+          const photos = (Array.isArray(r.photos) && r.photos.length > 0)
+            ? r.photos
+            : (r.imageUrl ? [r.imageUrl] : []);
+          const imageUrl = r.imageUrl || photos[0] || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
+
+          return {
+            id: String(r.id),
+            name: r.restaurantName || "Unnamed Restaurant",
+            description: r.contactDetails || "Delicious local food and dining experience.",
+            image: imageUrl,
+            photos: photos.length > 0 ? photos : [imageUrl],
+            rating: 4.8,
+            reviews: 42,
+            location: r.location || "Location unavailable",
+            cuisine: r.cuisineTypes && r.cuisineTypes.length > 0 ? r.cuisineTypes : ["Thakali", "Nepali"],
+            priceRange: r.priceRange || "NPR NPR",
+            openingHours: r.openingHours || "07:00 AM - 09:30 PM",
+            distance: "2.5 km",
+            dietaryOptions: ["Vegetarian", "Organic"],
+            featured: true,
+            lat: undefined,
+            lng: undefined,
+          };
+        });
+      }
+
+      setRestaurants(mappedRestaurants);
+    } catch (err) {
+      console.error("Failed to fetch restaurants, loading store fallback:", err);
+      const storeItems = cmsStore.getRestaurants();
+      const mappedRestaurants = storeItems.map((r) => {
+        const photos = (Array.isArray(r.photos) && r.photos.length > 0)
+          ? r.photos
+          : (r.imageUrl ? [r.imageUrl] : []);
+        const imageUrl = r.imageUrl || photos[0] || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
+
+        return {
           id: String(r.id),
           name: r.restaurantName || "Unnamed Restaurant",
           description: r.contactDetails || "Delicious local food and dining experience.",
-          image: r.imageUrl || (r.photos && r.photos[0]) || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
+          image: imageUrl,
+          photos: photos.length > 0 ? photos : [imageUrl],
           rating: 4.8,
           reviews: 42,
           location: r.location || "Location unavailable",
@@ -516,30 +593,8 @@ const RestaurantsPage: React.FC = () => {
           featured: true,
           lat: undefined,
           lng: undefined,
-        }));
-      }
-
-      setRestaurants(mappedRestaurants);
-    } catch (err) {
-      console.error("Failed to fetch restaurants, loading store fallback:", err);
-      const storeItems = cmsStore.getRestaurants();
-      const mappedRestaurants = storeItems.map((r) => ({
-        id: String(r.id),
-        name: r.restaurantName || "Unnamed Restaurant",
-        description: r.contactDetails || "Delicious local food and dining experience.",
-        image: r.imageUrl || (r.photos && r.photos[0]) || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
-        rating: 4.8,
-        reviews: 42,
-        location: r.location || "Location unavailable",
-        cuisine: r.cuisineTypes && r.cuisineTypes.length > 0 ? r.cuisineTypes : ["Thakali", "Nepali"],
-        priceRange: r.priceRange || "NPR NPR",
-        openingHours: r.openingHours || "07:00 AM - 09:30 PM",
-        distance: "2.5 km",
-        dietaryOptions: ["Vegetarian", "Organic"],
-        featured: true,
-        lat: undefined,
-        lng: undefined,
-      }));
+        };
+      });
       setRestaurants(mappedRestaurants);
       setError("");
     } finally {

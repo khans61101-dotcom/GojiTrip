@@ -19,6 +19,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import { listHotels, getHotelRooms, RoomType } from "@/lib/api";
+import { cmsStore } from "@/lib/cms-store";
 import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
 import { InteractiveMap, MapMarkerItem } from "@/components/common/InteractiveMap";
 
@@ -649,11 +650,23 @@ const HotelsPage: React.FC = () => {
           ? (data as any).data
           : [];
 
+      const cmsHotels = cmsStore.getHotels();
+
       const transformedHotels: Hotel[] = rawHotels.map((hotel: any) => {
-        const imageUrl =
-          hotel.imageUrl && typeof hotel.imageUrl === "string" && hotel.imageUrl.trim() !== ""
-            ? hotel.imageUrl
-            : "/logo/gojitriplogo.jpg";
+        const storeMatch = cmsHotels.find((s: any) => String(s.id) === String(hotel.id));
+        const photos = (Array.isArray(storeMatch?.hotelPhotos) && storeMatch.hotelPhotos.length > 0)
+          ? storeMatch.hotelPhotos
+          : (Array.isArray(storeMatch?.photos) && storeMatch.photos.length > 0)
+          ? storeMatch.photos
+          : (Array.isArray(hotel.hotelPhotos) && hotel.hotelPhotos.length > 0)
+          ? hotel.hotelPhotos
+          : (Array.isArray(hotel.photos) && hotel.photos.length > 0)
+          ? hotel.photos
+          : (hotel.imageUrl ? [hotel.imageUrl] : (storeMatch?.imageUrl ? [storeMatch.imageUrl] : []));
+
+        const imageUrl = (hotel.imageUrl && typeof hotel.imageUrl === "string" && hotel.imageUrl.trim() !== "")
+          ? hotel.imageUrl
+          : (photos[0] || storeMatch?.imageUrl || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80");
 
         let lat: number | undefined;
         let lng: number | undefined;
@@ -672,6 +685,8 @@ const HotelsPage: React.FC = () => {
           name: hotel.hotelName || hotel.name || "Unnamed Hotel",
           description: hotel.description || "No description available",
           image: imageUrl,
+          hotelPhotos: photos.length > 0 ? photos : [imageUrl],
+          photos: photos.length > 0 ? photos : [imageUrl],
           rating: typeof hotel.rating === "number" ? hotel.rating : 4.5,
           reviews: typeof hotel.reviews === "number" ? hotel.reviews : 0,
           location: hotel.location || "Location not specified",
