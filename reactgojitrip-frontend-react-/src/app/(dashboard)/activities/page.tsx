@@ -496,7 +496,7 @@ export default function ActivitiesPage() {
     });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingAct) return;
 
@@ -508,19 +508,20 @@ export default function ActivitiesPage() {
         return;
       }
 
+      const photos = Array.isArray(editingAct.photos) && editingAct.photos.length > 0
+        ? editingAct.photos
+        : (editingAct.imageUrl ? [editingAct.imageUrl] : []);
+
       const activityToSave = {
         ...editingAct,
         id: editingAct.id || `activity_${Date.now()}`,
+        photos: photos,
+        imageUrl: editingAct.imageUrl || photos[0] || "",
         createdAt: editingAct.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        // Use the first photo as imageUrl if not set
-        imageUrl:
-          editingAct.imageUrl ||
-          (editingAct.photos && editingAct.photos[0]) ||
-          "",
       };
 
-      cmsStore.saveActivity(activityToSave as ActivityEntry);
+      await cmsStore.saveActivity(activityToSave as ActivityEntry);
       setIsModalOpen(false);
       setEditingAct(null);
     } catch (error) {

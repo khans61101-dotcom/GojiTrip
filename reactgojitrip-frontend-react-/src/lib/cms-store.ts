@@ -234,6 +234,8 @@ class CMSStore {
       if (storedRest) this.restaurants = JSON.parse(storedRest);
       const storedRoutes = localStorage.getItem('gojitrip_cms_routes');
       if (storedRoutes) this.routes = JSON.parse(storedRoutes);
+      const storedActivities = localStorage.getItem('gojitrip_cms_activities');
+      if (storedActivities) this.activities = JSON.parse(storedActivities);
     } catch (e) {
       console.warn("Failed to load CMS store from localStorage:", e);
     }
@@ -245,6 +247,7 @@ class CMSStore {
       localStorage.setItem('gojitrip_cms_hotels', JSON.stringify(this.hotels));
       localStorage.setItem('gojitrip_cms_restaurants', JSON.stringify(this.restaurants));
       localStorage.setItem('gojitrip_cms_routes', JSON.stringify(this.routes));
+      localStorage.setItem('gojitrip_cms_activities', JSON.stringify(this.activities));
     } catch (e) {
       console.warn("Failed to save CMS store to localStorage:", e);
     }
@@ -316,6 +319,18 @@ class CMSStore {
             return { ...mapped, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
           })
         : (prevRestaurants.length > 0 ? prevRestaurants : INITIAL_RESTAURANTS);
+
+      const prevActivities = this.activities;
+      this.activities = Array.isArray(activities) && activities.length > 0
+        ? activities.map((a: any) => {
+            const mapped = mapActivity(a);
+            const prev = prevActivities.find(p => p.id === mapped.id);
+            const photos = (Array.isArray(prev?.photos) && prev.photos.length > 0)
+              ? prev.photos
+              : mapped.photos;
+            return { ...mapped, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+          })
+        : (prevActivities.length > 0 ? prevActivities : INITIAL_ACTIVITIES);
 
       const rawMediaList = Array.isArray(media) && media.length > 0 ? media.map(mapMedia) : INITIAL_MEDIA;
       const uniqueMediaList: MediaItem[] = [];
@@ -580,7 +595,11 @@ class CMSStore {
   }
 
   async saveActivity(entry: Partial<ActivityEntry> & { id?: string }) {
-    const imageUrl = entry.imageUrl || (entry.photos && entry.photos[0]) || '';
+    const photos = (Array.isArray(entry.photos) && entry.photos.length > 0)
+      ? entry.photos
+      : (entry.imageUrl ? [entry.imageUrl] : []);
+    const imageUrl = entry.imageUrl || photos[0] || '';
+
     const payload = {
       activityName: entry.activityName || 'New Activity',
       guideName: entry.guideName || 'N/A',
@@ -592,13 +611,13 @@ class CMSStore {
       approvalStatus: entry.approvalStatus || 'Draft',
       createdByName: entry.createdByName || 'API',
       imageUrl: imageUrl || '',
-      photos: imageUrl ? [imageUrl] : [],
+      photos: photos,
     };
 
     if (entry.id) {
-      this.activities = this.activities.map(a => a.id === String(entry.id) ? { ...a, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as ActivityEntry : a);
+      this.activities = this.activities.map(a => a.id === String(entry.id) ? { ...a, ...entry, imageUrl, photos } as ActivityEntry : a);
     } else {
-      const newAct: ActivityEntry = { id: `act-${Date.now()}`, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as ActivityEntry;
+      const newAct: ActivityEntry = { id: `act-${Date.now()}`, ...entry, imageUrl, photos } as ActivityEntry;
       this.activities.unshift(newAct);
     }
     this.notify();
@@ -606,8 +625,8 @@ class CMSStore {
     try {
       const isNew = !entry.id || String(entry.id).startsWith('act-') || String(entry.id).startsWith('activity_');
       const method = isNew ? 'POST' : 'PATCH';
-      const path = isNew ? '/activities' : `/activities/${Number(entry.id)}`;
-      await apiRequest(path, { method, body: payload });
+      const path = isNew ? '/activities' : `/activities/${Number(entry.id) || entry.id}`;
+      await apiRequest(path, { method, body: payload }).catch(() => null);
       await this.refreshAll();
     } catch (err) {
       console.warn("Activity save backend sync error, kept in local state:", err);
