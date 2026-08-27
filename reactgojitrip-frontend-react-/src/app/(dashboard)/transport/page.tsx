@@ -103,7 +103,7 @@ export default function TransportPage() {
       currency: item.currency || 'NPR',
       luggagePolicy: item.luggagePolicy || '',
       driverPhotoUrl: item.driverPhotoUrl || '',
-      vehiclePhotos: Array.isArray(item.vehiclePhotos) ? item.vehiclePhotos : [],
+      vehiclePhotos: Array.isArray(item.vehiclePhotos) && item.vehiclePhotos.length > 0 ? item.vehiclePhotos : (Array.isArray((item as any).photos) ? (item as any).photos : (item.driverPhotoUrl ? [item.driverPhotoUrl] : [])),
       licenceVerified: item.licenceVerified || false,
       activeStatus: item.activeStatus || 'Active',
       approvalStatus: item.approvalStatus || 'Draft',
@@ -355,8 +355,8 @@ export default function TransportPage() {
 
                 <MultiImageFileInput
                   label="Vehicle Fleet Gallery (Add Multiple Photos for Yelp Detail View)"
-                  images={editing.vehiclePhotos || []}
-                  onChange={(photos) => setEditing({ ...editing, vehiclePhotos: photos })}
+                  images={editing.vehiclePhotos || (editing as any).photos || []}
+                  onChange={(photos) => setEditing({ ...editing, vehiclePhotos: photos, photos: photos } as any)}
                   category="Transport"
                   maxImages={10}
                 />

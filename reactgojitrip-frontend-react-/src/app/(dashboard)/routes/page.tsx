@@ -24,6 +24,7 @@ import {
 
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import { API_BASE_URL } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
 
@@ -1338,14 +1339,29 @@ export default function RoutesPage() {
                 </select>
               </div>
 
-              {/* ROUTE BANNER PHOTO */}
-              <div className="pt-2 border-t border-slate-800">
+              {/* ROUTE BANNER & MULTI-PHOTO GALLERY */}
+              <div className="pt-2 border-t border-slate-800 space-y-4">
                 <ImageFileInput
-                  label="Route Banner / Landscape Photo (Select File from Computer)"
+                  label="Route Banner / Landscape Cover Photo"
                   value={(editingRoute as any).imageUrl || ""}
                   onChange={(url) => setEditingRoute({ ...editingRoute, imageUrl: url } as any)}
                   onClear={() => setEditingRoute({ ...editingRoute, imageUrl: "" } as any)}
                   category="Routes"
+                />
+
+                <MultiImageFileInput
+                  label="Route Scenic Photo Gallery (Add Multiple Images)"
+                  images={(editingRoute as any).photos || (editingRoute as any).routePhotos || []}
+                  onChange={(photos) =>
+                    setEditingRoute({
+                      ...editingRoute,
+                      photos: photos,
+                      routePhotos: photos,
+                      imageUrl: (editingRoute as any).imageUrl || photos[0] || "",
+                    } as any)
+                  }
+                  category="Routes"
+                  maxImages={10}
                 />
               </div>
 

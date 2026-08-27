@@ -5,6 +5,7 @@ import { cmsStore } from "@/lib/cms-store";
 import { ActivityEntry } from "@/types/cms";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import {
   Compass,
   Plus,
@@ -977,23 +978,36 @@ export default function ActivitiesPage() {
               {/* =============== IMAGE FILE UPLOAD FROM COMPUTER =============== */}
               <div className="pt-2 border-t border-slate-800 space-y-3">
                 <ImageFileInput
-                  label="Activity Photo (Select File from Computer / Device)"
+                  label="Activity Hero Cover Photo (Main Cover Image)"
                   value={editingAct.imageUrl || (editingAct.photos && editingAct.photos[0]) || ""}
                   onChange={(url) =>
                     setEditingAct({
                       ...editingAct,
                       imageUrl: url,
-                      photos: [url, ...(editingAct.photos || [])],
+                      photos: editingAct.photos && editingAct.photos.length > 0 ? [url, ...editingAct.photos.slice(1)] : [url],
                     })
                   }
                   onClear={() =>
                     setEditingAct({
                       ...editingAct,
                       imageUrl: "",
-                      photos: [],
                     })
                   }
                   category="Activities"
+                />
+
+                <MultiImageFileInput
+                  label="Activity Photo Gallery (Add Multiple Images for Yelp Detail View)"
+                  images={editingAct.photos || []}
+                  onChange={(photos) =>
+                    setEditingAct({
+                      ...editingAct,
+                      photos: photos,
+                      imageUrl: editingAct.imageUrl || photos[0] || "",
+                    })
+                  }
+                  category="Activities"
+                  maxImages={10}
                 />
 
                 <div className="flex items-center justify-between text-xs text-slate-400">

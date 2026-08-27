@@ -95,12 +95,19 @@ const handleOpenCreateModal = () => {
     partnerStatus: "Verified Partner",
     approvalStatus: "Draft",
     createdByName: "Admin",
-  });
+    hotelPhotos: [],
+    photos: [],
+  } as any);
   setIsModalOpen(true);
 };
 
 const handleOpenEditModal = (h: HotelRecord) => {
-  setEditingHotel({ ...h });
+  const existingPhotos = (h as any).hotelPhotos || (h as any).photos || (h.imageUrl ? [h.imageUrl] : []);
+  setEditingHotel({
+    ...h,
+    hotelPhotos: existingPhotos,
+    photos: existingPhotos,
+  } as any);
   setIsModalOpen(true);
 };
 
@@ -122,10 +129,17 @@ const handleSaveHotel = async (e: React.FormEvent) => {
 
   setIsSubmitting(true);
   try {
+    const photos = (editingHotel as any).hotelPhotos || (editingHotel as any).photos || [];
+    const payload = {
+      ...editingHotel,
+      hotelPhotos: photos,
+      photos: photos,
+      imageUrl: editingHotel.imageUrl || photos[0] || null,
+    };
     if (editingHotel.id) {
-      await updateHotel(editingHotel.id, editingHotel as any);
+      await updateHotel(editingHotel.id, payload as any);
     } else {
-      await createHotel(editingHotel as any);
+      await createHotel(payload as any);
     }
     setIsModalOpen(false);
     setEditingHotel(null);
@@ -140,7 +154,14 @@ const handleSaveHotel = async (e: React.FormEvent) => {
   // =============== Handle media attachment ===============
   const handleAttachMedia = (url: string) => {
     if (!editingHotel) return;
-    setEditingHotel({ ...editingHotel, imageUrl: url });
+    const currentPhotos = (editingHotel as any).hotelPhotos || (editingHotel as any).photos || [];
+    const updatedPhotos = currentPhotos.includes(url) ? currentPhotos : [...currentPhotos, url];
+    setEditingHotel({
+      ...editingHotel,
+      imageUrl: editingHotel.imageUrl || url,
+      hotelPhotos: updatedPhotos,
+      photos: updatedPhotos,
+    } as any);
   };
 
   // =============== Remove photo ===============
@@ -566,11 +587,12 @@ const handleSaveHotel = async (e: React.FormEvent) => {
 
                 <MultiImageFileInput
                   label="Hotel Photo Gallery (Add Multiple Images for Yelp Detail View)"
-                  images={(editingHotel as any).hotelPhotos || []}
+                  images={(editingHotel as any).hotelPhotos || (editingHotel as any).photos || []}
                   onChange={(photos) =>
                     setEditingHotel({
                       ...editingHotel,
                       hotelPhotos: photos,
+                      photos: photos,
                       imageUrl: editingHotel.imageUrl || photos[0] || "",
                     } as any)
                   }

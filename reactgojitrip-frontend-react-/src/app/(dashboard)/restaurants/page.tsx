@@ -820,7 +820,7 @@ export default function RestaurantsPage() {
         openingHours: payload.openingHours,
         priceRange: payload.priceRange as any,
         imageUrl: payload.imageUrl,
-        photos: payload.imageUrl ? [payload.imageUrl] : [],
+        photos: (editingRest.photos && editingRest.photos.length > 0) ? editingRest.photos : (payload.imageUrl ? [payload.imageUrl] : []),
         approvalStatus: payload.approvalStatus as any,
         createdByName: payload.createdByName,
       });
