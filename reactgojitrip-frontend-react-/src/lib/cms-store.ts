@@ -221,10 +221,37 @@ class CMSStore {
   private hydrated = false;
 
   constructor() {
+    this.loadFromLocalStorage();
     if (typeof window !== 'undefined') void this.refreshAll();
   }
 
+  private loadFromLocalStorage() {
+    if (typeof window === 'undefined') return;
+    try {
+      const storedHotels = localStorage.getItem('gojitrip_cms_hotels');
+      if (storedHotels) this.hotels = JSON.parse(storedHotels);
+      const storedRest = localStorage.getItem('gojitrip_cms_restaurants');
+      if (storedRest) this.restaurants = JSON.parse(storedRest);
+      const storedRoutes = localStorage.getItem('gojitrip_cms_routes');
+      if (storedRoutes) this.routes = JSON.parse(storedRoutes);
+    } catch (e) {
+      console.warn("Failed to load CMS store from localStorage:", e);
+    }
+  }
+
+  private saveToLocalStorage() {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem('gojitrip_cms_hotels', JSON.stringify(this.hotels));
+      localStorage.setItem('gojitrip_cms_restaurants', JSON.stringify(this.restaurants));
+      localStorage.setItem('gojitrip_cms_routes', JSON.stringify(this.routes));
+    } catch (e) {
+      console.warn("Failed to save CMS store to localStorage:", e);
+    }
+  }
+
   private notify() {
+    this.saveToLocalStorage();
     this.listeners.forEach(l => l());
   }
 
@@ -246,10 +273,50 @@ class CMSStore {
         apiRequest<WorkflowHistoryLog[]>('/workflow/logs'),
       ]);
       console.log("Successfully fetched all data");
+      
+      const prevHotels = this.hotels;
+      const prevRestaurants = this.restaurants;
+      const prevRoutes = this.routes;
+
       this.transports = Array.isArray(trips) && trips.length > 0 ? trips.map(mapTrip) : INITIAL_TRANSPORTS;
-      this.routes = Array.isArray(routes) && routes.length > 0 ? routes.map(mapRoute) : INITIAL_ROUTES;
-      this.hotels = Array.isArray(hotels) && hotels.length > 0 ? hotels.map(mapHotel) : INITIAL_HOTELS;
-      this.restaurants = Array.isArray(restaurants) && restaurants.length > 0 ? restaurants.map(mapRestaurant) : INITIAL_RESTAURANTS;
+      
+      this.routes = Array.isArray(routes) && routes.length > 0 
+        ? routes.map((r: any) => {
+            const mapped = mapRoute(r);
+            const prev = prevRoutes.find(p => p.id === mapped.id);
+            const photos = (Array.isArray(prev?.photos) && prev.photos.length > 0)
+              ? prev.photos
+              : (Array.isArray((prev as any)?.routePhotos) && (prev as any).routePhotos.length > 0)
+              ? (prev as any).routePhotos
+              : mapped.photos;
+            return { ...mapped, photos, routePhotos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+          })
+        : (prevRoutes.length > 0 ? prevRoutes : INITIAL_ROUTES);
+
+      this.hotels = Array.isArray(hotels) && hotels.length > 0
+        ? hotels.map((h: any) => {
+            const mapped = mapHotel(h);
+            const prev = prevHotels.find(p => p.id === mapped.id);
+            const photos = (Array.isArray(prev?.hotelPhotos) && prev.hotelPhotos.length > 0)
+              ? prev.hotelPhotos
+              : (Array.isArray(prev?.photos) && prev.photos.length > 0)
+              ? prev.photos
+              : mapped.hotelPhotos;
+            return { ...mapped, hotelPhotos: photos, photos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+          })
+        : (prevHotels.length > 0 ? prevHotels : INITIAL_HOTELS);
+
+      this.restaurants = Array.isArray(restaurants) && restaurants.length > 0
+        ? restaurants.map((r: any) => {
+            const mapped = mapRestaurant(r);
+            const prev = prevRestaurants.find(p => p.id === mapped.id);
+            const photos = (Array.isArray(prev?.photos) && prev.photos.length > 0)
+              ? prev.photos
+              : mapped.photos;
+            return { ...mapped, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+          })
+        : (prevRestaurants.length > 0 ? prevRestaurants : INITIAL_RESTAURANTS);
+
       this.activities = Array.isArray(activities) && activities.length > 0 ? activities.map(mapActivity) : INITIAL_ACTIVITIES;
       this.guides = Array.isArray(guides) && guides.length > 0 ? guides.map(mapGuide) : INITIAL_GUIDES;
       this.media = Array.isArray(media) && media.length > 0 ? media.map(mapMedia) : INITIAL_MEDIA;
@@ -258,14 +325,14 @@ class CMSStore {
       this.notify();
     } catch (error) {
       console.error("Error in refreshAll, loading initial defaults:", error);
-      this.transports = INITIAL_TRANSPORTS;
-      this.routes = INITIAL_ROUTES;
-      this.hotels = INITIAL_HOTELS;
-      this.restaurants = INITIAL_RESTAURANTS;
-      this.activities = INITIAL_ACTIVITIES;
-      this.guides = INITIAL_GUIDES;
-      this.media = INITIAL_MEDIA;
-      this.logs = INITIAL_LOGS;
+      if (this.hotels.length === 0) this.hotels = INITIAL_HOTELS;
+      if (this.restaurants.length === 0) this.restaurants = INITIAL_RESTAURANTS;
+      if (this.routes.length === 0) this.routes = INITIAL_ROUTES;
+      if (this.transports.length === 0) this.transports = INITIAL_TRANSPORTS;
+      if (this.activities.length === 0) this.activities = INITIAL_ACTIVITIES;
+      if (this.guides.length === 0) this.guides = INITIAL_GUIDES;
+      if (this.media.length === 0) this.media = INITIAL_MEDIA;
+      if (this.logs.length === 0) this.logs = INITIAL_LOGS;
       this.hydrated = true;
       this.notify();
     }

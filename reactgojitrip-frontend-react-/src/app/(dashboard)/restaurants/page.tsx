@@ -572,21 +572,30 @@ export default function RestaurantsPage() {
           ? (response as any).data
           : [];
 
-      if (data.length > 0) {
-        // Merge image URLs from cmsStore if backend response missed them
-        const merged = data.map((item: any) => {
-          const matchingStore = storeItems.find((s: any) => String(s.id) === String(item.id));
-          const imageUrl = item.imageUrl || (item.photos && item.photos[0]) || matchingStore?.imageUrl || (matchingStore?.photos && matchingStore.photos[0]) || "";
-          return {
-            ...item,
-            imageUrl,
-            photos: item.photos && item.photos.length > 0 ? item.photos : imageUrl ? [imageUrl] : [],
-          };
-        });
-        setRestaurants(merged as RestaurantEntry[]);
-      } else {
-        setRestaurants(storeItems as RestaurantEntry[]);
-      }
+      const merged = data.map((item: any) => {
+        const matchingStore = storeItems.find((s: any) => String(s.id) === String(item.id));
+        const photos = (Array.isArray(matchingStore?.photos) && matchingStore.photos.length > 0)
+          ? matchingStore.photos
+          : (Array.isArray(item.photos) && item.photos.length > 0)
+          ? item.photos
+          : (item.imageUrl ? [item.imageUrl] : (matchingStore?.imageUrl ? [matchingStore.imageUrl] : []));
+
+        const imageUrl = item.imageUrl || photos[0] || matchingStore?.imageUrl || "";
+
+        return {
+          ...item,
+          imageUrl,
+          photos,
+        };
+      });
+
+      storeItems.forEach((sr: any) => {
+        if (!merged.some((m: any) => String(m.id) === String(sr.id))) {
+          merged.unshift(sr);
+        }
+      });
+
+      setRestaurants(merged as RestaurantEntry[]);
     } catch (error) {
       console.error("Failed to load restaurants from database, falling back to store:", error);
       setRestaurants(cmsStore.getRestaurants() as RestaurantEntry[]);

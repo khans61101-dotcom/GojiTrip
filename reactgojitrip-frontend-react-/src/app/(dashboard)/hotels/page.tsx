@@ -53,10 +53,40 @@ React.useEffect(() => {
 const fetchHotels = async () => {
   setLoading(true);
   try {
-    const data = await listHotels();
-    setHotels(data);
+    const storeHotels = cmsStore.getHotels();
+    const backendData = await listHotels().catch(() => []);
+    const data = Array.isArray(backendData) ? backendData : [];
+
+    const merged = data.map((h: any) => {
+      const match = storeHotels.find((s: any) => String(s.id) === String(h.id));
+      const photos = (Array.isArray(match?.hotelPhotos) && match.hotelPhotos.length > 0)
+        ? match.hotelPhotos
+        : (Array.isArray(match?.photos) && match.photos.length > 0)
+        ? match.photos
+        : (Array.isArray(h.hotelPhotos) && h.hotelPhotos.length > 0)
+        ? h.hotelPhotos
+        : (Array.isArray(h.photos) && h.photos.length > 0)
+        ? h.photos
+        : (h.imageUrl ? [h.imageUrl] : []);
+
+      return {
+        ...h,
+        hotelPhotos: photos,
+        photos: photos,
+        imageUrl: h.imageUrl || photos[0] || "",
+      };
+    });
+
+    storeHotels.forEach((sh: any) => {
+      if (!merged.some((m: any) => String(m.id) === String(sh.id))) {
+        merged.unshift(sh);
+      }
+    });
+
+    setHotels(merged as any);
   } catch (error) {
     console.error("Error fetching hotels:", error);
+    setHotels(cmsStore.getHotels() as any);
   } finally {
     setLoading(false);
   }
