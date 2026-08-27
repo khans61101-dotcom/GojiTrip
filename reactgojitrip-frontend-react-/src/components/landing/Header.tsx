@@ -63,12 +63,12 @@ export default function Header() {
   const primaryLinks = [
     { name: "About Us", href: "/pages/about", icon: Sparkles },
     { name: "Routes & Maps", href: "/pages/routes", icon: MapPin },
+    { name: "Hotels & Stays", href: "/pages/hotels", icon: Hotel },
+    { name: "Restaurants", href: "/pages/restaurants", icon: UtensilsCrossed },
   ];
 
   const dropdownServices = [
     { name: "Buses & Transport", href: "/pages/transport", icon: Bus, desc: "Schedules, routes & vehicle fares" },
-    { name: "Restaurants & Dining", href: "/pages/restaurants", icon: UtensilsCrossed, desc: "Local food & recommended dining" },
-    { name: "Hotels & Stays", href: "/pages/hotels", icon: Hotel, desc: "Mountain lodges, homestays & resorts" },
     { name: "Certified Guides & Treks", href: "/pages/guides", icon: Compass, desc: "Mountain guides & adventure pilots" },
     { name: "Famous Attractions", href: "/pages/famous-places", icon: Mountain, desc: "Top Nepal destinations & landmarks" },
     { name: "Fuel & EV Stations", href: "/pages/fuel-stations", icon: Fuel, desc: "Highway fuel & charging stops" },
