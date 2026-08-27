@@ -59,7 +59,6 @@ export const MediaPickerModal: React.FC<MediaPickerModalProps> = ({
           ? response.data
           : [];
 
-      // Map backend response to MediaItem
       const mappedMedia: MediaItem[] = data.map((m) => ({
         id: String(m.id ?? ""),
         title: m.title || "Untitled Media",
@@ -73,7 +72,20 @@ export const MediaPickerModal: React.FC<MediaPickerModalProps> = ({
         uploadedBy: m.uploadedBy || "",
       }));
 
-      setMediaList(mappedMedia);
+      const uniqueMedia: MediaItem[] = [];
+      const seenKeys = new Set<string>();
+
+      for (const item of mappedMedia) {
+        const key = (item.url || item.thumbnailUrl || "").trim().toLowerCase();
+        if (key && !seenKeys.has(key)) {
+          seenKeys.add(key);
+          uniqueMedia.push(item);
+        } else if (!key) {
+          uniqueMedia.push(item);
+        }
+      }
+
+      setMediaList(uniqueMedia);
     } catch (error) {
       console.error("Error fetching media:", error);
       setMediaList([]);

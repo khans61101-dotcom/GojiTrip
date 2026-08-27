@@ -317,9 +317,19 @@ class CMSStore {
           })
         : (prevRestaurants.length > 0 ? prevRestaurants : INITIAL_RESTAURANTS);
 
-      this.activities = Array.isArray(activities) && activities.length > 0 ? activities.map(mapActivity) : INITIAL_ACTIVITIES;
-      this.guides = Array.isArray(guides) && guides.length > 0 ? guides.map(mapGuide) : INITIAL_GUIDES;
-      this.media = Array.isArray(media) && media.length > 0 ? media.map(mapMedia) : INITIAL_MEDIA;
+      const rawMediaList = Array.isArray(media) && media.length > 0 ? media.map(mapMedia) : INITIAL_MEDIA;
+      const uniqueMediaList: MediaItem[] = [];
+      const seenUrls = new Set<string>();
+      for (const item of rawMediaList) {
+        const key = (item.url || item.thumbnailUrl || '').trim().toLowerCase();
+        if (key && !seenUrls.has(key)) {
+          seenUrls.add(key);
+          uniqueMediaList.push(item);
+        } else if (!key) {
+          uniqueMediaList.push(item);
+        }
+      }
+      this.media = uniqueMediaList;
       this.logs = Array.isArray(logs) ? logs : INITIAL_LOGS;
       this.hydrated = true;
       this.notify();
@@ -652,14 +662,21 @@ class CMSStore {
   }
 
   async addMedia(entry: Partial<MediaItem> & { url: string }) {
+    const cleanUrl = (entry.url || '').trim();
+    if (!cleanUrl) return;
+    const exists = this.media.some(m => (m.url || '').trim().toLowerCase() === cleanUrl.toLowerCase());
+    if (exists) {
+      console.log("Media item already exists in library, skipping duplicate:", cleanUrl);
+      return;
+    }
     await apiRequest('/media/upload', {
       method: 'POST',
       body: {
-        url: entry.url,
+        url: cleanUrl,
         title: entry.title || 'Uploaded Media',
         category: entry.category || 'Destinations'
       }
-    });
+    }).catch(() => null);
     await this.refreshAll();
   }
   async deleteMedia(id: string) { await apiRequest(`/media/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }

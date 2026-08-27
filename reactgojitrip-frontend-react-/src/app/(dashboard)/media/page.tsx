@@ -48,19 +48,23 @@ export default function MediaLibraryPage() {
       const data = cmsStore.getMedia();
       console.log("Raw media data from store:", data);
 
-      // Ensure we always have an array and filter out any invalid items
-      const validData = Array.isArray(data)
-        ? data.filter((item) => {
-            if (!item || !item.id) {
-              console.warn("Invalid media item found:", item);
-              return false;
-            }
-            return true;
-          })
-        : [];
+      const validData = Array.isArray(data) ? data.filter((item) => item && item.id) : [];
 
-      console.log("Valid media data:", validData);
-      setMediaList(validData);
+      const uniqueMedia: MediaItem[] = [];
+      const seenKeys = new Set<string>();
+
+      for (const item of validData) {
+        const cleanUrl = (item.url || item.thumbnailUrl || "").trim().toLowerCase();
+        const cleanTitle = (item.title || "").trim().toLowerCase();
+        const key = cleanUrl ? cleanUrl : cleanTitle ? cleanTitle : String(item.id);
+
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          uniqueMedia.push(item);
+        }
+      }
+
+      setMediaList(uniqueMedia);
       setError(null);
       setIsLoading(false);
     } catch (error) {
