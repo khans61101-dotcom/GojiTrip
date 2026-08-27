@@ -305,7 +305,7 @@ export default function GuidesPage() {
     const refreshData = () => {
       const data = cmsStore.getGuides();
       setGuides(Array.isArray(data) ? data : []);
-      setLoading(!cmsStore.isHydrated());
+      setLoading(false);
     };
 
     refreshData();

@@ -236,6 +236,8 @@ class CMSStore {
       if (storedRoutes) this.routes = JSON.parse(storedRoutes);
       const storedActivities = localStorage.getItem('gojitrip_cms_activities');
       if (storedActivities) this.activities = JSON.parse(storedActivities);
+      const storedGuides = localStorage.getItem('gojitrip_cms_guides');
+      if (storedGuides) this.guides = JSON.parse(storedGuides);
     } catch (e) {
       console.warn("Failed to load CMS store from localStorage:", e);
     }
@@ -248,6 +250,7 @@ class CMSStore {
       localStorage.setItem('gojitrip_cms_restaurants', JSON.stringify(this.restaurants));
       localStorage.setItem('gojitrip_cms_routes', JSON.stringify(this.routes));
       localStorage.setItem('gojitrip_cms_activities', JSON.stringify(this.activities));
+      localStorage.setItem('gojitrip_cms_guides', JSON.stringify(this.guides));
     } catch (e) {
       console.warn("Failed to save CMS store to localStorage:", e);
     }
@@ -331,6 +334,15 @@ class CMSStore {
             return { ...mapped, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
           })
         : (prevActivities.length > 0 ? prevActivities : INITIAL_ACTIVITIES);
+
+      const prevGuides = this.guides;
+      this.guides = Array.isArray(guides) && guides.length > 0
+        ? guides.map((g: any) => {
+            const mapped = mapGuide(g);
+            const prev = prevGuides.find(p => p.id === mapped.id);
+            return prev ? { ...mapped, ...prev } : mapped;
+          })
+        : (prevGuides.length > 0 ? prevGuides : INITIAL_GUIDES);
 
       const rawMediaList = Array.isArray(media) && media.length > 0 ? media.map(mapMedia) : INITIAL_MEDIA;
       const uniqueMediaList: MediaItem[] = [];
@@ -667,8 +679,8 @@ class CMSStore {
     try {
       const isNew = !entry.id || String(entry.id).startsWith('gd-') || String(entry.id).startsWith('guide_');
       const method = isNew ? 'POST' : 'PATCH';
-      const path = isNew ? '/guides' : `/guides/${Number(entry.id)}`;
-      await apiRequest(path, { method, body: payload });
+      const path = isNew ? '/guides' : `/guides/${Number(entry.id) || entry.id}`;
+      await apiRequest(path, { method, body: payload }).catch(() => null);
       await this.refreshAll();
     } catch (err) {
       console.warn("Guide save backend sync error, kept in local state:", err);
