@@ -197,15 +197,18 @@ const handleSaveHotel = async (e: React.FormEvent) => {
 };
   // =============== Handle media attachment ===============
   const handleAttachMedia = (url: string) => {
-    if (!editingHotel) return;
-    const currentPhotos = (editingHotel as any).hotelPhotos || (editingHotel as any).photos || [];
-    const updatedPhotos = currentPhotos.includes(url) ? currentPhotos : [...currentPhotos, url];
-    setEditingHotel({
-      ...editingHotel,
-      imageUrl: editingHotel.imageUrl || url,
-      hotelPhotos: updatedPhotos,
-      photos: updatedPhotos,
-    } as any);
+    if (!editingHotel || !url) return;
+    setEditingHotel((prev: any) => {
+      const currentPhotos = prev?.hotelPhotos || prev?.photos || [];
+      const updatedPhotos = currentPhotos.includes(url) ? currentPhotos : [...currentPhotos, url];
+      return {
+        ...prev,
+        imageUrl: prev?.imageUrl || url,
+        hotelPhotos: updatedPhotos,
+        photos: updatedPhotos,
+      };
+    });
+    setMediaPickerOpen(false);
   };
 
   // =============== Remove photo ===============
@@ -633,12 +636,12 @@ const handleSaveHotel = async (e: React.FormEvent) => {
                   label="Hotel Photo Gallery (Add Multiple Images for Yelp Detail View)"
                   images={(editingHotel as any).hotelPhotos || (editingHotel as any).photos || []}
                   onChange={(photos) =>
-                    setEditingHotel({
-                      ...editingHotel,
+                    setEditingHotel((prev: any) => ({
+                      ...prev,
                       hotelPhotos: photos,
                       photos: photos,
-                      imageUrl: editingHotel.imageUrl || photos[0] || "",
-                    } as any)
+                      imageUrl: (prev && prev.imageUrl) || photos[0] || "",
+                    }))
                   }
                   category="Hotels"
                   maxImages={10}

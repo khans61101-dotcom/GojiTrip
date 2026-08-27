@@ -36,6 +36,7 @@ import RegisterPage from "@/app/auth/register/page";
 import DashboardPage from "@/app/(dashboard)/dashboard/page";
 import RoutesPage from "@/app/(dashboard)/routes/page";
 import HotelsPage from "@/app/(dashboard)/hotels/page";
+import HomestaysPage from "@/app/(dashboard)/homestays/page";
 import RestaurantsPage from "@/app/(dashboard)/restaurants/page";
 import ActivitiesPage from "@/app/(dashboard)/activities/page";
 import GuidesPage from "@/app/(dashboard)/guides/page";
@@ -206,6 +207,15 @@ export function App() {
           element={
             <DashboardLayout>
               <HotelsPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/homestays"
+          element={
+            <DashboardLayout>
+              <HomestaysPage />
             </DashboardLayout>
           }
         />

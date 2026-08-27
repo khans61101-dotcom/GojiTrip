@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { UploadCloud, Plus, X, Image as ImageIcon, Link as LinkIcon, FolderOpen } from "lucide-react";
+import { Plus, X, Image as ImageIcon, Link as LinkIcon, FolderOpen, Loader2 } from "lucide-react";
 import { cmsStore } from "@/lib/cms-store";
 
 interface MultiImageFileInputProps {
@@ -27,6 +27,8 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
   const [inputUrl, setInputUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const safeImages = Array.isArray(images) ? images : [];
+
   const readFileAsDataUrl = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -40,11 +42,11 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
     setError(null);
     const fileArray = Array.from(files);
 
-    if (images.length + fileArray.length > maxImages) {
+    if (safeImages.length + fileArray.length > maxImages) {
       setError(`Maximum limit is ${maxImages} images.`);
     }
 
-    const availableSlots = maxImages - images.length;
+    const availableSlots = maxImages - safeImages.length;
     const filesToProcess = fileArray.slice(0, availableSlots);
 
     if (filesToProcess.length === 0) return;
@@ -75,10 +77,11 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
         })
       );
 
-      onChange([...images, ...base64Results]);
+      const updated = [...safeImages, ...base64Results];
+      onChange(updated);
     } catch (err) {
       console.error("Failed to process uploaded images:", err);
-      setError("Failed to process some image files. Please try again.");
+      setError("Failed to process image files. Please try again.");
     } finally {
       setIsUploading(false);
     }
@@ -87,28 +90,27 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       processFiles(e.target.files);
-      e.target.value = ""; // Reset input so same file can be re-selected
+      e.target.value = "";
     }
   };
 
   const handleAddUrl = (e?: React.MouseEvent | React.KeyboardEvent) => {
     if (e) e.preventDefault();
-    if (!inputUrl.trim()) return;
-    if (images.length >= maxImages) {
+    const cleanUrl = inputUrl.trim();
+    if (!cleanUrl) return;
+    if (safeImages.length >= maxImages) {
       setError(`Maximum limit is ${maxImages} images.`);
       return;
     }
-    const cleanUrl = inputUrl.trim();
-    if (!images.includes(cleanUrl)) {
-      onChange([...images, cleanUrl]);
-    }
+    const updated = safeImages.includes(cleanUrl) ? safeImages : [...safeImages, cleanUrl];
+    onChange(updated);
     setInputUrl("");
     setShowUrlInput(false);
     setError(null);
   };
 
   const handleRemoveImage = (indexToRemove: number) => {
-    const updated = images.filter((_, idx) => idx !== indexToRemove);
+    const updated = safeImages.filter((_, idx) => idx !== indexToRemove);
     onChange(updated);
   };
 
@@ -117,7 +119,7 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="text-xs font-bold text-slate-200 flex items-center space-x-1.5">
           <ImageIcon className="w-4 h-4 text-emerald-400" />
-          <span>{label} ({images.length}/{maxImages})</span>
+          <span>{label} ({safeImages.length}/{maxImages})</span>
         </label>
 
         <div className="flex items-center space-x-2">
@@ -125,9 +127,9 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
             <button
               type="button"
               onClick={onOpenMediaPicker}
-              className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center space-x-1 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20"
+              className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center space-x-1 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20"
             >
-              <FolderOpen className="w-3 h-3" />
+              <FolderOpen className="w-3.5 h-3.5" />
               <span>Media Library</span>
             </button>
           )}
@@ -135,9 +137,9 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
           <button
             type="button"
             onClick={() => setShowUrlInput(!showUrlInput)}
-            className="text-[11px] font-bold text-slate-400 hover:text-emerald-400 transition-colors flex items-center space-x-1"
+            className="text-[11px] font-bold text-slate-300 hover:text-emerald-400 transition-colors flex items-center space-x-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700"
           >
-            <LinkIcon className="w-3 h-3" />
+            <LinkIcon className="w-3.5 h-3.5 text-sky-400" />
             <span>{showUrlInput ? "Hide URL" : "+ Add URL"}</span>
           </button>
         </div>
@@ -153,7 +155,7 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
         className="hidden"
       />
 
-      {/* URL Input Box (Without Nested Form Tag to Avoid Form Submit Collisions) */}
+      {/* URL Input Box */}
       {showUrlInput && (
         <div className="flex gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700">
           <input
@@ -174,14 +176,14 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
             onClick={(e) => handleAddUrl(e)}
             className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-md transition-all flex-shrink-0"
           >
-            Add
+            Add Photo
           </button>
         </div>
       )}
 
       {/* GALLERY THUMBNAIL GRID */}
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
-        {images.map((imgUrl, idx) => (
+        {safeImages.map((imgUrl, idx) => (
           <div
             key={idx}
             className="relative group aspect-square rounded-xl overflow-hidden bg-slate-900 border border-slate-700 shadow-md"
@@ -196,7 +198,7 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
             />
 
             {/* Photo Index Badge */}
-            <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 text-white font-black text-[9px] backdrop-blur-sm">
+            <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/75 text-white font-extrabold text-[9px] backdrop-blur-sm shadow">
               #{idx + 1} {idx === 0 ? "(Main)" : ""}
             </div>
 
@@ -213,7 +215,7 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
         ))}
 
         {/* ADD MORE PHOTOS BUTTON DROPZONE */}
-        {images.length < maxImages && (
+        {safeImages.length < maxImages && (
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
@@ -221,10 +223,10 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
             className="aspect-square rounded-xl border-2 border-dashed border-slate-700 hover:border-emerald-500/80 bg-slate-900/60 hover:bg-slate-900 flex flex-col items-center justify-center gap-1.5 text-slate-400 hover:text-emerald-400 transition-all p-2 text-center"
           >
             {isUploading ? (
-              <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+              <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
             ) : (
               <>
-                <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700">
                   <Plus className="w-4 h-4 text-emerald-400" />
                 </div>
                 <span className="text-[10px] font-bold">+ Add Photos</span>

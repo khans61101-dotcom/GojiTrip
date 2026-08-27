@@ -6,6 +6,7 @@ import {
   Bus,
   MapPin,
   Hotel,
+  Home,
   UtensilsCrossed,
   Compass,
   Image as ImageIcon,
@@ -44,10 +45,16 @@ export const Sidebar: React.FC = () => {
       badge: stats.routesCount,
     },
     {
-      label: "Hotels & Homestays",
+      label: "Hotels",
       href: "/hotels",
       icon: Hotel,
       badge: stats.hotelsCount,
+    },
+    {
+      label: "Homestays",
+      href: "/homestays",
+      icon: Home,
+      badge: cmsStore.getHotels().filter((h) => h.propertyType === "Homestay").length,
     },
     {
       label: "Restaurants",
