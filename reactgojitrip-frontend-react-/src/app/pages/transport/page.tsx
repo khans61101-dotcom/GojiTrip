@@ -569,6 +569,14 @@ const CompactTransportCard: React.FC<{
 // ============= MAIN TRANSPORT PAGE =============
 const TransportPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const locParam = params.get("location") || params.get("search") || params.get("q") || params.get("routeStop");
+    if (locParam && locParam.trim()) {
+      setSearchQuery(locParam.trim());
+    }
+  }, []);
   const [transports, setTransports] = useState<TransportOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

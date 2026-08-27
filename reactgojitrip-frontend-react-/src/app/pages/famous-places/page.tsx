@@ -246,6 +246,14 @@ const FamousPlacesPage: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = React.useState("");
 
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const locParam = params.get("location") || params.get("search") || params.get("q") || params.get("routeStop");
+    if (locParam && locParam.trim()) {
+      setSearchTerm(locParam.trim());
+    }
+  }, []);
+
   const [categoryFilter, setCategoryFilter] = React.useState("");
 
   const [ratingFilter, setRatingFilter] = React.useState("");

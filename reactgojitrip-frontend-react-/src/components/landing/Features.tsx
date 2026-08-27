@@ -183,13 +183,13 @@ export default function Features() {
         
         {/* Section Header */}
         <div className="text-center max-w-3xl mx-auto mb-16 space-y-4">
-          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold uppercase tracking-wider">
-            <Sparkles className="w-4 h-4 text-emerald-400" />
+          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-bold uppercase tracking-wider">
+            <Sparkles className="w-4 h-4 text-red-500" />
             <span>Under the Hood</span>
           </div>
 
           <h2 className="text-3xl md:text-5xl font-extrabold text-white tracking-tight leading-tight">
-            Your Personal <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400">AI Travel Expert</span>
+            Your Personal <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-sky-300 to-red-400">AI Travel Expert</span>
           </h2>
 
           <p className="text-slate-300 text-sm md:text-base leading-relaxed">
@@ -221,7 +221,7 @@ export default function Features() {
                   </div>
 
                   {/* Title & Description */}
-                  <h3 className="text-base font-extrabold text-white mb-2 group-hover:text-emerald-400 transition-colors">
+                  <h3 className="text-base font-extrabold text-white mb-2 group-hover:text-blue-400 transition-colors">
                     {eng.title}
                   </h3>
                   <p className="text-xs text-slate-400 mb-4 leading-relaxed">
@@ -232,7 +232,7 @@ export default function Features() {
                   <ul className="space-y-1.5 mb-6 text-xs text-slate-300 border-t border-slate-800/80 pt-3">
                     {eng.list.map((item, i) => (
                       <li key={i} className="flex items-center space-x-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
                         <span className="truncate">{item}</span>
                       </li>
                     ))}
@@ -243,7 +243,7 @@ export default function Features() {
                 {eng.link ? (
                   <Link
                     to={eng.link}
-                    className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-emerald-500 hover:text-white border border-slate-700 text-xs font-bold text-slate-200 transition-all flex items-center justify-center space-x-1.5 shadow-md group-hover:border-emerald-500/50"
+                    className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-blue-600 hover:text-white border border-slate-700 text-xs font-bold text-slate-200 transition-all flex items-center justify-center space-x-1.5 shadow-md group-hover:border-blue-500/50"
                   >
                     <span>Launch {eng.title.split(" ")[0]} Engine</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -255,7 +255,7 @@ export default function Features() {
                       if (eng.isModal === "budget") setBudgetModalOpen(true);
                       if (eng.isModal === "weather") setWeatherModalOpen(true);
                     }}
-                    className="w-full py-2.5 px-4 rounded-xl bg-emerald-500/10 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/30 text-xs font-bold transition-all flex items-center justify-center space-x-1.5 shadow-md"
+                    className="w-full py-2.5 px-4 rounded-xl bg-blue-500/10 hover:bg-blue-600 text-blue-400 hover:text-white border border-blue-500/30 text-xs font-bold transition-all flex items-center justify-center space-x-1.5 shadow-md"
                   >
                     <span>Open {eng.title.split(" ")[0]} Tool</span>
                     <ArrowRight className="w-3.5 h-3.5" />

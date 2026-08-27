@@ -63,12 +63,12 @@ export default function Header() {
   const primaryLinks = [
     { name: "About Us", href: "/pages/about", icon: Sparkles },
     { name: "Routes & Maps", href: "/pages/routes", icon: MapPin },
-    { name: "Hotels & Stay", href: "/pages/hotels", icon: Hotel },
   ];
 
   const dropdownServices = [
     { name: "Buses & Transport", href: "/pages/transport", icon: Bus, desc: "Schedules, routes & vehicle fares" },
     { name: "Restaurants & Dining", href: "/pages/restaurants", icon: UtensilsCrossed, desc: "Local food & recommended dining" },
+    { name: "Hotels & Stays", href: "/pages/hotels", icon: Hotel, desc: "Mountain lodges, homestays & resorts" },
     { name: "Certified Guides & Treks", href: "/pages/guides", icon: Compass, desc: "Mountain guides & adventure pilots" },
     { name: "Famous Attractions", href: "/pages/famous-places", icon: Mountain, desc: "Top Nepal destinations & landmarks" },
     { name: "Fuel & EV Stations", href: "/pages/fuel-stations", icon: Fuel, desc: "Highway fuel & charging stops" },
@@ -102,9 +102,9 @@ export default function Header() {
                 <Link
                   key={link.name}
                   to={link.href}
-                  className="text-xs font-semibold text-slate-700 hover:text-emerald-600 transition-colors flex items-center space-x-1.5 px-3 py-2 rounded-xl hover:bg-slate-50"
+                  className="text-xs font-semibold text-slate-700 hover:text-blue-600 transition-colors flex items-center space-x-1.5 px-3 py-2 rounded-xl hover:bg-slate-50"
                 >
-                  <Icon className="w-4 h-4 text-emerald-500" />
+                  <Icon className="w-4 h-4 text-blue-600" />
                   <span>{link.name}</span>
                 </Link>
               );
@@ -115,9 +115,9 @@ export default function Header() {
               <button
                 type="button"
                 onClick={toggleServices}
-                className="text-xs font-semibold text-slate-700 hover:text-emerald-600 transition-colors flex items-center space-x-1.5 px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200"
+                className="text-xs font-semibold text-slate-700 hover:text-blue-600 transition-colors flex items-center space-x-1.5 px-3 py-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-200"
               >
-                <Compass className="w-4 h-4 text-emerald-500" />
+                <Compass className="w-4 h-4 text-blue-600" />
                 <span>More Services</span>
                 <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isServicesOpen ? "rotate-180" : ""}`} />
               </button>
@@ -135,13 +135,13 @@ export default function Header() {
                         key={svc.name}
                         to={svc.href}
                         onClick={() => setIsServicesOpen(false)}
-                        className="flex items-start space-x-3 p-2.5 rounded-xl hover:bg-emerald-50/70 transition-colors group"
+                        className="flex items-start space-x-3 p-2.5 rounded-xl hover:bg-blue-50/70 transition-colors group"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white transition-colors flex-shrink-0">
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors flex-shrink-0">
                           <Icon className="w-4 h-4" />
                         </div>
                         <div>
-                          <div className="text-xs font-bold text-slate-800 group-hover:text-emerald-700">
+                          <div className="text-xs font-bold text-slate-800 group-hover:text-blue-700">
                             {svc.name}
                           </div>
                           <div className="text-[10px] text-slate-500">
@@ -160,13 +160,13 @@ export default function Header() {
           <div className="hidden lg:flex items-center gap-3">
             <Link
               to="/dashboard"
-              className="text-xs font-bold text-slate-700 hover:text-emerald-600 transition-colors px-3 py-2 rounded-xl hover:bg-slate-100 border border-slate-200/80"
+              className="text-xs font-bold text-slate-700 hover:text-blue-600 transition-colors px-3 py-2 rounded-xl hover:bg-slate-100 border border-slate-200/80"
             >
               CMS Portal
             </Link>
             <Link
               to="/pages/routes"
-              className="px-5 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-600 rounded-full hover:from-emerald-600 hover:to-teal-700 shadow-md shadow-emerald-600/20 transition-all"
+              className="px-5 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-blue-600 via-blue-700 to-red-500 rounded-full hover:from-blue-700 hover:to-red-600 shadow-md shadow-blue-600/20 transition-all"
             >
               Start Planning
             </Link>
@@ -175,7 +175,7 @@ export default function Header() {
             <div className="relative" ref={accountRef}>
               <button
                 onClick={toggleAccount}
-                className="flex items-center gap-2 p-2.5 text-slate-600 hover:text-emerald-600 rounded-full border border-slate-200 hover:border-emerald-200 transition-all"
+                className="flex items-center gap-2 p-2.5 text-slate-600 hover:text-blue-600 rounded-full border border-slate-200 hover:border-blue-200 transition-all"
                 aria-expanded={isAccountOpen}
               >
                 <CircleUserRound size={18} />
@@ -188,19 +188,19 @@ export default function Header() {
                     onClick={() => setIsAccountOpen(false)}
                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
                   >
-                    <LogIn size={15} className="text-emerald-500" /> Login to Portal
+                    <LogIn size={15} className="text-blue-600" /> Login to Portal
                   </Link>
                   <Link
                     to="/auth/register"
                     onClick={() => setIsAccountOpen(false)}
                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
                   >
-                    <UserPlus size={15} className="text-emerald-500" /> Register Account
+                    <UserPlus size={15} className="text-blue-600" /> Register Account
                   </Link>
                   <Link
                     to="/dashboard"
                     onClick={() => setIsAccountOpen(false)}
-                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-emerald-600 hover:bg-emerald-50 border-t border-slate-100 mt-1 pt-2 rounded-xl"
+                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-blue-600 hover:bg-blue-50 border-t border-slate-100 mt-1 pt-2 rounded-xl"
                   >
                     <CircleUserRound size={15} /> Admin Dashboard
                   </Link>
@@ -231,10 +231,10 @@ export default function Header() {
                   <Link
                     key={link.name}
                     to={link.href}
-                    className="px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl flex items-center space-x-2.5"
+                    className="px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl flex items-center space-x-2.5"
                     onClick={toggleMenu}
                   >
-                    <Icon className="w-4 h-4 text-emerald-500" />
+                    <Icon className="w-4 h-4 text-blue-600" />
                     <span>{link.name}</span>
                   </Link>
                 );
@@ -249,10 +249,10 @@ export default function Header() {
                   <Link
                     key={svc.name}
                     to={svc.href}
-                    className="px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl flex items-center space-x-2.5"
+                    className="px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-600 rounded-xl flex items-center space-x-2.5"
                     onClick={toggleMenu}
                   >
-                    <Icon className="w-4 h-4 text-emerald-500" />
+                    <Icon className="w-4 h-4 text-blue-600" />
                     <span>{svc.name}</span>
                   </Link>
                 );
@@ -269,7 +269,7 @@ export default function Header() {
               </Link>
               <Link
                 to="/dashboard"
-                className="w-full px-4 py-2 text-center text-white bg-emerald-500 rounded-xl text-xs font-bold shadow-md hover:bg-emerald-600"
+                className="w-full px-4 py-2 text-center text-white bg-blue-600 rounded-xl text-xs font-bold shadow-md hover:bg-blue-700"
                 onClick={toggleMenu}
               >
                 Admin Dashboard

@@ -41,6 +41,8 @@ interface Restaurant {
   location: string;
   cuisine: string[];
   priceRange: "NPR" | "NPR NPR" | "NPR NPR NPR" | "NPR NPR NPR NPR";
+  currency?: string;
+  averageMealPrice?: number;
   openingHours: string;
   distance: string;
   dietaryOptions: string[];
@@ -435,10 +437,14 @@ const CompactRestaurantCard: React.FC<{
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-100">
             <div>
-              <span className="text-sm font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
+              <span className="text-xs font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md mr-1.5 border border-slate-200">
                 {restaurant.priceRange || "$$"}
               </span>
-              <span className="text-slate-500 text-xs ml-1.5">NRs 450 - 1,200 / meal</span>
+              <span className="text-emerald-700 font-extrabold text-sm">
+                {restaurant.averageMealPrice
+                  ? `${restaurant.currency || 'NRs'} ${restaurant.averageMealPrice.toLocaleString()} / meal`
+                  : `${restaurant.currency || 'NRs'} 450 - 1,200 / meal`}
+              </span>
             </div>
 
             <button
@@ -449,7 +455,7 @@ const CompactRestaurantCard: React.FC<{
               }}
               className="px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all bg-red-600 hover:bg-red-700 text-white shadow-sm hover:scale-105 active:scale-95"
             >
-              View Details →
+              View Details {"\u2192"}
             </button>
           </div>
         </div>
@@ -461,6 +467,14 @@ const CompactRestaurantCard: React.FC<{
 // ============= MAIN RESTAURANTS PAGE =============
 const RestaurantsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const locParam = params.get("location") || params.get("search") || params.get("q") || params.get("routeStop");
+    if (locParam && locParam.trim()) {
+      setSearchQuery(locParam.trim());
+    }
+  }, []);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -492,16 +506,18 @@ const RestaurantsPage: React.FC = () => {
       description: (r as any).description || `${r.name} is a renowned dining spot along the Nepal highway corridor, serving authentic organic Thakali thali, Himalayan coffee, and local delicacies.`,
       amenities: (r as any).dietaryOptions || r.dietaryOptions || ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"],
       hours: r.openingHours ? [{ day: "Daily Operating Hours", time: r.openingHours }] : undefined,
-      priceTag: "NRs 450 - 1,200 / meal",
+      priceTag: r.averageMealPrice
+        ? `${r.currency || 'NRs'} ${r.averageMealPrice.toLocaleString()} / meal`
+        : `${r.currency || 'NRs'} 450 - 1,200 / meal`,
       entityType: "restaurant",
       offerings: (r as any).recommendedDishes && (r as any).recommendedDishes.length > 0 ? (r as any).recommendedDishes.map((dish: string) => ({
         title: dish,
-        price: "NRs 450",
+        price: `${r.currency || 'NRs'} ${r.averageMealPrice || 450}`,
         desc: `Handcrafted signature preparation using fresh local ingredients.`,
       })) : [
-        { title: "Organic Thakali Khana Set", price: "NRs 650", desc: "Authentic buckwheat dhido/rice, black lentil soup, mutton curry, ghee & fermented pickles." },
-        { title: "Special Himalayan Chicken Momos", price: "NRs 350", desc: "Steamed handmade dumplings served with spicy tomato and sesame chutney." },
-        { title: "Fresh Himalayan Arabica Coffee", price: "NRs 220", desc: "Locally roasted Organic Nepalese coffee beans." },
+        { title: "Organic Thakali Khana Set", price: `${r.currency || 'NRs'} ${r.averageMealPrice || 650}`, desc: "Authentic buckwheat dhido/rice, black lentil soup, mutton curry, ghee & fermented pickles." },
+        { title: "Special Himalayan Chicken Momos", price: `${r.currency || 'NRs'} 350`, desc: "Steamed handmade dumplings served with spicy tomato and sesame chutney." },
+        { title: "Fresh Himalayan Arabica Coffee", price: `${r.currency || 'NRs'} 220`, desc: "Locally roasted Organic Nepalese coffee beans." },
       ],
     });
     setShowYelpModal(true);
@@ -529,23 +545,30 @@ const RestaurantsPage: React.FC = () => {
 
           const imageUrl = bItem.imageUrl || photos[0] || storeMatch?.imageUrl || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
 
+          const currency = storeMatch?.currency || bItem.currency || "NRs";
+          const averageMealPrice = storeMatch?.averageMealPrice !== undefined ? storeMatch.averageMealPrice : (Number(bItem.averageMealPrice) || 650);
+
           const base = mapRestaurant(bItem);
           return {
             ...base,
+            currency,
+            averageMealPrice,
             image: imageUrl,
             photos: photos.length > 0 ? photos : [imageUrl],
+            lat: (storeMatch as any)?.latitude || base.lat,
+            lng: (storeMatch as any)?.longitude || base.lng,
           };
         });
       }
 
-      if (mappedRestaurants.length === 0) {
-        mappedRestaurants = storeItems.map((r) => {
+      storeItems.forEach((r) => {
+        if (!mappedRestaurants.some((m) => String(m.id) === String(r.id))) {
           const photos = (Array.isArray(r.photos) && r.photos.length > 0)
             ? r.photos
             : (r.imageUrl ? [r.imageUrl] : []);
           const imageUrl = r.imageUrl || photos[0] || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
 
-          return {
+          mappedRestaurants.unshift({
             id: String(r.id),
             name: r.restaurantName || "Unnamed Restaurant",
             description: r.contactDetails || "Delicious local food and dining experience.",
@@ -556,15 +579,17 @@ const RestaurantsPage: React.FC = () => {
             location: r.location || "Location unavailable",
             cuisine: r.cuisineTypes && r.cuisineTypes.length > 0 ? r.cuisineTypes : ["Thakali", "Nepali"],
             priceRange: r.priceRange || "NPR NPR",
+            currency: r.currency || "NRs",
+            averageMealPrice: Number(r.averageMealPrice) || 650,
             openingHours: r.openingHours || "07:00 AM - 09:30 PM",
             distance: "2.5 km",
             dietaryOptions: ["Vegetarian", "Organic"],
             featured: true,
-            lat: undefined,
-            lng: undefined,
-          };
-        });
-      }
+            lat: (r as any).latitude,
+            lng: (r as any).longitude,
+          });
+        }
+      });
 
       setRestaurants(mappedRestaurants);
     } catch (err) {
@@ -777,11 +802,11 @@ const RestaurantsPage: React.FC = () => {
               id: r.id,
               name: r.name,
               location: r.location,
-              priceTag: r.priceRange || "$$",
+              priceTag: r.averageMealPrice ? `${r.currency || 'NRs'} ${r.averageMealPrice}` : (r.priceRange || "$$"),
               rating: r.rating || 4.7,
               image: r.image,
-              lat: r.lat,
-              lng: r.lng,
+              lat: (r as any).latitude || r.lat,
+              lng: (r as any).longitude || r.lng,
               category: "restaurant",
             }))}
             selectedId={selectedRestaurantId}

@@ -98,6 +98,8 @@ export interface HotelEntry {
   hotelPhotos: string[];
   photos?: string[];
   imageUrl?: string;
+  pricePerNight?: number;
+  currency?: string;
   availabilityStatus: 'Available' | 'Fully Booked' | 'Seasonal Closure';
   partnerStatus: 'Verified Partner' | 'Pending Verification' | 'Standard';
   approvalStatus: ApprovalStatus;
@@ -122,6 +124,8 @@ export interface RestaurantEntry {
   cuisineTypes: string[]; // Nepali, Thakali, Continental, Bakery, Indian
   openingHours: string;
   priceRange: 'NPR' | 'NPR NPR' | 'NPR NPR NPR' | 'NPR NPR NPR NPR';
+  currency?: string;
+  averageMealPrice?: number;
   menuPdfUrl?: string;
   menuItems?: MenuItem[];
   photos: string[];
@@ -139,6 +143,7 @@ export interface ActivityEntry {
   guideName: string;
   guideContactDetails: string;
   pricing: number;
+  currency?: string;
   duration: string; // e.g. "3 Hours", "Full Day", "5 Days"
   difficultyLevel: 'Easy' | 'Moderate' | 'Challenging' | 'Extreme';
   photos: string[];
@@ -159,6 +164,7 @@ export interface GuideEntry {
   experienceYears?: number;
   specialization: string;
   dailyRate?: number;
+  currency?: string;
   bio?: string;
   photoUrl?: string;
   imageUrl?: string;

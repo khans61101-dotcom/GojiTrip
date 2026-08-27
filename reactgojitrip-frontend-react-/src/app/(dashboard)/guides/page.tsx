@@ -528,7 +528,7 @@ export default function GuidesPage() {
                     <div className="flex justify-between items-center pt-1 border-t border-slate-800">
                       <span className="text-slate-400">Daily Rate:</span>
                       <span className="font-bold text-emerald-400">
-                        NPR {g.dailyRate.toLocaleString()} / Day
+                        {g.currency || "NRs"} {g.dailyRate.toLocaleString()} / Day
                       </span>
                     </div>
                   )}
@@ -662,7 +662,25 @@ export default function GuidesPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
-                    Daily Fee Rate (NPR)
+                    Currency
+                  </label>
+                  <select
+                    value={(editingGuide as any).currency || "NRs"}
+                    onChange={(e) => setEditingGuide({ ...editingGuide, currency: e.target.value })}
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-bold"
+                  >
+                    <option value="NRs">NRs (Nepali Rupee)</option>
+                    <option value="NPR">NPR (Nepali Rupee)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Daily Fee Rate
                   </label>
                   <input
                     type="number"
@@ -672,6 +690,7 @@ export default function GuidesPage() {
                     className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
+              </div>
 
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
@@ -688,7 +707,6 @@ export default function GuidesPage() {
                     <option value="Published">Published</option>
                   </select>
                 </div>
-              </div>
 
               {/* =============== PROFILE PHOTO FILE UPLOAD =============== */}
               <div className="space-y-2">

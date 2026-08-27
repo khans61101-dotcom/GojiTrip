@@ -710,7 +710,7 @@ export default function ActivitiesPage() {
 
                   {/* Price badge on image */}
                   <div className="absolute bottom-3 right-3 px-3 py-1.5 rounded-full bg-black/70 backdrop-blur-md text-emerald-400 font-bold text-xs">
-                    NPR {formatCurrency(item.pricing)}
+                    {item.currency || "NRs"} {formatCurrency(item.pricing)}
                   </div>
 
                   {/* Rating badge */}
@@ -886,19 +886,42 @@ export default function ActivitiesPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-3">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
-                    Pricing (NPR)
+                    Currency
+                  </label>
+                  <select
+                    value={(editingAct as any).currency || "NRs"}
+                    onChange={(e) =>
+                      setEditingAct((prev: any) => ({
+                        ...prev,
+                        currency: e.target.value,
+                      }))
+                    }
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-bold"
+                  >
+                    <option value="NRs">NRs (Nepali Rupee)</option>
+                    <option value="NPR">NPR (Nepali Rupee)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Pricing
                   </label>
                   <input
                     type="number"
                     value={editingAct.pricing || 0}
                     onChange={(e) =>
-                      setEditingAct({
-                        ...editingAct,
+                      setEditingAct((prev: any) => ({
+                        ...prev,
                         pricing: parseInt(e.target.value) || 0,
-                      })
+                      }))
                     }
                     className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                   />

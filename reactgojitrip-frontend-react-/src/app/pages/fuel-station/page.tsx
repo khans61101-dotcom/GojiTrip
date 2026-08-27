@@ -129,6 +129,14 @@ const mockStations: FuelStation[] = [
 export default function FuelStationPage() {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const locParam = params.get("location") || params.get("search") || params.get("q") || params.get("routeStop");
+    if (locParam && locParam.trim()) {
+      setSearchTerm(locParam.trim());
+    }
+  }, []);
   const [stations, setStations] = useState<FuelStation[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStationId, setSelectedStationId] = useState<string | null>(null);

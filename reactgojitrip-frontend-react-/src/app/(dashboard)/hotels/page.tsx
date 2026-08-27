@@ -48,6 +48,19 @@ const [mediaPickerOpen, setMediaPickerOpen] = React.useState(false);
 
 React.useEffect(() => {
   fetchHotels();
+  const unsubscribe = cmsStore.subscribe(() => {
+    const storeHotels = cmsStore.getHotels();
+    setHotels((prev: any) => {
+      if (!Array.isArray(prev) || prev.length === 0) return storeHotels as any;
+      return prev.map((item: any) => {
+        const match = storeHotels.find((s: any) => String(s.id) === String(item.id));
+        return match ? { ...item, ...match } : item;
+      });
+    });
+  });
+  return () => {
+    if (typeof unsubscribe === "function") unsubscribe();
+  };
 }, []);
 
 const fetchHotels = async () => {
@@ -69,8 +82,15 @@ const fetchHotels = async () => {
         ? h.photos
         : (h.imageUrl ? [h.imageUrl] : []);
 
+      const approvalStatus = match?.approvalStatus || h.approvalStatus || "Draft";
+      const pricePerNight = match?.pricePerNight !== undefined ? match.pricePerNight : (Number(h.pricePerNight) || 2500);
+      const currency = match?.currency || h.currency || "NRs";
+
       return {
         ...h,
+        pricePerNight,
+        currency,
+        approvalStatus,
         hotelPhotos: photos,
         photos: photos,
         imageUrl: h.imageUrl || photos[0] || "",
@@ -517,20 +537,43 @@ const handleSaveHotel = async (e: React.FormEvent) => {
                 />
               </div>
 
-              {/* PRICE PER NIGHT & WHATSAPP */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* PRICE PER NIGHT, CURRENCY & WHATSAPP */}
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
-                    Price Per Night (NRs)
+                    Currency
+                  </label>
+                  <select
+                    value={(editingHotel as any).currency || "NRs"}
+                    onChange={(e) =>
+                      setEditingHotel((prev: any) => ({
+                        ...prev,
+                        currency: e.target.value,
+                      }))
+                    }
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-bold"
+                  >
+                    <option value="NRs">NRs (Nepali Rupee)</option>
+                    <option value="NPR">NPR (Nepali Rupee)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Price Per Night
                   </label>
                   <input
                     type="number"
                     value={(editingHotel as any).pricePerNight || 2500}
                     onChange={(e) =>
-                      setEditingHotel({
-                        ...editingHotel,
+                      setEditingHotel((prev: any) => ({
+                        ...prev,
                         pricePerNight: Number(e.target.value) || 0,
-                      } as any)
+                      }))
                     }
                     className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                     placeholder="2500"
@@ -545,10 +588,10 @@ const handleSaveHotel = async (e: React.FormEvent) => {
                     type="text"
                     value={(editingHotel as any).whatsappNumber || ""}
                     onChange={(e) =>
-                      setEditingHotel({
-                        ...editingHotel,
+                      setEditingHotel((prev: any) => ({
+                        ...prev,
                         whatsappNumber: e.target.value,
-                      } as any)
+                      }))
                     }
                     className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                     placeholder="+977-9801234567"

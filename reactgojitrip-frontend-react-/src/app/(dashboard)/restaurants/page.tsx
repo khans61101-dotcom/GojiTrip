@@ -582,8 +582,15 @@ export default function RestaurantsPage() {
 
         const imageUrl = item.imageUrl || photos[0] || matchingStore?.imageUrl || "";
 
+        const approvalStatus = matchingStore?.approvalStatus || item.approvalStatus || "Draft";
+        const currency = matchingStore?.currency || item.currency || "NRs";
+        const averageMealPrice = matchingStore?.averageMealPrice !== undefined ? matchingStore.averageMealPrice : (Number(item.averageMealPrice) || 650);
+
         return {
           ...item,
+          currency,
+          averageMealPrice,
+          approvalStatus,
           imageUrl,
           photos,
         };
@@ -606,6 +613,19 @@ export default function RestaurantsPage() {
 
   React.useEffect(() => {
     loadRestaurants();
+    const unsubscribe = cmsStore.subscribe(() => {
+      const storeItems = cmsStore.getRestaurants();
+      setRestaurants((prev: any) => {
+        if (!Array.isArray(prev) || prev.length === 0) return storeItems as any;
+        return prev.map((item: any) => {
+          const match = storeItems.find((s: any) => String(s.id) === String(item.id));
+          return match ? { ...item, ...match } : item;
+        });
+      });
+    });
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [loadRestaurants]);
 
   // ============================================================
@@ -828,6 +848,8 @@ export default function RestaurantsPage() {
         cuisineTypes: payload.cuisineTypes,
         openingHours: payload.openingHours,
         priceRange: payload.priceRange as any,
+        currency: (editingRest as any).currency || "NRs",
+        averageMealPrice: Number((editingRest as any).averageMealPrice) || 650,
         imageUrl: payload.imageUrl,
         photos: (editingRest.photos && editingRest.photos.length > 0) ? editingRest.photos : (payload.imageUrl ? [payload.imageUrl] : []),
         approvalStatus: payload.approvalStatus as any,
@@ -990,7 +1012,7 @@ export default function RestaurantsPage() {
                   <div className="absolute top-3 left-3 flex space-x-2">
                     <span className="px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-amber-400 font-bold text-[10px] border border-white/10 flex items-center">
                       <DollarSign className="w-3 h-3 mr-0.5" />
-                      {safeString(item.priceRange)}
+                      {(item as any).currency || "NRs"} {(item as any).averageMealPrice || 650} / meal
                     </span>
 
                     {item.cuisineTypes?.length > 0 && (
@@ -1235,9 +1257,74 @@ export default function RestaurantsPage() {
                 />
               </div>
 
-              {/* OPENING + PRICE */}
+              {/* OPENING, CURRENCY, MEAL PRICE + PRICE RANGE */}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Currency
+                  </label>
+
+                  <select
+                    value={(editingRest as any).currency || "NRs"}
+                    onChange={(event) =>
+                      setEditingRest((prev: any) => ({
+                        ...prev,
+                        currency: event.target.value,
+                      }))
+                    }
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-bold"
+                  >
+                    <option value="NRs">NRs (Nepali Rupee)</option>
+                    <option value="NPR">NPR (Nepali Rupee)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Avg Meal Price
+                  </label>
+
+                  <input
+                    type="number"
+                    value={(editingRest as any).averageMealPrice ?? 650}
+                    onChange={(event) =>
+                      setEditingRest((prev: any) => ({
+                        ...prev,
+                        averageMealPrice: Number(event.target.value) || 0,
+                      }))
+                    }
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-bold"
+                    placeholder="e.g. 650"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    Price Level
+                  </label>
+
+                  <select
+                    value={editingRest.priceRange || "NPR NPR"}
+                    onChange={(event) =>
+                      setEditingRest({
+                        ...editingRest,
+                        priceRange: event.target.value as any,
+                      })
+                    }
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                  >
+                    <option value="NPR">$ (Budget)</option>
+                    <option value="NPR NPR">$$ (Moderate)</option>
+                    <option value="NPR NPR NPR">$$$ (High End)</option>
+                    <option value="NPR NPR NPR NPR">$$$$ (Fine Dining)</option>
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
                     Opening Hours
@@ -1255,35 +1342,6 @@ export default function RestaurantsPage() {
                     className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                     placeholder="07:00 AM - 09:00 PM"
                   />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    Price Range
-                  </label>
-
-                  <select
-                    value={editingRest.priceRange || "NPR"}
-                    onChange={(event) =>
-                      setEditingRest({
-                        ...editingRest,
-                        priceRange: event.target.value as
-                          | "NPR"
-                          | "NPR NPR"
-                          | "NPR NPR NPR"
-                          | "NPR NPR NPR NPR",
-                      })
-                    }
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="NPR">NPR</option>
-
-                    <option value="NPR NPR">NPR NPR</option>
-
-                    <option value="NPR NPR NPR">NPR NPR NPR</option>
-                    
-                    <option value="NPR NPR NPR NPR">NPR NPR NPR NPR</option>
-                  </select>
                 </div>
               </div>
 

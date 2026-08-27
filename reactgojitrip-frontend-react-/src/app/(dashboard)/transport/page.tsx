@@ -3,6 +3,7 @@
 import React from 'react';
 import { listTransport, createTransport, updateTransport, deleteTransport, TransportRecord } from '@/lib/api';
 import { StatusBadge } from '@/components/common/StatusBadge';
+import { cmsStore } from '@/lib/cms-store';
 import { ImageFileInput } from '@/components/common/ImageFileInput';
 import { MultiImageFileInput } from '@/components/common/MultiImageFileInput';
 import { Bus, Plus, Search, CheckCircle, XCircle, Phone, MessageSquare, Trash2, Edit, Clock, DollarSign, MapPin } from 'lucide-react';
@@ -79,6 +80,19 @@ export default function TransportPage() {
 
   React.useEffect(() => {
     void load();
+    const unsubscribe = cmsStore.subscribe(() => {
+      const storeItems = cmsStore.getTransports();
+      setItems((prev: any) => {
+        if (!Array.isArray(prev) || prev.length === 0) return storeItems as any;
+        return prev.map((item: any) => {
+          const match = storeItems.find((s: any) => String(s.id) === String(item.id));
+          return match ? { ...item, ...match } : item;
+        });
+      });
+    });
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [load]);
 
   const openCreate = () => {

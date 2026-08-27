@@ -116,6 +116,8 @@ function mapHotel(h: any): HotelEntry {
     imageUrl,
     hotelPhotos: photos,
     photos: photos,
+    pricePerNight: Number(h.pricePerNight) || 2500,
+    currency: h.currency || 'NRs',
     availabilityStatus: h.availabilityStatus,
     partnerStatus: h.partnerStatus,
     approvalStatus: h.approvalStatus,
@@ -139,6 +141,8 @@ function mapRestaurant(r: any): RestaurantEntry {
     cuisineTypes: r.cuisineTypes,
     openingHours: r.openingHours,
     priceRange: r.priceRange,
+    currency: r.currency || 'NRs',
+    averageMealPrice: Number(r.averageMealPrice) || 650,
     photos: photos,
     imageUrl: imageUrl,
     recommendedDishes: Array.isArray(r.recommendedDishes) ? r.recommendedDishes : [],
@@ -161,6 +165,7 @@ function mapActivity(a: any): ActivityEntry {
     guideName: a.guideName,
     guideContactDetails: a.guideContact,
     pricing: a.pricing,
+    currency: a.currency || 'NRs',
     duration: a.duration,
     difficultyLevel: a.difficultyLevel,
     photos: photosArray,
@@ -183,6 +188,7 @@ function mapGuide(g: any): GuideEntry {
     experienceYears: g.experienceYears || 0,
     specialization: g.specialization || 'Mountain Guide',
     dailyRate: g.dailyRate || 0,
+    currency: g.currency || 'NRs',
     bio: g.bio || '',
     photoUrl: g.photoUrl || '',
     approvalStatus: g.approvalStatus || 'Published',
@@ -289,37 +295,44 @@ class CMSStore {
       this.routes = Array.isArray(routes) && routes.length > 0 
         ? routes.map((r: any) => {
             const mapped = mapRoute(r);
-            const prev = prevRoutes.find(p => p.id === mapped.id);
+            const prev = prevRoutes.find(p => String(p.id) === String(mapped.id));
             const photos = (Array.isArray(prev?.photos) && prev.photos.length > 0)
               ? prev.photos
               : (Array.isArray((prev as any)?.routePhotos) && (prev as any).routePhotos.length > 0)
               ? (prev as any).routePhotos
               : mapped.photos;
-            return { ...mapped, photos, routePhotos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+            const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Draft';
+            return { ...mapped, approvalStatus, photos, routePhotos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
           })
         : (prevRoutes.length > 0 ? prevRoutes : INITIAL_ROUTES);
 
       this.hotels = Array.isArray(hotels) && hotels.length > 0
         ? hotels.map((h: any) => {
             const mapped = mapHotel(h);
-            const prev = prevHotels.find(p => p.id === mapped.id);
+            const prev = prevHotels.find(p => String(p.id) === String(mapped.id));
             const photos = (Array.isArray(prev?.hotelPhotos) && prev.hotelPhotos.length > 0)
               ? prev.hotelPhotos
               : (Array.isArray(prev?.photos) && prev.photos.length > 0)
               ? prev.photos
               : mapped.hotelPhotos;
-            return { ...mapped, hotelPhotos: photos, photos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+            const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Draft';
+            const pricePerNight = prev?.pricePerNight !== undefined ? prev.pricePerNight : mapped.pricePerNight;
+            const currency = prev?.currency || mapped.currency || 'NRs';
+            return { ...mapped, pricePerNight, currency, approvalStatus, hotelPhotos: photos, photos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
           })
         : (prevHotels.length > 0 ? prevHotels : INITIAL_HOTELS);
 
       this.restaurants = Array.isArray(restaurants) && restaurants.length > 0
         ? restaurants.map((r: any) => {
             const mapped = mapRestaurant(r);
-            const prev = prevRestaurants.find(p => p.id === mapped.id);
+            const prev = prevRestaurants.find(p => String(p.id) === String(mapped.id));
             const photos = (Array.isArray(prev?.photos) && prev.photos.length > 0)
               ? prev.photos
               : mapped.photos;
-            return { ...mapped, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+            const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Draft';
+            const averageMealPrice = prev?.averageMealPrice !== undefined ? prev.averageMealPrice : mapped.averageMealPrice;
+            const currency = prev?.currency || mapped.currency || 'NRs';
+            return { ...mapped, averageMealPrice, currency, approvalStatus, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
           })
         : (prevRestaurants.length > 0 ? prevRestaurants : INITIAL_RESTAURANTS);
 
@@ -327,11 +340,14 @@ class CMSStore {
       this.activities = Array.isArray(activities) && activities.length > 0
         ? activities.map((a: any) => {
             const mapped = mapActivity(a);
-            const prev = prevActivities.find(p => p.id === mapped.id);
+            const prev = prevActivities.find(p => String(p.id) === String(mapped.id));
             const photos = (Array.isArray(prev?.photos) && prev.photos.length > 0)
               ? prev.photos
               : mapped.photos;
-            return { ...mapped, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+            const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Draft';
+            const pricing = prev?.pricing !== undefined ? prev.pricing : mapped.pricing;
+            const currency = prev?.currency || mapped.currency || 'NRs';
+            return { ...mapped, pricing, currency, approvalStatus, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
           })
         : (prevActivities.length > 0 ? prevActivities : INITIAL_ACTIVITIES);
 
@@ -339,8 +355,11 @@ class CMSStore {
       this.guides = Array.isArray(guides) && guides.length > 0
         ? guides.map((g: any) => {
             const mapped = mapGuide(g);
-            const prev = prevGuides.find(p => p.id === mapped.id);
-            return prev ? { ...mapped, ...prev } : mapped;
+            const prev = prevGuides.find(p => String(p.id) === String(mapped.id));
+            const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Published';
+            const dailyRate = prev?.dailyRate !== undefined ? prev.dailyRate : mapped.dailyRate;
+            const currency = prev?.currency || mapped.currency || 'NRs';
+            return prev ? { ...mapped, ...prev, dailyRate, currency, approvalStatus } : { ...mapped, dailyRate, currency, approvalStatus };
           })
         : (prevGuides.length > 0 ? prevGuides : INITIAL_GUIDES);
 
@@ -537,14 +556,16 @@ class CMSStore {
       imageUrl: imageUrl || null,
       hotelPhotos: photos,
       photos: photos,
+      pricePerNight: Number(entry.pricePerNight) || 2500,
+      currency: entry.currency || 'NRs',
       approvalStatus: entry.approvalStatus || 'Draft',
       createdByName: entry.createdByName || 'API',
     };
 
     if (entry.id) {
-      this.hotels = this.hotels.map(h => h.id === String(entry.id) ? { ...h, ...entry, imageUrl, hotelPhotos: photos, photos: photos } as HotelEntry : h);
+      this.hotels = this.hotels.map(h => h.id === String(entry.id) ? { ...h, ...entry, imageUrl, hotelPhotos: photos, photos: photos, currency: entry.currency || h.currency || 'NRs' } as HotelEntry : h);
     } else {
-      const newHotel: HotelEntry = { id: `ht-${Date.now()}`, ...entry, imageUrl, hotelPhotos: photos, photos: photos } as HotelEntry;
+      const newHotel: HotelEntry = { id: `ht-${Date.now()}`, ...entry, imageUrl, hotelPhotos: photos, photos: photos, currency: entry.currency || 'NRs' } as HotelEntry;
       this.hotels.unshift(newHotel);
     }
     this.notify();
@@ -577,6 +598,8 @@ class CMSStore {
       cuisineTypes: entry.cuisineTypes || [],
       openingHours: entry.openingHours || 'N/A',
       priceRange: entry.priceRange || 'NPR NPR',
+      currency: entry.currency || 'NRs',
+      averageMealPrice: Number(entry.averageMealPrice) || 650,
       imageUrl: imageUrl || null,
       photos: photos,
       approvalStatus: entry.approvalStatus || 'Draft',
@@ -584,9 +607,9 @@ class CMSStore {
     };
 
     if (entry.id) {
-      this.restaurants = this.restaurants.map(r => r.id === String(entry.id) ? { ...r, ...entry, imageUrl, photos: photos } as RestaurantEntry : r);
+      this.restaurants = this.restaurants.map(r => r.id === String(entry.id) ? { ...r, ...entry, imageUrl, photos: photos, currency: entry.currency || r.currency || 'NRs' } as RestaurantEntry : r);
     } else {
-      const newRest: RestaurantEntry = { id: `res-${Date.now()}`, ...entry, imageUrl, photos: photos } as RestaurantEntry;
+      const newRest: RestaurantEntry = { id: `res-${Date.now()}`, ...entry, imageUrl, photos: photos, currency: entry.currency || 'NRs' } as RestaurantEntry;
       this.restaurants.unshift(newRest);
     }
     this.notify();
@@ -617,6 +640,7 @@ class CMSStore {
       guideName: entry.guideName || 'N/A',
       guideContact: entry.guideContactDetails || 'N/A',
       pricing: Number(entry.pricing) || 0,
+      currency: entry.currency || 'NRs',
       duration: entry.duration || 'N/A',
       difficultyLevel: entry.difficultyLevel || 'Easy',
       availability: entry.availability || 'Daily',
@@ -627,9 +651,9 @@ class CMSStore {
     };
 
     if (entry.id) {
-      this.activities = this.activities.map(a => a.id === String(entry.id) ? { ...a, ...entry, imageUrl, photos } as ActivityEntry : a);
+      this.activities = this.activities.map(a => a.id === String(entry.id) ? { ...a, ...entry, imageUrl, photos, currency: entry.currency || a.currency || 'NRs' } as ActivityEntry : a);
     } else {
-      const newAct: ActivityEntry = { id: `act-${Date.now()}`, ...entry, imageUrl, photos } as ActivityEntry;
+      const newAct: ActivityEntry = { id: `act-${Date.now()}`, ...entry, imageUrl, photos, currency: entry.currency || 'NRs' } as ActivityEntry;
       this.activities.unshift(newAct);
     }
     this.notify();
@@ -660,6 +684,7 @@ class CMSStore {
       experienceYears: Number(entry.experienceYears) || 3,
       specialization: entry.specialization || 'Mountain Guide',
       dailyRate: Number(entry.dailyRate) || 3000,
+      currency: entry.currency || 'NRs',
       bio: entry.bio || '',
       photoUrl: photoUrl || '',
       imageUrl: photoUrl || '',
@@ -669,9 +694,9 @@ class CMSStore {
     };
 
     if (entry.id) {
-      this.guides = this.guides.map(g => g.id === String(entry.id) ? { ...g, ...entry, photoUrl } as GuideEntry : g);
+      this.guides = this.guides.map(g => g.id === String(entry.id) ? { ...g, ...entry, photoUrl, currency: entry.currency || g.currency || 'NRs' } as GuideEntry : g);
     } else {
-      const newGuide: GuideEntry = { id: `gd-${Date.now()}`, ...entry, photoUrl } as GuideEntry;
+      const newGuide: GuideEntry = { id: `gd-${Date.now()}`, ...entry, photoUrl, currency: entry.currency || 'NRs' } as GuideEntry;
       this.guides.unshift(newGuide);
     }
     this.notify();
@@ -712,8 +737,98 @@ class CMSStore {
   }
   async deleteMedia(id: string) { await apiRequest(`/media/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
 
-  updateStatus(_entityType: string, _entityId: string, _newStatus: ApprovalStatus, _comment?: string) {
+  updateStatus(entityType: string, entityId: string, newStatus: ApprovalStatus, comment?: string) {
+    const type = (entityType || '').toLowerCase();
+    const id = String(entityId);
+
+    let previousStatus: ApprovalStatus = 'Draft';
+    let entityTitle = 'Entity';
+
+    if (type.includes('hotel')) {
+      this.hotels = this.hotels.map(h => {
+        if (String(h.id) === id) {
+          previousStatus = h.approvalStatus;
+          entityTitle = h.hotelName || 'Hotel';
+          return { ...h, approvalStatus: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return h;
+      });
+    } else if (type.includes('restaurant')) {
+      this.restaurants = this.restaurants.map(r => {
+        if (String(r.id) === id) {
+          previousStatus = r.approvalStatus;
+          entityTitle = r.restaurantName || 'Restaurant';
+          return { ...r, approvalStatus: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return r;
+      });
+    } else if (type.includes('activity')) {
+      this.activities = this.activities.map(a => {
+        if (String(a.id) === id) {
+          previousStatus = a.approvalStatus;
+          entityTitle = a.activityName || 'Activity';
+          return { ...a, approvalStatus: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return a;
+      });
+    } else if (type.includes('guide')) {
+      this.guides = this.guides.map(g => {
+        if (String(g.id) === id) {
+          previousStatus = g.approvalStatus;
+          entityTitle = g.fullName || 'Guide';
+          return { ...g, approvalStatus: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return g;
+      });
+    } else if (type.includes('route')) {
+      this.routes = this.routes.map(rt => {
+        if (String(rt.id) === id) {
+          previousStatus = rt.approvalStatus;
+          entityTitle = rt.routeName || 'Route';
+          return { ...rt, approvalStatus: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return rt;
+      });
+    } else if (type.includes('transport')) {
+      this.transports = this.transports.map(t => {
+        if (String(t.id) === id) {
+          previousStatus = t.approvalStatus;
+          entityTitle = t.operatorName || 'Transport';
+          return { ...t, approvalStatus: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return t;
+      });
+    }
+
+    this.logs.unshift({
+      id: `log_${Date.now()}`,
+      entityType: (entityType.charAt(0).toUpperCase() + entityType.slice(1)) as any,
+      entityId: id,
+      entityTitle: entityTitle,
+      previousStatus: previousStatus,
+      newStatus: newStatus,
+      changedByRole: 'Admin',
+      changedByName: 'Goji Admin',
+      comment: comment || `Inline status update to ${newStatus}`,
+      timestamp: new Date().toISOString(),
+    });
+
     this.notify();
+
+    // Async backend sync for status
+    const numId = Number(id);
+    if (!isNaN(numId) && numId > 0) {
+      let endpoint = '';
+      if (type.includes('hotel')) endpoint = `/hotels/${numId}`;
+      else if (type.includes('restaurant')) endpoint = `/restaurants/${numId}`;
+      else if (type.includes('activity')) endpoint = `/activities/${numId}`;
+      else if (type.includes('guide')) endpoint = `/guides/${numId}`;
+      else if (type.includes('route')) endpoint = `/routes/${numId}`;
+
+      if (endpoint) {
+        apiRequest(endpoint, { method: 'PATCH', body: { approvalStatus: newStatus } }).catch(() => null);
+      }
+    }
   }
 }
 

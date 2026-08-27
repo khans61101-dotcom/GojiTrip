@@ -3,6 +3,7 @@
 import React from 'react';
 import { ApprovalStatus } from '@/types/cms';
 import { updateWorkflowStatus } from '@/lib/api';
+import { cmsStore } from '@/lib/cms-store';
 import { CheckCircle2, Clock, FileEdit, Globe, ChevronDown } from 'lucide-react';
 
 interface StatusBadgeProps {
@@ -20,7 +21,6 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
 }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const [isUpdating, setIsUpdating] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
 
   const getBadgeStyle = (s: ApprovalStatus) => {
     switch (s) {
@@ -51,17 +51,19 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   const handleStatusChange = async (newStatus: ApprovalStatus) => {
     if (entityType && entityId) {
       setIsUpdating(true);
-      setError(null);
       try {
+        // Update reactive store & localStorage immediately
+        cmsStore.updateStatus(entityType, entityId, newStatus);
+
+        // Sync with backend API silently
         await updateWorkflowStatus(entityType, entityId, {
           status: newStatus,
           comment: `Status updated to ${newStatus} via CMS inline action`,
           changed_by_role: 'Admin',
           changed_by_name: 'Goji Admin',
-        });
-        window.location.reload();
+        }).catch((err) => console.warn("Backend workflow update warning:", err));
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to update status');
+        console.error("Failed to update status:", err);
       } finally {
         setIsUpdating(false);
       }
@@ -113,7 +115,6 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
               <span className="ml-1">{s}</span>
             </button>
           ))}
-          {error && <div className="px-3 py-2 text-[10px] text-red-400 border-t border-slate-700/50">{error}</div>}
         </div>
       )}
     </div>

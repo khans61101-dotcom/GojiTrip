@@ -579,6 +579,19 @@ export default function RoutesPage() {
 
   React.useEffect(() => {
     fetchRoutes();
+    const unsubscribe = cmsStore.subscribe(() => {
+      const storeRoutes = cmsStore.getRoutes();
+      setRoutes((prev: any) => {
+        if (!Array.isArray(prev) || prev.length === 0) return storeRoutes as any;
+        return prev.map((item: any) => {
+          const match = storeRoutes.find((s: any) => String(s.id) === String(item.id));
+          return match ? { ...item, ...match } : item;
+        });
+      });
+    });
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, [fetchRoutes]);
 
   // ==========================================================

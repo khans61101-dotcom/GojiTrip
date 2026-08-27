@@ -43,6 +43,21 @@ export default function HomestaysPage() {
 
   React.useEffect(() => {
     fetchHomestays();
+    const unsubscribe = cmsStore.subscribe(() => {
+      const storeHotels = cmsStore.getHotels();
+      setHomestays((prev: any) => {
+        if (!Array.isArray(prev) || prev.length === 0) {
+          return storeHotels.filter((h) => h.propertyType === "Homestay") as any;
+        }
+        return prev.map((item: any) => {
+          const match = storeHotels.find((s: any) => String(s.id) === String(item.id));
+          return match ? { ...item, ...match } : item;
+        });
+      });
+    });
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
   }, []);
 
   const fetchHomestays = async () => {
@@ -69,9 +84,16 @@ export default function HomestaysPage() {
           ? h.photos
           : (h.imageUrl ? [h.imageUrl] : []);
 
+        const pricePerNight = match?.pricePerNight !== undefined ? match.pricePerNight : (Number(h.pricePerNight) || 1500);
+        const currency = match?.currency || h.currency || "NRs";
+        const approvalStatus = match?.approvalStatus || h.approvalStatus || "Draft";
+
         return {
           ...h,
           propertyType: "Homestay",
+          pricePerNight,
+          currency,
+          approvalStatus,
           hotelPhotos: photos,
           photos: photos,
           imageUrl: h.imageUrl || photos[0] || "",
@@ -422,6 +444,34 @@ export default function HomestaysPage() {
                   onChange={(e) => setEditingHomestay({ ...editingHomestay, location: e.target.value })}
                   className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Currency</label>
+                  <select
+                    value={(editingHomestay as any).currency || "NRs"}
+                    onChange={(e) => setEditingHomestay((prev: any) => ({ ...prev, currency: e.target.value }))}
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500 font-bold"
+                  >
+                    <option value="NRs">NRs (Nepali Rupee)</option>
+                    <option value="NPR">NPR (Nepali Rupee)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">Price Per Night</label>
+                  <input
+                    type="number"
+                    value={(editingHomestay as any).pricePerNight || 1500}
+                    onChange={(e) => setEditingHomestay((prev: any) => ({ ...prev, pricePerNight: Number(e.target.value) || 0 }))}
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    placeholder="1500"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

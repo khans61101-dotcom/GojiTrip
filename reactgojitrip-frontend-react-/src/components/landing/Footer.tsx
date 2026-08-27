@@ -61,8 +61,8 @@ export default function Footer() {
             </p>
 
             {/* Verification Badge */}
-            <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-              <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <div className="inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold">
+              <ShieldCheck className="w-4 h-4 text-blue-400 flex-shrink-0" />
               <span>100% Ground-Verified Data Strategy</span>
             </div>
 
@@ -72,8 +72,8 @@ export default function Footer() {
                 Get Nepal Travel & Highway Updates
               </label>
               {subscribed ? (
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold flex items-center space-x-2">
-                  <Sparkles className="w-4 h-4" />
+                <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold flex items-center space-x-2">
+                  <Sparkles className="w-4 h-4 text-red-500" />
                   <span>Thank you for subscribing to GojiTrip Updates!</span>
                 </div>
               ) : (
@@ -84,11 +84,11 @@ export default function Footer() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter your email address..."
-                    className="flex-1 bg-[#182238] border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                    className="flex-1 bg-[#182238] border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                   <button
                     type="submit"
-                    className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center space-x-1"
+                    className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-red-600 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center space-x-1"
                   >
                     <span>Subscribe</span>
                     <ArrowRight className="w-3.5 h-3.5" />

@@ -25,11 +25,102 @@ interface InteractiveMapProps {
   center?: { lat: number; lng: number };
 }
 
+// Extensive dictionary for cities, states, and countries
+const LOCATION_COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
+  // India Cities & Regions
+  "bhopal": { lat: 23.2599, lng: 77.4126 },
+  "indore": { lat: 22.7196, lng: 75.8577 },
+  "delhi": { lat: 28.6139, lng: 77.2090 },
+  "new delhi": { lat: 28.6139, lng: 77.2090 },
+  "mumbai": { lat: 19.0760, lng: 72.8777 },
+  "bangalore": { lat: 12.9716, lng: 77.5946 },
+  "bengaluru": { lat: 12.9716, lng: 77.5946 },
+  "kolkata": { lat: 22.5726, lng: 88.3639 },
+  "chennai": { lat: 13.0827, lng: 80.2707 },
+  "hyderabad": { lat: 17.3850, lng: 78.4867 },
+  "jaipur": { lat: 26.9124, lng: 75.7873 },
+  "agra": { lat: 27.1767, lng: 78.0081 },
+  "goa": { lat: 15.2993, lng: 74.1240 },
+  "pune": { lat: 18.5204, lng: 73.8567 },
+  "ahmedabad": { lat: 23.0225, lng: 72.5714 },
+  "surat": { lat: 21.1702, lng: 72.8311 },
+  "lucknow": { lat: 26.8467, lng: 80.9462 },
+  "varanasi": { lat: 25.3176, lng: 82.9739 },
+  "patna": { lat: 25.5941, lng: 85.1376 },
+  "shimla": { lat: 31.1048, lng: 77.1734 },
+  "manali": { lat: 32.2432, lng: 77.1892 },
+  "dharamsala": { lat: 32.2190, lng: 76.3234 },
+  "rishikesh": { lat: 30.0869, lng: 78.2676 },
+  "dehradun": { lat: 30.3165, lng: 78.0322 },
+  "india": { lat: 20.5937, lng: 78.9629 },
+
+  // Nepal Cities & Regions
+  "kathmandu": { lat: 27.7172, lng: 85.3240 },
+  "pokhara": { lat: 28.2096, lng: 83.9856 },
+  "lakeside": { lat: 28.2096, lng: 83.9580 },
+  "chitwan": { lat: 27.5291, lng: 84.3542 },
+  "sauraha": { lat: 27.5756, lng: 84.4947 },
+  "lumbini": { lat: 27.4776, lng: 83.2755 },
+  "mustang": { lat: 28.9986, lng: 83.8473 },
+  "jomson": { lat: 28.7816, lng: 83.7292 },
+  "muktinath": { lat: 28.8170, lng: 83.8717 },
+  "everest": { lat: 27.9881, lng: 86.9250 },
+  "lukla": { lat: 27.6869, lng: 86.7294 },
+  "namche": { lat: 27.8069, lng: 86.7142 },
+  "annapurna": { lat: 28.5300, lng: 83.8700 },
+  "nagarkot": { lat: 27.7172, lng: 85.5200 },
+  "bhaktapur": { lat: 27.6710, lng: 85.4298 },
+  "patan": { lat: 27.6644, lng: 85.3188 },
+  "lalitpur": { lat: 27.6644, lng: 85.3188 },
+  "dharan": { lat: 26.8124, lng: 87.2834 },
+  "biratnagar": { lat: 26.4525, lng: 87.2718 },
+  "birgunj": { lat: 27.0099, lng: 84.8777 },
+  "janakpur": { lat: 26.7288, lng: 85.9248 },
+  "butwal": { lat: 27.7006, lng: 83.4484 },
+  "bhairahawa": { lat: 27.5050, lng: 83.4533 },
+  "nepalgunj": { lat: 28.0500, lng: 81.6167 },
+  "dhangadhi": { lat: 28.6833, lng: 80.6000 },
+  "bandipur": { lat: 27.9372, lng: 84.4172 },
+  "gorkha": { lat: 28.0000, lng: 84.6333 },
+  "nepal": { lat: 28.3949, lng: 84.1240 },
+};
+
+function resolveCoordinates(item: MapMarkerItem): { lat: number; lng: number } {
+  // 1. If explicit valid lat & lng exist
+  if (item.lat && !isNaN(item.lat) && item.lat !== 0 && item.lng && !isNaN(item.lng) && item.lng !== 0) {
+    return { lat: item.lat, lng: item.lng };
+  }
+
+  // 2. Check location string & name against known dictionary
+  const locLower = (item.location || "").toLowerCase().trim();
+  const nameLower = (item.name || "").toLowerCase().trim();
+
+  for (const [key, coords] of Object.entries(LOCATION_COORDINATES_MAP)) {
+    if (locLower.includes(key) || nameLower.includes(key)) {
+      const jitterLat = (Math.random() - 0.5) * 0.02;
+      const jitterLng = (Math.random() - 0.5) * 0.02;
+      return { lat: coords.lat + jitterLat, lng: coords.lng + jitterLng };
+    }
+  }
+
+  // 3. Fallback: deterministic offset hash based on location text
+  const strToHash = locLower || nameLower || "default";
+  let hash = 0;
+  for (let i = 0; i < strToHash.length; i++) {
+    hash = (hash << 5) - hash + strToHash.charCodeAt(i);
+    hash |= 0;
+  }
+  const latOffset = (Math.abs(hash) % 200) / 100 - 1;
+  const lngOffset = (Math.abs(hash >> 3) % 200) / 100 - 1;
+
+  return { lat: 28.2096 + latOffset, lng: 83.9856 + lngOffset };
+}
+
 export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   items,
   selectedId,
   onMarkerClick,
-  center = { lat: 28.2096, lng: 83.9856 }, // Pokhara Nepal default center
+  center = { lat: 28.2096, lng: 83.9856 },
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -37,7 +128,6 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    // Ensure Leaflet CSS & JS loaded
     if (window.L) {
       setLoaded(true);
       return;
@@ -67,11 +157,10 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
     const L = window.L;
 
-    // Initialize map if not already done
     if (!mapInstanceRef.current) {
       const map = L.map(containerRef.current, {
         center: [center.lat, center.lng],
-        zoom: 12,
+        zoom: 7,
         zoomControl: true,
       });
 
@@ -94,12 +183,11 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     const group: any[] = [];
 
     items.forEach((item, index) => {
-      // Coordinates fallback near center if missing
-      const itemLat = item.lat && !isNaN(item.lat) && item.lat !== 0 ? item.lat : center.lat + (Math.random() - 0.5) * 0.04;
-      const itemLng = item.lng && !isNaN(item.lng) && item.lng !== 0 ? item.lng : center.lng + (Math.random() - 0.5) * 0.04;
+      const coords = resolveCoordinates(item);
+      const itemLat = coords.lat;
+      const itemLng = coords.lng;
 
       const isSelected = String(item.id) === String(selectedId);
-
       const color = item.category === "restaurant" ? "#f97316" : item.category === "transport" ? "#10b981" : "#2563eb";
 
       const customIcon = L.divIcon({
@@ -135,7 +223,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         <div style="font-family: sans-serif; padding: 4px; max-width: 200px;">
           ${item.image ? `<img src="${item.image}" style="width:100%; height:80px; object-fit:cover; border-radius:8px; margin-bottom:6px;"/>` : ""}
           <strong style="font-size: 13px; color: #0f172a; display:block;">${item.name}</strong>
-          <div style="font-size: 11px; color: #64748b; margin-top:2px;">📍 ${item.location || "Nepal"}</div>
+          <div style="font-size: 11px; color: #64748b; margin-top:2px;">📍 ${item.location || "Location"}</div>
           <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
             <span style="font-size: 12px; font-weight:bold; color: #16a34a;">${item.priceTag || ""}</span>
             <span style="font-size: 11px; color: #f59e0b; font-weight:bold;">★ ${item.rating || 4.8}</span>
@@ -154,7 +242,12 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     });
 
     if (group.length > 0) {
-      map.fitBounds(group, { padding: [40, 40], maxZoom: 14 });
+      if (group.length === 1) {
+        map.setView(group[0], 11);
+      } else {
+        const bounds = L.latLngBounds(group);
+        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+      }
     }
   }, [loaded, items, selectedId, center, onMarkerClick]);
 

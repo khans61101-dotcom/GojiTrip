@@ -29,6 +29,8 @@ interface Hotel {
   name: string;
   description: string;
   image: string;
+  hotelPhotos?: string[];
+  photos?: string[];
   rating: number;
   reviews: number;
   location: string;
@@ -584,6 +586,14 @@ const MapComponent: React.FC<{
 const HotelsPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const locParam = params.get("location") || params.get("search") || params.get("q") || params.get("routeStop");
+    if (locParam && locParam.trim()) {
+      setSearchQuery(locParam.trim());
+    }
+  }, []);
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null);
@@ -680,6 +690,11 @@ const HotelsPage: React.FC = () => {
           }
         }
 
+        const pricePerNight = storeMatch?.pricePerNight !== undefined && storeMatch.pricePerNight > 0
+          ? storeMatch.pricePerNight
+          : (typeof hotel.pricePerNight === "number" && hotel.pricePerNight > 0 ? hotel.pricePerNight : 2500);
+        const currency = storeMatch?.currency || hotel.currency || "NRs";
+
         return {
           id: String(hotel.id ?? Math.random()),
           name: hotel.hotelName || hotel.name || "Unnamed Hotel",
@@ -690,8 +705,8 @@ const HotelsPage: React.FC = () => {
           rating: typeof hotel.rating === "number" ? hotel.rating : 4.5,
           reviews: typeof hotel.reviews === "number" ? hotel.reviews : 0,
           location: hotel.location || "Location not specified",
-          pricePerNight: typeof hotel.pricePerNight === "number" ? hotel.pricePerNight : 0,
-          currency: hotel.currency || "NPR",
+          pricePerNight,
+          currency,
           amenities: Array.isArray(hotel.amenities) ? hotel.amenities : [],
           distance: hotel.distance || "0.5 km",
           available:
@@ -702,10 +717,42 @@ const HotelsPage: React.FC = () => {
             ? (String(hotel.approvalStatus).toLowerCase().replace(/\s+/g, "-") as any)
             : "draft",
           roomTypes: [],
-          lat,
-          lng,
+          lat: storeMatch?.latitude || lat,
+          lng: storeMatch?.longitude || lng,
           gpsCoordinates: hotel.gpsCoordinates,
         };
+      });
+
+      cmsHotels.forEach((sh: any) => {
+        if (!transformedHotels.some((m) => String(m.id) === String(sh.id))) {
+          const photos = (Array.isArray(sh.hotelPhotos) && sh.hotelPhotos.length > 0)
+            ? sh.hotelPhotos
+            : (Array.isArray(sh.photos) && sh.photos.length > 0)
+            ? sh.photos
+            : (sh.imageUrl ? [sh.imageUrl] : []);
+          const imageUrl = sh.imageUrl || photos[0] || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
+
+          transformedHotels.unshift({
+            id: String(sh.id),
+            name: sh.hotelName || "Unnamed Hotel",
+            description: sh.location || "No description available",
+            image: imageUrl,
+            hotelPhotos: photos,
+            photos: photos,
+            rating: 4.8,
+            reviews: 35,
+            location: sh.location || "Nepal",
+            pricePerNight: Number(sh.pricePerNight) || 2500,
+            currency: sh.currency || "NRs",
+            amenities: Array.isArray(sh.facilities) ? sh.facilities : [],
+            distance: "1.0 km",
+            available: true,
+            status: "published",
+            roomTypes: [],
+            lat: sh.latitude,
+            lng: sh.longitude,
+          });
+        }
       });
 
       setHotels(transformedHotels);
@@ -1118,8 +1165,8 @@ const HotelsPage: React.FC = () => {
                 priceTag: `${currency}${displayPrice.toLocaleString()}`,
                 rating: h.rating || 4.8,
                 image: h.image,
-                lat: h.lat,
-                lng: h.lng,
+                lat: (h as any).latitude || h.lat,
+                lng: (h as any).longitude || h.lng,
                 category: "hotel",
               };
             })}

@@ -474,15 +474,15 @@ export const Hero = () => {
           ================================================== */}
 
           <div className="space-y-6">
-            <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 text-xs font-bold uppercase tracking-wider">
-              <Sparkles className="w-4 h-4 text-emerald-500" />
+            <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-blue-600/10 border border-blue-600/30 text-blue-700 text-xs font-bold uppercase tracking-wider">
+              <Sparkles className="w-4 h-4 text-red-500" />
               <span>Verified Nepal Travel Portal & AI Companion</span>
             </div>
 
             <h1 className="text-4xl md:text-6xl lg:text-7xl font-extrabold text-slate-900 leading-[1.1] tracking-tight">
               Plan Smarter.
               <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-600">Travel Better.</span>
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-blue-700 to-red-500">Travel Better.</span>
               <br />
               GojiTrip.
             </h1>
@@ -503,7 +503,7 @@ export const Hero = () => {
                     key={index}
                     className="flex items-center gap-2 px-3.5 py-2 bg-white/90 backdrop-blur-sm border border-slate-200 rounded-full text-slate-700 font-semibold text-xs shadow-sm"
                   >
-                    <Icon size={15} className="text-emerald-600" />
+                    <Icon size={15} className="text-blue-600" />
                     <span>{feature.label}</span>
                   </div>
                 );
@@ -532,7 +532,7 @@ export const Hero = () => {
                       setDestinationLocation({ placeId: `dst_${idx}`, name: preset.dst, address: preset.dst, latitude: preset.dstLat, longitude: preset.dstLng });
                       if (!date) setDate(today);
                     }}
-                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded-lg transition-colors shadow-xs flex items-center space-x-1"
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-xs font-semibold rounded-lg transition-colors shadow-xs flex items-center space-x-1"
                   >
                     <span>{preset.label}</span>
                   </button>
