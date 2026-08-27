@@ -96,6 +96,7 @@ export interface HotelEntry {
   checkInTime: string;
   checkOutTime: string;
   hotelPhotos: string[];
+  photos?: string[];
   imageUrl?: string;
   availabilityStatus: 'Available' | 'Fully Booked' | 'Seasonal Closure';
   partnerStatus: 'Verified Partner' | 'Pending Verification' | 'Standard';

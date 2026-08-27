@@ -56,7 +56,12 @@ function mapTrip(t: BackendTrip): TransportEntry {
 }
 
 function mapRoute(r: any): RouteEntry {
-  const imageUrl = r.imageUrl || r.image_url || (r.photos && r.photos[0]) || '';
+  const imageUrl = r.imageUrl || r.image_url || (Array.isArray(r.photos) && r.photos[0]) || '';
+  const photos = (Array.isArray(r.photos) && r.photos.length > 0)
+    ? r.photos
+    : (Array.isArray(r.routePhotos) && r.routePhotos.length > 0)
+    ? r.routePhotos
+    : (imageUrl ? [imageUrl] : []);
   return {
     id: String(r.id),
     routeName: r.routeName || r.name || 'Unnamed Route',
@@ -66,7 +71,7 @@ function mapRoute(r: any): RouteEntry {
     estimatedTravelTime: r.estimatedTravelTime || r.duration || 'N/A',
     roadCondition: r.roadCondition || 'Smooth Asphalt',
     imageUrl,
-    photos: imageUrl ? [imageUrl] : [],
+    photos,
     fuelStations: Array.isArray(r.fuelStations) ? r.fuelStations : [],
     evChargingStations: Array.isArray(r.evChargingStations) ? r.evChargingStations : [],
     medicalCentres: Array.isArray(r.medicalCentres) ? r.medicalCentres : [],
@@ -88,6 +93,13 @@ function mapRoute(r: any): RouteEntry {
 }
 
 function mapHotel(h: any): HotelEntry {
+  const imageUrl = h.imageUrl || h.image_url || (Array.isArray(h.hotelPhotos) && h.hotelPhotos[0]) || (Array.isArray(h.photos) && h.photos[0]) || '';
+  const photos = (Array.isArray(h.hotelPhotos) && h.hotelPhotos.length > 0)
+    ? h.hotelPhotos
+    : (Array.isArray(h.photos) && h.photos.length > 0)
+    ? h.photos
+    : (imageUrl ? [imageUrl] : []);
+
   return {
     id: String(h.id),
     hotelName: h.hotelName,
@@ -97,11 +109,13 @@ function mapHotel(h: any): HotelEntry {
     location: h.location,
     latitude: h.latitude,
     longitude: h.longitude,
-    roomTypes: [], // The backend response doesn't seem to return room types in the root object
-    facilities: [], // Backend doesn't return facilities
+    roomTypes: Array.isArray(h.roomTypes) ? h.roomTypes : [],
+    facilities: Array.isArray(h.facilities) ? h.facilities : [],
     checkInTime: h.checkInTime,
     checkOutTime: h.checkOutTime,
-    hotelPhotos: h.imageUrl ? [h.imageUrl] : [], // Backend now returns imageUrl
+    imageUrl,
+    hotelPhotos: photos,
+    photos: photos,
     availabilityStatus: h.availabilityStatus,
     partnerStatus: h.partnerStatus,
     approvalStatus: h.approvalStatus,
@@ -112,6 +126,11 @@ function mapHotel(h: any): HotelEntry {
 }
 
 function mapRestaurant(r: any): RestaurantEntry {
+  const imageUrl = r.imageUrl || r.image_url || (Array.isArray(r.photos) && r.photos[0]) || '';
+  const photos = (Array.isArray(r.photos) && r.photos.length > 0)
+    ? r.photos
+    : (imageUrl ? [imageUrl] : []);
+
   return {
     id: String(r.id),
     restaurantName: r.restaurantName,
@@ -120,9 +139,9 @@ function mapRestaurant(r: any): RestaurantEntry {
     cuisineTypes: r.cuisineTypes,
     openingHours: r.openingHours,
     priceRange: r.priceRange,
-    photos: [], // Not returned by backend
-    imageUrl: r.imageUrl,
-    recommendedDishes: [], // Not returned by backend
+    photos: photos,
+    imageUrl: imageUrl,
+    recommendedDishes: Array.isArray(r.recommendedDishes) ? r.recommendedDishes : [],
     approvalStatus: r.approvalStatus,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
@@ -350,7 +369,12 @@ class CMSStore {
   async deleteTransport(id: string) { await apiRequest(`/transport/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
 
   async saveRoute(entry: Partial<RouteEntry> & { id?: string }) {
-    const imageUrl = entry.imageUrl || (entry.photos && entry.photos[0]) || '';
+    const photos = (Array.isArray(entry.photos) && entry.photos.length > 0)
+      ? entry.photos
+      : (Array.isArray((entry as any).routePhotos) && (entry as any).routePhotos.length > 0)
+      ? (entry as any).routePhotos
+      : (entry.imageUrl ? [entry.imageUrl] : []);
+    const imageUrl = entry.imageUrl || photos[0] || '';
     const payload = {
       routeName: entry.routeName || 'New Route',
       origin: entry.origin || '',
@@ -360,15 +384,16 @@ class CMSStore {
       roadCondition: entry.roadCondition || 'N/A',
       weatherSummary: entry.weatherSummary || 'N/A',
       imageUrl: imageUrl || null,
-      photos: imageUrl ? [imageUrl] : [],
+      photos: photos,
+      routePhotos: photos,
       approvalStatus: entry.approvalStatus && entry.approvalStatus.trim() !== '' ? entry.approvalStatus : 'Draft',
       createdByName: entry.createdByName || (typeof window !== 'undefined' && localStorage.getItem('gojitrip_username')) || 'Goji Admin',
     };
 
     if (entry.id) {
-      this.routes = this.routes.map(r => r.id === String(entry.id) ? { ...r, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as RouteEntry : r);
+      this.routes = this.routes.map(r => r.id === String(entry.id) ? { ...r, ...entry, imageUrl, photos, routePhotos: photos } as RouteEntry : r);
     } else {
-      const newRoute: RouteEntry = { id: `rt-${Date.now()}`, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as RouteEntry;
+      const newRoute: RouteEntry = { id: `rt-${Date.now()}`, ...entry, imageUrl, photos, routePhotos: photos } as RouteEntry;
       this.routes.unshift(newRoute);
     }
     this.notify();
@@ -386,7 +411,13 @@ class CMSStore {
   async deleteRoute(id: string) { await apiRequest(`/routes/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
 
   async saveHotel(entry: Partial<HotelEntry> & { id?: string }) {
-    const imageUrl = entry.imageUrl || entry.hotelPhotos?.[0] || '';
+    const photos = (Array.isArray(entry.hotelPhotos) && entry.hotelPhotos.length > 0)
+      ? entry.hotelPhotos
+      : (Array.isArray((entry as any).photos) && (entry as any).photos.length > 0)
+      ? (entry as any).photos
+      : (entry.imageUrl ? [entry.imageUrl] : []);
+    const imageUrl = entry.imageUrl || photos[0] || '';
+
     const payload = {
       hotelName: entry.hotelName || 'New Hotel',
       propertyType: entry.propertyType || 'Hotel',
@@ -400,15 +431,16 @@ class CMSStore {
       availabilityStatus: entry.availabilityStatus || 'Available',
       partnerStatus: entry.partnerStatus || 'Standard',
       imageUrl: imageUrl || null,
-      hotelPhotos: imageUrl ? [imageUrl] : [],
+      hotelPhotos: photos,
+      photos: photos,
       approvalStatus: entry.approvalStatus || 'Draft',
       createdByName: entry.createdByName || 'API',
     };
 
     if (entry.id) {
-      this.hotels = this.hotels.map(h => h.id === String(entry.id) ? { ...h, ...entry, imageUrl, hotelPhotos: imageUrl ? [imageUrl] : [] } as HotelEntry : h);
+      this.hotels = this.hotels.map(h => h.id === String(entry.id) ? { ...h, ...entry, imageUrl, hotelPhotos: photos, photos: photos } as HotelEntry : h);
     } else {
-      const newHotel: HotelEntry = { id: `ht-${Date.now()}`, ...entry, imageUrl, hotelPhotos: imageUrl ? [imageUrl] : [] } as HotelEntry;
+      const newHotel: HotelEntry = { id: `ht-${Date.now()}`, ...entry, imageUrl, hotelPhotos: photos, photos: photos } as HotelEntry;
       this.hotels.unshift(newHotel);
     }
     this.notify();
@@ -429,7 +461,11 @@ class CMSStore {
   }
 
   async saveRestaurant(entry: Partial<RestaurantEntry> & { id?: string }) {
-    const imageUrl = entry.imageUrl || (entry.photos && entry.photos[0]) || '';
+    const photos = (Array.isArray(entry.photos) && entry.photos.length > 0)
+      ? entry.photos
+      : (entry.imageUrl ? [entry.imageUrl] : []);
+    const imageUrl = entry.imageUrl || photos[0] || '';
+
     const payload = {
       restaurantName: entry.restaurantName || 'New Restaurant',
       location: entry.location || 'N/A',
@@ -438,19 +474,18 @@ class CMSStore {
       openingHours: entry.openingHours || 'N/A',
       priceRange: entry.priceRange || 'NPR NPR',
       imageUrl: imageUrl || null,
-      photos: imageUrl ? [imageUrl] : [],
+      photos: photos,
       approvalStatus: entry.approvalStatus || 'Draft',
       createdByName: entry.createdByName || 'API',
     };
 
     if (entry.id) {
-      this.restaurants = this.restaurants.map(r => r.id === String(entry.id) ? { ...r, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as RestaurantEntry : r);
+      this.restaurants = this.restaurants.map(r => r.id === String(entry.id) ? { ...r, ...entry, imageUrl, photos: photos } as RestaurantEntry : r);
     } else {
-      const newRest: RestaurantEntry = { id: `res-${Date.now()}`, ...entry, imageUrl, photos: imageUrl ? [imageUrl] : [] } as RestaurantEntry;
+      const newRest: RestaurantEntry = { id: `res-${Date.now()}`, ...entry, imageUrl, photos: photos } as RestaurantEntry;
       this.restaurants.unshift(newRest);
     }
     this.notify();
-
     try {
       const isNew = !entry.id || String(entry.id).startsWith('res-');
       const method = isNew ? 'POST' : 'PATCH';

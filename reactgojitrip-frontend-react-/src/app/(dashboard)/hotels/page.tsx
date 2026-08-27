@@ -8,6 +8,7 @@ import {
   deleteHotel,
   HotelRecord,
 } from "@/lib/api";
+import { cmsStore } from "@/lib/cms-store";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
@@ -102,11 +103,19 @@ const handleOpenCreateModal = () => {
 };
 
 const handleOpenEditModal = (h: HotelRecord) => {
-  const existingPhotos = (h as any).hotelPhotos || (h as any).photos || (h.imageUrl ? [h.imageUrl] : []);
+  const rawHotelPhotos = (h as any).hotelPhotos;
+  const rawPhotos = (h as any).photos;
+  const existingPhotos = (Array.isArray(rawHotelPhotos) && rawHotelPhotos.length > 0)
+    ? rawHotelPhotos
+    : (Array.isArray(rawPhotos) && rawPhotos.length > 0)
+    ? rawPhotos
+    : (h.imageUrl ? [h.imageUrl] : []);
+
   setEditingHotel({
     ...h,
     hotelPhotos: existingPhotos,
     photos: existingPhotos,
+    imageUrl: h.imageUrl || existingPhotos[0] || "",
   } as any);
   setIsModalOpen(true);
 };
@@ -129,18 +138,23 @@ const handleSaveHotel = async (e: React.FormEvent) => {
 
   setIsSubmitting(true);
   try {
-    const photos = (editingHotel as any).hotelPhotos || (editingHotel as any).photos || [];
+    const rawPhotos = (editingHotel as any).hotelPhotos || (editingHotel as any).photos;
+    const photos = Array.isArray(rawPhotos) && rawPhotos.length > 0
+      ? rawPhotos
+      : (editingHotel.imageUrl ? [editingHotel.imageUrl] : []);
+
     const payload = {
       ...editingHotel,
       hotelPhotos: photos,
       photos: photos,
       imageUrl: editingHotel.imageUrl || photos[0] || null,
     };
-    if (editingHotel.id) {
-      await updateHotel(editingHotel.id, payload as any);
-    } else {
-      await createHotel(payload as any);
-    }
+
+    await cmsStore.saveHotel({
+      id: editingHotel.id ? String(editingHotel.id) : undefined,
+      ...payload,
+    } as any);
+
     setIsModalOpen(false);
     setEditingHotel(null);
     fetchHotels();
