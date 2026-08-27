@@ -1440,6 +1440,7 @@ export default function RestaurantsPage() {
                   }
                   category="Restaurants"
                   maxImages={10}
+                  onOpenMediaPicker={() => setMediaPickerOpen(true)}
                 />
 
                 <div className="flex items-center justify-between text-xs text-slate-400">

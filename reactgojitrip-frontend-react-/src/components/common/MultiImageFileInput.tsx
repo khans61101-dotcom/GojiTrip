@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import { UploadCloud, Plus, X, Check, Image as ImageIcon, Link as LinkIcon } from "lucide-react";
+import { UploadCloud, Plus, X, Image as ImageIcon, Link as LinkIcon, FolderOpen } from "lucide-react";
 import { cmsStore } from "@/lib/cms-store";
 
 interface MultiImageFileInputProps {
@@ -10,6 +10,7 @@ interface MultiImageFileInputProps {
   onChange: (images: string[]) => void;
   category?: "Hotels" | "Restaurants" | "Transport" | "Activities" | "Destinations" | "Routes";
   maxImages?: number;
+  onOpenMediaPicker?: () => void;
 }
 
 export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
@@ -18,6 +19,7 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
   onChange,
   category = "Hotels",
   maxImages = 10,
+  onOpenMediaPicker,
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -25,7 +27,16 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
   const [inputUrl, setInputUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const processFiles = (files: FileList | File[]) => {
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processFiles = async (files: FileList | File[]) => {
     setError(null);
     const fileArray = Array.from(files);
 
@@ -39,66 +50,61 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
     if (filesToProcess.length === 0) return;
 
     setIsUploading(true);
-    let processedCount = 0;
-    const newBase64Images: string[] = [];
 
-    filesToProcess.forEach((file) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const dataUrl = reader.result as string;
-        newBase64Images.push(dataUrl);
+    try {
+      const base64Results = await Promise.all(
+        filesToProcess.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file);
+          try {
+            cmsStore.addMedia({
+              id: `media_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+              title: file.name.replace(/\.[^/.]+$/, ""),
+              fileType: "Photo",
+              category: category as any,
+              url: dataUrl,
+              thumbnailUrl: dataUrl,
+              fileSizeMb: parseFloat((file.size / (1024 * 1024)).toFixed(2)),
+              tags: [category, "GalleryUpload"],
+              uploadedBy: "Admin",
+              createdAt: new Date().toISOString(),
+            } as any);
+          } catch (err) {
+            console.error("Error saving media item:", err);
+          }
+          return dataUrl;
+        })
+      );
 
-        try {
-          cmsStore.addMedia({
-            id: `media_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-            title: file.name.replace(/\.[^/.]+$/, ""),
-            fileType: "Photo",
-            category: category as any,
-            url: dataUrl,
-            thumbnailUrl: dataUrl,
-            fileSizeMb: parseFloat((file.size / (1024 * 1024)).toFixed(2)),
-            tags: [category, "GalleryUpload"],
-            uploadedBy: "Admin",
-            createdAt: new Date().toISOString(),
-          } as any);
-        } catch (err) {
-          console.error("Error saving media item:", err);
-        }
-
-        processedCount++;
-        if (processedCount === filesToProcess.length) {
-          onChange([...images, ...newBase64Images]);
-          setIsUploading(false);
-        }
-      };
-
-      reader.onerror = () => {
-        processedCount++;
-        if (processedCount === filesToProcess.length) {
-          setIsUploading(false);
-        }
-      };
-
-      reader.readAsDataURL(file);
-    });
+      onChange([...images, ...base64Results]);
+    } catch (err) {
+      console.error("Failed to process uploaded images:", err);
+      setError("Failed to process some image files. Please try again.");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       processFiles(e.target.files);
+      e.target.value = ""; // Reset input so same file can be re-selected
     }
   };
 
-  const handleAddUrl = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddUrl = (e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) e.preventDefault();
     if (!inputUrl.trim()) return;
     if (images.length >= maxImages) {
       setError(`Maximum limit is ${maxImages} images.`);
       return;
     }
-    onChange([...images, inputUrl.trim()]);
+    const cleanUrl = inputUrl.trim();
+    if (!images.includes(cleanUrl)) {
+      onChange([...images, cleanUrl]);
+    }
     setInputUrl("");
     setShowUrlInput(false);
+    setError(null);
   };
 
   const handleRemoveImage = (indexToRemove: number) => {
@@ -107,21 +113,32 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
   };
 
   return (
-    <div className="space-y-3 bg-[#131c31]/80 p-4 rounded-2xl border border-slate-800">
-      <div className="flex items-center justify-between">
+    <div className="space-y-3 bg-[#131c31]/90 p-4 rounded-2xl border border-slate-800 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <label className="text-xs font-bold text-slate-200 flex items-center space-x-1.5">
           <ImageIcon className="w-4 h-4 text-emerald-400" />
           <span>{label} ({images.length}/{maxImages})</span>
         </label>
 
         <div className="flex items-center space-x-2">
+          {onOpenMediaPicker && (
+            <button
+              type="button"
+              onClick={onOpenMediaPicker}
+              className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 transition-colors flex items-center space-x-1 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20"
+            >
+              <FolderOpen className="w-3 h-3" />
+              <span>Media Library</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setShowUrlInput(!showUrlInput)}
             className="text-[11px] font-bold text-slate-400 hover:text-emerald-400 transition-colors flex items-center space-x-1"
           >
             <LinkIcon className="w-3 h-3" />
-            <span>{showUrlInput ? "Hide URL Option" : "+ Add Image URL"}</span>
+            <span>{showUrlInput ? "Hide URL" : "+ Add URL"}</span>
           </button>
         </div>
       </div>
@@ -136,23 +153,30 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
         className="hidden"
       />
 
-      {/* Optional URL Input Form */}
+      {/* URL Input Box (Without Nested Form Tag to Avoid Form Submit Collisions) */}
       {showUrlInput && (
-        <form onSubmit={handleAddUrl} className="flex gap-2">
+        <div className="flex gap-2 bg-slate-900 p-2 rounded-xl border border-slate-700">
           <input
             type="url"
             placeholder="Paste Image URL (https://...)"
             value={inputUrl}
             onChange={(e) => setInputUrl(e.target.value)}
-            className="flex-1 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddUrl(e);
+              }
+            }}
+            className="flex-1 px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:border-emerald-500"
           />
           <button
-            type="submit"
-            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all"
+            type="button"
+            onClick={(e) => handleAddUrl(e)}
+            className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg shadow-md transition-all flex-shrink-0"
           >
-            Add URL
+            Add
           </button>
-        </form>
+        </div>
       )}
 
       {/* GALLERY THUMBNAIL GRID */}
@@ -172,8 +196,8 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
             />
 
             {/* Photo Index Badge */}
-            <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/60 text-white font-black text-[9px] backdrop-blur-sm">
-              #{idx + 1} {idx === 0 ? "(Hero Main)" : ""}
+            <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 text-white font-black text-[9px] backdrop-blur-sm">
+              #{idx + 1} {idx === 0 ? "(Main)" : ""}
             </div>
 
             {/* Delete Button */}
@@ -203,7 +227,7 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
                 <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center">
                   <Plus className="w-4 h-4 text-emerald-400" />
                 </div>
-                <span className="text-[10px] font-bold">Add Photos</span>
+                <span className="text-[10px] font-bold">+ Add Photos</span>
               </>
             )}
           </button>

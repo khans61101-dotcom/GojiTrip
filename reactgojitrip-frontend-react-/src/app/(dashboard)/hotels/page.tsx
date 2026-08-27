@@ -598,6 +598,7 @@ const handleSaveHotel = async (e: React.FormEvent) => {
                   }
                   category="Hotels"
                   maxImages={10}
+                  onOpenMediaPicker={() => setMediaPickerOpen(true)}
                 />
 
                 <div className="flex items-center justify-between text-xs text-slate-400">
