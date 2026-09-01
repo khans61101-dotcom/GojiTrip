@@ -12,6 +12,8 @@ import { cmsStore } from "@/lib/cms-store";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
+import { LocationFormSection } from "@/components/common/LocationFormSection";
+import { TagInputSection } from "@/components/common/TagInputSection";
 import { ApprovalStatus } from "@/types/cms";
 import {
   Hotel,
@@ -29,7 +31,6 @@ import {
   Loader2,
   Check,
 } from "lucide-react";
-
 import { MediaPickerModal } from "@/components/media/MediaPickerModal";
 
 // =============== MAIN HOTELS PAGE ===============
@@ -85,15 +86,18 @@ const fetchHotels = async () => {
       const approvalStatus = match?.approvalStatus || h.approvalStatus || "Draft";
       const pricePerNight = match?.pricePerNight !== undefined ? match.pricePerNight : (Number(h.pricePerNight) || 2500);
       const currency = match?.currency || h.currency || "NRs";
+      const location = match?.location || h.location || "N/A";
 
       return {
         ...h,
+        location,
         pricePerNight,
         currency,
         approvalStatus,
         hotelPhotos: photos,
         photos: photos,
         imageUrl: h.imageUrl || photos[0] || "",
+        ...(match || {}),
       };
     });
 
@@ -146,6 +150,7 @@ const handleOpenCreateModal = () => {
     partnerStatus: "Verified Partner",
     approvalStatus: "Draft",
     createdByName: "Admin",
+    facilities: ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Shower", "Free Parking", "Breakfast Included"],
     hotelPhotos: [],
     photos: [],
   } as any);
@@ -161,8 +166,13 @@ const handleOpenEditModal = (h: HotelRecord) => {
     ? rawPhotos
     : (h.imageUrl ? [h.imageUrl] : []);
 
+  const facilities = Array.isArray((h as any).facilities)
+    ? (h as any).facilities
+    : ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Shower", "Free Parking", "Breakfast Included"];
+
   setEditingHotel({
     ...h,
+    facilities,
     hotelPhotos: existingPhotos,
     photos: existingPhotos,
     imageUrl: h.imageUrl || existingPhotos[0] || "",
@@ -170,14 +180,13 @@ const handleOpenEditModal = (h: HotelRecord) => {
   setIsModalOpen(true);
 };
 
-const handleDelete = async (id: number) => {
-  if (confirm("Delete this property record?")) {
+const handleDelete = async (id: number | string) => {
+  if (confirm("Are you sure you want to delete this property record?")) {
     try {
-      await deleteHotel(id);
+      await cmsStore.deleteHotel(id);
       fetchHotels();
     } catch (error) {
       console.error("Error deleting hotel:", error);
-      alert("Failed to delete hotel.");
     }
   }
 };
@@ -518,6 +527,25 @@ const handleSaveHotel = async (e: React.FormEvent) => {
                 </div>
               </div>
 
+              {/* STRUCTURED LOCATION INPUT (COUNTRY, STATE, CITY, FULL ADDRESS) */}
+              <LocationFormSection
+                locationString={editingHotel.location || ""}
+                country={(editingHotel as any).country}
+                state={(editingHotel as any).state}
+                city={(editingHotel as any).city}
+                fullAddress={(editingHotel as any).fullAddress}
+                onChange={({ country, state, city, fullAddress, combinedLocation }) => {
+                  setEditingHotel((prev: any) => ({
+                    ...prev,
+                    location: combinedLocation,
+                    country,
+                    state,
+                    city,
+                    fullAddress,
+                  }));
+                }}
+              />
+
               {/* DESCRIPTION & ABOUT THE PROPERTY */}
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">
@@ -599,24 +627,30 @@ const handleSaveHotel = async (e: React.FormEvent) => {
                 </div>
               </div>
 
-              {/* AMENITIES & FACILITIES (COMMA SEPARATED OR TAGS) */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  Amenities & Facilities (comma separated)
-                </label>
-                <input
-                  type="text"
-                  value={((editingHotel as any).facilities || ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Shower", "Free Parking", "Breakfast Included"]).join(", ")}
-                  onChange={(e) =>
-                    setEditingHotel({
-                      ...editingHotel,
-                      facilities: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-                    } as any)
-                  }
-                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  placeholder="Free Wi-Fi, Mountain View, AC & Heating, Hot Shower, Free Parking, Breakfast Included"
-                />
-              </div>
+              {/* AMENITIES & FACILITIES TAG CHIP BOXES */}
+              <TagInputSection
+                label="Property Amenities & Facilities"
+                placeholder="Type facility (e.g. Swimming Pool) & press Enter or comma..."
+                value={(editingHotel as any).facilities}
+                onChange={(tags) =>
+                  setEditingHotel((prev: any) => ({
+                    ...prev,
+                    facilities: tags,
+                  }))
+                }
+                suggestions={[
+                  "Free Wi-Fi",
+                  "Mountain View",
+                  "AC & Heating",
+                  "Hot Shower",
+                  "Free Parking",
+                  "Breakfast Included",
+                  "Swimming Pool",
+                  "Room Service",
+                  "Generator Backup",
+                  "Spa & Wellness",
+                ]}
+              />
 
               {/* OPERATING HOURS / FRONT DESK SCHEDULE */}
               <div>

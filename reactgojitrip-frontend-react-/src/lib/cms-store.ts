@@ -10,8 +10,10 @@ import {
   RoleType,
   TransportEntry,
   WorkflowHistoryLog,
+  FamousPlaceEntry,
+  FuelStationEntry,
 } from '@/types/cms';
-import { INITIAL_ACTIVITIES, INITIAL_HOTELS, INITIAL_MEDIA, INITIAL_RESTAURANTS, INITIAL_ROUTES, INITIAL_TRANSPORTS, INITIAL_GUIDES, INITIAL_LOGS } from '@/lib/initial-data';
+import { INITIAL_ACTIVITIES, INITIAL_HOTELS, INITIAL_MEDIA, INITIAL_RESTAURANTS, INITIAL_ROUTES, INITIAL_TRANSPORTS, INITIAL_GUIDES, INITIAL_LOGS, INITIAL_PLACES, INITIAL_FUEL_STATIONS } from '@/lib/initial-data';
 
 type BackendTrip = { id: number; name: string; destination: string; price: number; description?: string | null; duration: number; is_active: boolean; image_url?: string | null; created_at: string; updated_at: string; owner_id?: number | null };
 type BackendRoute = { id: number; name: string; origin: string; destination: string; distance: number; status: string };
@@ -25,7 +27,7 @@ const fallbackStatus: ApprovalStatus = 'Published';
 
 const emptyStats = {
   transportsCount: 0, routesCount: 0, hotelsCount: 0, restaurantsCount: 0,
-  activitiesCount: 0, mediaCount: 0, draftCount: 0, underReviewCount: 0, approvedCount: 0, publishedCount: 0, guidesCount: 0,
+  activitiesCount: 0, mediaCount: 0, draftCount: 0, underReviewCount: 0, approvedCount: 0, publishedCount: 0, guidesCount: 0, placesCount: 0, fuelStationsCount: 0,
 };
 
 function mapTrip(t: BackendTrip): TransportEntry {
@@ -220,6 +222,8 @@ class CMSStore {
   private restaurants: RestaurantEntry[] = [];
   private activities: ActivityEntry[] = [];
   private guides: GuideEntry[] = [];
+  private places: FamousPlaceEntry[] = [];
+  private fuelStations: FuelStationEntry[] = [];
   private media: MediaItem[] = [];
   private logs: WorkflowHistoryLog[] = [];
   private currentRole: RoleType = 'Admin';
@@ -244,6 +248,10 @@ class CMSStore {
       if (storedActivities) this.activities = JSON.parse(storedActivities);
       const storedGuides = localStorage.getItem('gojitrip_cms_guides');
       if (storedGuides) this.guides = JSON.parse(storedGuides);
+      const storedPlaces = localStorage.getItem('gojitrip_cms_places');
+      if (storedPlaces) this.places = JSON.parse(storedPlaces);
+      const storedFuel = localStorage.getItem('gojitrip_cms_fuel_stations');
+      if (storedFuel) this.fuelStations = JSON.parse(storedFuel);
     } catch (e) {
       console.warn("Failed to load CMS store from localStorage:", e);
     }
@@ -257,6 +265,8 @@ class CMSStore {
       localStorage.setItem('gojitrip_cms_routes', JSON.stringify(this.routes));
       localStorage.setItem('gojitrip_cms_activities', JSON.stringify(this.activities));
       localStorage.setItem('gojitrip_cms_guides', JSON.stringify(this.guides));
+      localStorage.setItem('gojitrip_cms_places', JSON.stringify(this.places));
+      localStorage.setItem('gojitrip_cms_fuel_stations', JSON.stringify(this.fuelStations));
     } catch (e) {
       console.warn("Failed to save CMS store to localStorage:", e);
     }
@@ -289,8 +299,28 @@ class CMSStore {
       const prevHotels = this.hotels;
       const prevRestaurants = this.restaurants;
       const prevRoutes = this.routes;
+      const prevTransports = this.transports;
 
-      this.transports = Array.isArray(trips) && trips.length > 0 ? trips.map(mapTrip) : INITIAL_TRANSPORTS;
+      this.transports = Array.isArray(trips) && trips.length > 0 
+        ? trips.map((t: any) => {
+            const mapped = mapTrip(t);
+            const prev = prevTransports.find(p => String(p.id) === String(mapped.id));
+            const vehicleAmenities = (Array.isArray(prev?.vehicleAmenities) && prev.vehicleAmenities.length > 0)
+              ? prev.vehicleAmenities
+              : (Array.isArray((prev as any)?.amenities) && (prev as any).amenities.length > 0)
+              ? (prev as any).amenities
+              : (Array.isArray(t.vehicle_amenities) ? t.vehicle_amenities : (Array.isArray(t.vehicleAmenities) ? t.vehicleAmenities : (Array.isArray(t.amenities) ? t.amenities : [])));
+            const driverLicense = prev?.driverLicense || (prev as any)?.driver_license || (prev as any)?.licenseNumber || t.driver_license || t.driverLicense || t.licenseNumber || '';
+            const description = prev?.description || (prev as any)?.notes || t.description || '';
+            return {
+              ...mapped,
+              vehicleAmenities,
+              amenities: vehicleAmenities,
+              driverLicense,
+              description,
+            };
+          })
+        : (prevTransports.filter(t => !String(t.id).startsWith('tr-')));
       
       this.routes = Array.isArray(routes) && routes.length > 0 
         ? routes.map((r: any) => {
@@ -304,7 +334,7 @@ class CMSStore {
             const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Draft';
             return { ...mapped, approvalStatus, photos, routePhotos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
           })
-        : (prevRoutes.length > 0 ? prevRoutes : INITIAL_ROUTES);
+        : (prevRoutes.filter(r => !String(r.id).startsWith('rt-')));
 
       this.hotels = Array.isArray(hotels) && hotels.length > 0
         ? hotels.map((h: any) => {
@@ -315,10 +345,16 @@ class CMSStore {
               : (Array.isArray(prev?.photos) && prev.photos.length > 0)
               ? prev.photos
               : mapped.hotelPhotos;
+            const facilities = (Array.isArray((prev as any)?.facilities) && (prev as any).facilities.length > 0)
+              ? (prev as any).facilities
+              : (mapped.facilities || []);
             const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Draft';
             const pricePerNight = prev?.pricePerNight !== undefined ? prev.pricePerNight : mapped.pricePerNight;
             const currency = prev?.currency || mapped.currency || 'NRs';
-            return { ...mapped, pricePerNight, currency, approvalStatus, hotelPhotos: photos, photos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+            const location = (prev?.location && prev.location.trim() !== '' && prev.location !== 'N/A') ? prev.location : mapped.location;
+            const latitude = prev?.latitude || mapped.latitude;
+            const longitude = prev?.longitude || mapped.longitude;
+            return { ...mapped, location, latitude, longitude, facilities, pricePerNight, currency, approvalStatus, hotelPhotos: photos, photos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
           })
         : (prevHotels.length > 0 ? prevHotels : INITIAL_HOTELS);
 
@@ -329,10 +365,20 @@ class CMSStore {
             const photos = (Array.isArray(prev?.photos) && prev.photos.length > 0)
               ? prev.photos
               : mapped.photos;
+            const cuisineTypes = (Array.isArray(prev?.cuisineTypes) && prev.cuisineTypes.length > 0)
+              ? prev.cuisineTypes
+              : (mapped.cuisineTypes || []);
+            const dietaryOptions = (Array.isArray((prev as any)?.dietaryOptions) && (prev as any).dietaryOptions.length > 0)
+              ? (prev as any).dietaryOptions
+              : ((mapped as any).dietaryOptions || []);
+            const recommendedDishes = (Array.isArray(prev?.recommendedDishes) && prev.recommendedDishes.length > 0)
+              ? prev.recommendedDishes
+              : (mapped.recommendedDishes || []);
             const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Draft';
             const averageMealPrice = prev?.averageMealPrice !== undefined ? prev.averageMealPrice : mapped.averageMealPrice;
             const currency = prev?.currency || mapped.currency || 'NRs';
-            return { ...mapped, averageMealPrice, currency, approvalStatus, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+            const location = (prev?.location && prev.location.trim() !== '' && prev.location !== 'N/A') ? prev.location : mapped.location;
+            return { ...mapped, location, cuisineTypes, dietaryOptions, recommendedDishes, averageMealPrice, currency, approvalStatus, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
           })
         : (prevRestaurants.length > 0 ? prevRestaurants : INITIAL_RESTAURANTS);
 
@@ -387,6 +433,8 @@ class CMSStore {
       if (this.transports.length === 0) this.transports = INITIAL_TRANSPORTS;
       if (this.activities.length === 0) this.activities = INITIAL_ACTIVITIES;
       if (this.guides.length === 0) this.guides = INITIAL_GUIDES;
+      if (this.places.length === 0) this.places = INITIAL_PLACES;
+      this.fuelStations = this.fuelStations.filter(f => !String(f.id).startsWith('fuel-'));
       if (this.media.length === 0) this.media = INITIAL_MEDIA;
       if (this.logs.length === 0) this.logs = INITIAL_LOGS;
       this.hydrated = true;
@@ -403,13 +451,15 @@ class CMSStore {
 
   getStats() {
     return {
-      totalEntries: this.transports.length + this.routes.length + this.hotels.length + this.restaurants.length + this.activities.length + this.guides.length + this.media.length,
+      totalEntries: this.transports.length + this.routes.length + this.hotels.length + this.restaurants.length + this.activities.length + this.guides.length + this.places.length + this.fuelStations.length + this.media.length,
       transportsCount: this.transports.length,
       routesCount: this.routes.length,
       hotelsCount: this.hotels.length,
       restaurantsCount: this.restaurants.length,
       activitiesCount: this.activities.length,
       guidesCount: this.guides.length,
+      placesCount: this.places.length,
+      fuelStationsCount: this.fuelStations.length,
       mediaCount: this.media.length,
       draftCount: 0,
       underReviewCount: 0,
@@ -425,11 +475,64 @@ class CMSStore {
   getRestaurants() { return this.restaurants; }
   getActivities() { return this.activities; }
   getGuides() { return this.guides; }
+  getPlaces() {
+    if (this.places.length === 0) {
+      this.places = INITIAL_PLACES;
+    }
+    return this.places;
+  }
+  getFuelStations() {
+    return this.fuelStations.filter(f => !String(f.id).startsWith('fuel-'));
+  }
   getMedia() { return this.media; }
   isHydrated() { return this.hydrated; }
 
   getTransportById(id: string) { return this.transports.find(x => x.id === id); }
   getRouteById(id: string) { return this.routes.find(x => x.id === id); }
+  getPlaceById(id: string) { return this.getPlaces().find(x => x.id === id); }
+  getFuelStationById(id: string) { return this.getFuelStations().find(x => x.id === id); }
+
+  async savePlace(entry: FamousPlaceEntry) {
+    const existingIndex = this.places.findIndex(p => p.id === entry.id);
+    if (existingIndex >= 0) {
+      this.places[existingIndex] = { ...entry, updatedAt: new Date().toISOString() };
+    } else {
+      this.places.unshift({
+        ...entry,
+        id: entry.id || `place_${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    this.notify();
+    return entry;
+  }
+
+  async deletePlace(id: string) {
+    this.places = this.places.filter(p => p.id !== id);
+    this.notify();
+  }
+
+  async saveFuelStation(entry: FuelStationEntry) {
+    const existingIndex = this.fuelStations.findIndex(f => f.id === entry.id);
+    if (existingIndex >= 0) {
+      this.fuelStations[existingIndex] = { ...entry, updatedAt: new Date().toISOString() };
+    } else {
+      this.fuelStations.unshift({
+        ...entry,
+        id: entry.id || `fuel_${Date.now()}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    this.notify();
+    return entry;
+  }
+
+  async deleteFuelStation(id: string) {
+    this.fuelStations = this.fuelStations.filter(f => f.id !== id);
+    this.notify();
+  }
 
   async login(username: string, password: string) {
     const result = await apiRequest<{ access_token: string; token_type: string }>('/auth/login', {
@@ -456,36 +559,63 @@ class CMSStore {
     clearToken();
   }
 
-  async saveTransport(entry: Partial<TransportEntry> & { id?: string }) {
+  async saveTransport(entry: Partial<TransportEntry> & { id?: string; vehicleAmenities?: string[]; description?: string; dropPoint?: string; driverLicense?: string; from?: string; to?: string }) {
+    const vehiclePhotos = (Array.isArray(entry.vehiclePhotos) && entry.vehiclePhotos.length > 0)
+      ? entry.vehiclePhotos
+      : (Array.isArray((entry as any).photos) && (entry as any).photos.length > 0)
+      ? (entry as any).photos
+      : (entry.driverPhotoUrl ? [entry.driverPhotoUrl] : []);
+    const driverPhotoUrl = entry.driverPhotoUrl || vehiclePhotos[0] || '';
+    const vehicleAmenities = Array.isArray((entry as any).vehicleAmenities) && (entry as any).vehicleAmenities.length > 0
+      ? (entry as any).vehicleAmenities
+      : (Array.isArray((entry as any).amenities) && (entry as any).amenities.length > 0 ? (entry as any).amenities : []);
+
     const payload = {
       operatorName: entry.operatorName || 'New Operator',
       contactPerson: entry.contactPerson || 'N/A',
       mobileNumber: entry.mobileNumber || 'N/A',
       whatsAppNumber: entry.whatsAppNumber || 'N/A',
-      vehicleType: entry.vehicleType || 'Other',
+      vehicleType: entry.vehicleType || 'Jeep',
       vehicleNumber: entry.vehicleNumber || 'N/A',
       seatCapacity: Number(entry.seatCapacity) || 0,
       route: entry.route || 'N/A',
       pickupPoint: entry.pickupPoint || 'N/A',
+      dropPoint: entry.dropPoint || 'N/A',
       departureTime: entry.departureTime || 'N/A',
       fare: Number(entry.fare) || 0,
-      currency: entry.currency || 'USD',
+      currency: entry.currency || 'NPR',
       luggagePolicy: entry.luggagePolicy || 'N/A',
-      driverPhotoUrl: entry.driverPhotoUrl || null,
-      vehiclePhotos: entry.vehiclePhotos || [],
+      driverPhotoUrl: driverPhotoUrl || null,
+      vehiclePhotos: vehiclePhotos,
+      photos: vehiclePhotos,
+      vehicleAmenities: vehicleAmenities,
+      vehicle_amenities: vehicleAmenities,
+      amenities: vehicleAmenities,
+      driverLicense: entry.driverLicense || '',
+      driver_license: entry.driverLicense || '',
+      licenseNumber: entry.driverLicense || '',
       licenceVerified: !!entry.licenceVerified,
-      activeStatus: entry.activeStatus || 'ACTIVE',
-      approvalStatus: entry.approvalStatus || 'PENDING',
-      createdByName: entry.createdByName || 'API',
+      activeStatus: entry.activeStatus || 'Active',
+      approvalStatus: entry.approvalStatus || 'Draft',
+      description: entry.description || '',
+      createdByName: entry.createdByName || 'Goji Admin',
     };
+
+    if (entry.id) {
+      this.transports = this.transports.map(t => String(t.id) === String(entry.id) ? { ...t, ...entry, ...payload } as any : t);
+    } else {
+      const newTransport: any = { id: `tr-${Date.now()}`, ...entry, ...payload };
+      this.transports.unshift(newTransport);
+    }
+
+    this.notify();
+
     const method = entry.id ? 'PATCH' : 'POST';
     const path = entry.id ? `/transport/${Number(entry.id)}` : '/transport';
     try {
-      await apiRequest(path, { method, body: payload });
-      await this.refreshAll();
+      await apiRequest(path, { method, body: payload }).catch(() => null);
     } catch (error) {
-      console.error('Failed to save transport:', error);
-      throw error;
+      console.warn("Backend transport save fallback to local memory:", error);
     }
   }
 
@@ -563,7 +693,7 @@ class CMSStore {
     };
 
     if (entry.id) {
-      this.hotels = this.hotels.map(h => h.id === String(entry.id) ? { ...h, ...entry, imageUrl, hotelPhotos: photos, photos: photos, currency: entry.currency || h.currency || 'NRs' } as HotelEntry : h);
+      this.hotels = this.hotels.map(h => String(h.id) === String(entry.id) ? { ...h, ...entry, imageUrl, hotelPhotos: photos, photos: photos, currency: entry.currency || h.currency || 'NRs' } as HotelEntry : h);
     } else {
       const newHotel: HotelEntry = { id: `ht-${Date.now()}`, ...entry, imageUrl, hotelPhotos: photos, photos: photos, currency: entry.currency || 'NRs' } as HotelEntry;
       this.hotels.unshift(newHotel);
@@ -579,10 +709,18 @@ class CMSStore {
       console.warn("Hotel save backend sync error, kept in local state:", err);
     }
   }
-  async deleteHotel(id: string) {
-    this.hotels = this.hotels.filter(h => h.id !== id);
+  async deleteHotel(id: string | number) {
+    const sId = String(id);
+    this.hotels = this.hotels.filter(h => String(h.id) !== sId);
     this.notify();
-    try { await apiRequest(`/hotels/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); } catch (e) {}
+    try {
+      const num = Number(id);
+      if (!isNaN(num) && num > 0) {
+        await apiRequest(`/hotels/${num}`, { method: 'DELETE' });
+      }
+    } catch (e) {
+      console.warn("Hotel delete backend sync notice:", e);
+    }
   }
 
   async saveRestaurant(entry: Partial<RestaurantEntry> & { id?: string }) {
@@ -607,7 +745,7 @@ class CMSStore {
     };
 
     if (entry.id) {
-      this.restaurants = this.restaurants.map(r => r.id === String(entry.id) ? { ...r, ...entry, imageUrl, photos: photos, currency: entry.currency || r.currency || 'NRs' } as RestaurantEntry : r);
+      this.restaurants = this.restaurants.map(r => String(r.id) === String(entry.id) ? { ...r, ...entry, imageUrl, photos: photos, currency: entry.currency || r.currency || 'NRs' } as RestaurantEntry : r);
     } else {
       const newRest: RestaurantEntry = { id: `res-${Date.now()}`, ...entry, imageUrl, photos: photos, currency: entry.currency || 'NRs' } as RestaurantEntry;
       this.restaurants.unshift(newRest);
@@ -623,10 +761,18 @@ class CMSStore {
       console.warn("Restaurant save backend sync error, kept in local state:", err);
     }
   }
-  async deleteRestaurant(id: string) {
-    this.restaurants = this.restaurants.filter(r => r.id !== id);
+  async deleteRestaurant(id: string | number) {
+    const sId = String(id);
+    this.restaurants = this.restaurants.filter(r => String(r.id) !== sId);
     this.notify();
-    try { await apiRequest(`/restaurants/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); } catch (e) {}
+    try {
+      const num = Number(id);
+      if (!isNaN(num) && num > 0) {
+        await apiRequest(`/restaurants/${num}`, { method: 'DELETE' });
+      }
+    } catch (e) {
+      console.warn("Restaurant delete backend sync notice:", e);
+    }
   }
 
   async saveActivity(entry: Partial<ActivityEntry> & { id?: string }) {
@@ -668,10 +814,18 @@ class CMSStore {
       console.warn("Activity save backend sync error, kept in local state:", err);
     }
   }
-  async deleteActivity(id: string) {
-    this.activities = this.activities.filter(a => a.id !== id);
+  async deleteActivity(id: string | number) {
+    const sId = String(id);
+    this.activities = this.activities.filter(a => String(a.id) !== sId);
     this.notify();
-    try { await apiRequest(`/activities/${id}`, { method: 'DELETE' }); await this.refreshAll(); } catch (e) {}
+    try {
+      const num = Number(id);
+      if (!isNaN(num) && num > 0) {
+        await apiRequest(`/activities/${num}`, { method: 'DELETE' });
+      }
+    } catch (e) {
+      console.warn("Activity delete backend sync notice:", e);
+    }
   }
 
   async saveGuide(entry: Partial<GuideEntry> & { id?: string }) {
@@ -711,10 +865,18 @@ class CMSStore {
       console.warn("Guide save backend sync error, kept in local state:", err);
     }
   }
-  async deleteGuide(id: string) {
-    this.guides = this.guides.filter(g => g.id !== id);
+  async deleteGuide(id: string | number) {
+    const sId = String(id);
+    this.guides = this.guides.filter(g => String(g.id) !== sId);
     this.notify();
-    try { await apiRequest(`/guides/${id}`, { method: 'DELETE' }); await this.refreshAll(); } catch (e) {}
+    try {
+      const num = Number(id);
+      if (!isNaN(num) && num > 0) {
+        await apiRequest(`/guides/${num}`, { method: 'DELETE' });
+      }
+    } catch (e) {
+      console.warn("Guide delete backend sync notice:", e);
+    }
   }
 
   async addMedia(entry: Partial<MediaItem> & { url: string }) {
@@ -797,6 +959,24 @@ class CMSStore {
           return { ...t, approvalStatus: newStatus, updatedAt: new Date().toISOString() };
         }
         return t;
+      });
+    } else if (type.includes('place')) {
+      this.places = this.places.map(p => {
+        if (String(p.id) === id) {
+          previousStatus = p.approvalStatus;
+          entityTitle = p.name || 'Famous Place';
+          return { ...p, approvalStatus: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return p;
+      });
+    } else if (type.includes('fuel')) {
+      this.fuelStations = this.fuelStations.map(f => {
+        if (String(f.id) === id) {
+          previousStatus = f.approvalStatus;
+          entityTitle = f.name || 'Fuel Station';
+          return { ...f, approvalStatus: newStatus, updatedAt: new Date().toISOString() };
+        }
+        return f;
       });
     }
 

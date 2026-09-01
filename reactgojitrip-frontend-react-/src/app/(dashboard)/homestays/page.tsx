@@ -10,6 +10,8 @@ import { cmsStore } from "@/lib/cms-store";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
+import { LocationFormSection } from "@/components/common/LocationFormSection";
+import { TagInputSection } from "@/components/common/TagInputSection";
 import { ApprovalStatus } from "@/types/cms";
 import {
   Home,
@@ -87,16 +89,19 @@ export default function HomestaysPage() {
         const pricePerNight = match?.pricePerNight !== undefined ? match.pricePerNight : (Number(h.pricePerNight) || 1500);
         const currency = match?.currency || h.currency || "NRs";
         const approvalStatus = match?.approvalStatus || h.approvalStatus || "Draft";
+        const location = match?.location || h.location || "N/A";
 
         return {
           ...h,
           propertyType: "Homestay",
+          location,
           pricePerNight,
           currency,
           approvalStatus,
           hotelPhotos: photos,
           photos: photos,
           imageUrl: h.imageUrl || photos[0] || "",
+          ...(match || {}),
         };
       });
 
@@ -135,6 +140,7 @@ export default function HomestaysPage() {
       partnerStatus: "Verified Partner",
       approvalStatus: "Draft",
       createdByName: "Admin",
+      facilities: ["Home-Cooked Meals", "Organic Garden", "Hot Water", "Wi-Fi", "Local Guide", "Cultural Dance"],
       hotelPhotos: [],
       photos: [],
     } as any);
@@ -150,9 +156,14 @@ export default function HomestaysPage() {
       ? rawPhotos
       : (h.imageUrl ? [h.imageUrl] : []);
 
+    const facilities = Array.isArray((h as any).facilities)
+      ? (h as any).facilities
+      : ["Home-Cooked Meals", "Organic Garden", "Hot Water", "Wi-Fi", "Local Guide", "Cultural Dance"];
+
     setEditingHomestay({
       ...h,
       propertyType: "Homestay",
+      facilities,
       hotelPhotos: existingPhotos,
       photos: existingPhotos,
       imageUrl: h.imageUrl || existingPhotos[0] || "",
@@ -160,14 +171,13 @@ export default function HomestaysPage() {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    if (confirm("Delete this homestay record?")) {
+  const handleDelete = async (id: number | string) => {
+    if (confirm("Are you sure you want to delete this homestay record?")) {
       try {
-        await deleteHotel(id);
+        await cmsStore.deleteHotel(id);
         fetchHomestays();
       } catch (error) {
         console.error("Error deleting homestay:", error);
-        alert("Failed to delete homestay.");
       }
     }
   };
@@ -435,16 +445,24 @@ export default function HomestaysPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-bold mb-1">Village Location Address</label>
-                <input
-                  type="text"
-                  required
-                  value={editingHomestay.location || ""}
-                  onChange={(e) => setEditingHomestay({ ...editingHomestay, location: e.target.value })}
-                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
+              {/* STRUCTURED LOCATION INPUT (COUNTRY, STATE, CITY, FULL ADDRESS) */}
+              <LocationFormSection
+                locationString={editingHomestay.location || ""}
+                country={(editingHomestay as any).country}
+                state={(editingHomestay as any).state}
+                city={(editingHomestay as any).city}
+                fullAddress={(editingHomestay as any).fullAddress}
+                onChange={({ country, state, city, fullAddress, combinedLocation }) => {
+                  setEditingHomestay((prev: any) => ({
+                    ...prev,
+                    location: combinedLocation,
+                    country,
+                    state,
+                    city,
+                    fullAddress,
+                  }));
+                }}
+              />
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -489,11 +507,34 @@ export default function HomestaysPage() {
                   <input
                     type="text"
                     value={editingHomestay.checkOutTime || "10:00 AM"}
-                    onChange={(e) => setEditingHomestay({ ...editingHomestay, checkOutTime: e.target.value })}
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
+
+              {/* HOMESTAY AMENITIES & FACILITIES TAG CHIP BOXES */}
+              <TagInputSection
+                label="Homestay Amenities & Facilities"
+                placeholder="Type facility (e.g. Home-Cooked Food) & press Enter or comma..."
+                value={(editingHomestay as any).facilities}
+                onChange={(tags) =>
+                  setEditingHomestay((prev: any) => ({
+                    ...prev,
+                    facilities: tags,
+                  }))
+                }
+                suggestions={[
+                  "Home-Cooked Meals",
+                  "Organic Garden",
+                  "Hot Water",
+                  "Wi-Fi",
+                  "Local Guide",
+                  "Cultural Dance",
+                  "Bonfire Night",
+                  "Trekking Equipment",
+                  "Parking Space",
+                  "Pet Friendly",
+                ]}
+              />
 
               {/* PHOTO GALLERY INPUTS */}
               <div className="pt-2 border-t border-slate-800 space-y-4">

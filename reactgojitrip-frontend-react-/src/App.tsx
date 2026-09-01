@@ -14,6 +14,7 @@ import DashboardLayout from "@/app/(dashboard)/layout";
 import HomePage from "@/app/(public)/page";
 
 import FamousPlacesPage from "@/app/pages/famous-places/page";
+import FamousPlaceDetailPage from "@/app/pages/famous-places/detail/page";
 import FuelStationPage from "@/app/pages/fuel-station/page";
 import PublicGuidePage from "@/app/pages/guide/page";
 import PublicHotelsPage from "@/app/pages/hotels/page";
@@ -40,6 +41,8 @@ import HomestaysPage from "@/app/(dashboard)/homestays/page";
 import RestaurantsPage from "@/app/(dashboard)/restaurants/page";
 import ActivitiesPage from "@/app/(dashboard)/activities/page";
 import GuidesPage from "@/app/(dashboard)/guides/page";
+import AdminFamousPlacesPage from "@/app/(dashboard)/famous-places/page";
+import AdminFuelStationsPage from "@/app/(dashboard)/fuel-stations/page";
 import MediaLibraryPage from "@/app/(dashboard)/media/page";
 import TransportPage from "@/app/(dashboard)/transport/page";
 import WorkflowPage from "@/app/(dashboard)/workflow/page";
@@ -154,6 +157,24 @@ export function App() {
           }
         />
 
+        <Route
+          path="/pages/famous-places/:id"
+          element={
+            <PublicLayout>
+              <FamousPlaceDetailPage />
+            </PublicLayout>
+          }
+        />
+
+        <Route
+          path="/famous-places/:id"
+          element={
+            <PublicLayout>
+              <FamousPlaceDetailPage />
+            </PublicLayout>
+          }
+        />
+
         {/* ======================================================
             AUTH ROUTES
             ====================================================== */}
@@ -243,6 +264,24 @@ export function App() {
           element={
             <DashboardLayout>
               <GuidesPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/famous-places"
+          element={
+            <DashboardLayout>
+              <AdminFamousPlacesPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/fuel-stations"
+          element={
+            <DashboardLayout>
+              <AdminFuelStationsPage />
             </DashboardLayout>
           }
         />

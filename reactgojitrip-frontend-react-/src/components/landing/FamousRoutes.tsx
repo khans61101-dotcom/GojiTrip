@@ -78,13 +78,28 @@ export default function FamousRoutes() {
     async function loadRoutes() {
       try {
         setLoading(true);
-        const apiData = await listRoutes();
+        const apiData = await listRoutes().catch(() => []);
         const cmsItems = cmsStore.getRoutes();
 
-        const combinedRaw = [...(Array.isArray(apiData) ? apiData : []), ...cmsItems];
+        const combinedRaw = [...cmsItems, ...(Array.isArray(apiData) ? apiData : [])];
 
-        if (combinedRaw.length > 0) {
-          const mapped: DisplayRoute[] = combinedRaw.map((item: any, idx: number) => {
+        const seenKeys = new Set<string>();
+        const uniqueRoutes: any[] = [];
+
+        for (const item of combinedRaw) {
+          const titleKey = (item.routeName || (item.origin && item.destination ? `${item.origin} to ${item.destination}` : "")).toLowerCase().trim();
+          const idKey = String(item.id || "").toLowerCase().trim();
+          const key = idKey || titleKey;
+
+          if (key && !seenKeys.has(key) && (!titleKey || !seenKeys.has(titleKey))) {
+            if (idKey) seenKeys.add(idKey);
+            if (titleKey) seenKeys.add(titleKey);
+            uniqueRoutes.push(item);
+          }
+        }
+
+        if (uniqueRoutes.length > 0) {
+          const mapped: DisplayRoute[] = uniqueRoutes.map((item: any, idx: number) => {
             const title = item.routeName || (item.origin && item.destination ? `${item.origin} to ${item.destination}` : `Route #${idx + 1}`);
             const dist = item.totalDistanceKm || item.distance ? `${item.totalDistanceKm || item.distance} km` : "150 km";
             const duration = item.estimatedTravelTime || item.duration || "5h 30m";
@@ -168,7 +183,7 @@ export default function FamousRoutes() {
           {displayRoutes.map((route, i) => (
             <Link
               key={route.id || i}
-              to="/pages/routes"
+              to={`/pages/routes?id=${encodeURIComponent(String(route.id))}&name=${encodeURIComponent(route.title)}`}
               className="group flex-none w-72 sm:w-80 snap-start bg-white border border-slate-200/80 rounded-2xl p-3.5 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between hover:border-blue-400"
             >
               <div>

@@ -821,7 +821,16 @@ const GuidePage: React.FC = () => {
       );
 
       const guideArray = extractArray(guidesResponse);
-      guideData = guideArray.map(mapGuide);
+      const storeGuides = cmsStore.getGuides();
+      guideData = guideArray.map((gItem: any) => {
+        const base = mapGuide(gItem);
+        const storeMatch = storeGuides.find((s) => String(s.id) === String(gItem.id));
+        const location = (storeMatch?.location && storeMatch.location.trim() !== '' && storeMatch.location !== 'N/A') ? storeMatch.location : base.location;
+        return {
+          ...base,
+          location,
+        };
+      });
     } catch (guideError) {
       console.error("Failed to fetch guides, loading store fallback:", guideError);
       guideData = [];

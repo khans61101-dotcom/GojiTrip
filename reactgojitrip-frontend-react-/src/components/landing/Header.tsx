@@ -197,13 +197,13 @@ export default function Header() {
                   >
                     <UserPlus size={15} className="text-blue-600" /> Register Account
                   </Link>
-                  <Link
+                  {/* <Link
                     to="/dashboard"
                     onClick={() => setIsAccountOpen(false)}
                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-blue-600 hover:bg-blue-50 border-t border-slate-100 mt-1 pt-2 rounded-xl"
                   >
                     <CircleUserRound size={15} /> Admin Dashboard
-                  </Link>
+                  </Link> */} 
                 </div>
               )}
             </div>

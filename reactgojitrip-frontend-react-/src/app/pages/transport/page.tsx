@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
+import { cmsStore } from "@/lib/cms-store";
 import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
 import { InteractiveMap, MapMarkerItem } from "@/components/common/InteractiveMap";
 import {
@@ -622,11 +623,78 @@ const TransportPage: React.FC = () => {
       setLoading(true);
       setError("");
 
-      const response = await apiRequest<BackendTransport[]>("/transport");
+      const storeTransports = cmsStore.getTransports();
+      const userStoreTransports = storeTransports.filter((s) => !String(s.id).startsWith("tr-"));
+      const response = await apiRequest<BackendTransport[]>("/transport").catch(() => null);
       console.log("Transport API response:", response);
 
       const backendData = Array.isArray(response) ? response : [];
-      const mappedData = backendData.map(mapTransport);
+      const mappedData = backendData.map((bItem) => {
+        const base = mapTransport(bItem);
+        const storeMatch = storeTransports.find((s) => String(s.id) === String(bItem.id));
+        const routeStr = storeMatch?.route || storeMatch?.pickupPoint;
+        let from = base.from;
+        let to = base.to;
+        if (routeStr && routeStr.includes("➔")) {
+          const parts = routeStr.split("➔");
+          from = parts[0].trim();
+          to = parts[1].trim();
+        } else if (routeStr && routeStr.includes("->")) {
+          const parts = routeStr.split("->");
+          from = parts[0].trim();
+          to = parts[1].trim();
+        } else if (storeMatch?.pickupPoint) {
+          from = storeMatch.pickupPoint;
+        }
+        return {
+          ...base,
+          from: from || base.from,
+          to: to || base.to,
+          amenities: (Array.isArray((storeMatch as any)?.vehicleAmenities) && (storeMatch as any).vehicleAmenities.length > 0)
+            ? (storeMatch as any).vehicleAmenities
+            : base.amenities,
+        };
+      });
+
+      userStoreTransports.forEach((st: any) => {
+        if (!mappedData.some((m) => String(m.id) === String(st.id))) {
+          const routeStr = st.route || st.pickupPoint || "Kathmandu ➔ Pokhara";
+          let from = "Kathmandu";
+          let to = "Pokhara";
+          if (routeStr.includes("➔")) {
+            const parts = routeStr.split("➔");
+            from = parts[0].trim();
+            to = parts[1].trim();
+          } else if (routeStr.includes("->")) {
+            const parts = routeStr.split("->");
+            from = parts[0].trim();
+            to = parts[1].trim();
+          } else if (st.pickupPoint) {
+            from = st.pickupPoint;
+          }
+
+          mappedData.unshift({
+            id: String(st.id),
+            name: st.operatorName || st.driverName || "Express Transport",
+            type: (st.vehicleType?.toLowerCase() as any) || "bus",
+            from,
+            to,
+            duration: "4.5h",
+            departureTime: st.departureTime || "07:30 AM",
+            arrivalTime: "12:00 PM",
+            price: Number(st.fare || st.ticketPrice) || 1200,
+            currency: st.currency || "NRs",
+            capacity: st.seatCapacity || 35,
+            rating: 4.8,
+            image: st.vehiclePhotos && st.vehiclePhotos[0] ? st.vehiclePhotos[0] : "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80",
+            amenities: st.vehicleAmenities && st.vehicleAmenities.length > 0 ? st.vehicleAmenities : ["AC", "Reclining Seats"],
+            provider: st.operatorName || "Verified Operator",
+            available: st.seatCapacity || 15,
+            description: st.driverName ? `Driver: ${st.driverName}` : "Comfortable Highway Passenger Service",
+          });
+        }
+      });
+
       setTransports(mappedData);
     } catch (err) {
       console.error("Failed to fetch transports:", err);

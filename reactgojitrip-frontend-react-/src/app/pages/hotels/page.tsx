@@ -704,10 +704,12 @@ const HotelsPage: React.FC = () => {
           photos: photos.length > 0 ? photos : [imageUrl],
           rating: typeof hotel.rating === "number" ? hotel.rating : 4.5,
           reviews: typeof hotel.reviews === "number" ? hotel.reviews : 0,
-          location: hotel.location || "Location not specified",
+          location: (storeMatch?.location && storeMatch.location.trim() !== '' && storeMatch.location !== 'N/A') ? storeMatch.location : (hotel.location || "Location not specified"),
           pricePerNight,
           currency,
-          amenities: Array.isArray(hotel.amenities) ? hotel.amenities : [],
+          amenities: (Array.isArray((storeMatch as any)?.facilities) && (storeMatch as any).facilities.length > 0)
+            ? (storeMatch as any).facilities
+            : (Array.isArray(hotel.amenities) ? hotel.amenities : (Array.isArray(hotel.facilities) ? hotel.facilities : [])),
           distance: hotel.distance || "0.5 km",
           available:
             hotel.availabilityStatus !== undefined && hotel.availabilityStatus !== null
@@ -723,7 +725,7 @@ const HotelsPage: React.FC = () => {
         };
       });
 
-      cmsHotels.forEach((sh: any) => {
+      cmsHotels.filter((sh: any) => !String(sh.id).startsWith("ht-")).forEach((sh: any) => {
         if (!transformedHotels.some((m) => String(m.id) === String(sh.id))) {
           const photos = (Array.isArray(sh.hotelPhotos) && sh.hotelPhotos.length > 0)
             ? sh.hotelPhotos

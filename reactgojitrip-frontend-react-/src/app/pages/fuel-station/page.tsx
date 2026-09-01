@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
 import { InteractiveMap, MapMarkerItem } from "@/components/common/InteractiveMap";
+import { cmsStore } from "@/lib/cms-store";
 
 interface FuelStation {
   id: string;
@@ -151,15 +152,40 @@ export default function FuelStationPage() {
 
   useEffect(() => {
     setLoading(true);
-    const timer = setTimeout(() => {
-      setStations(mockStations);
-      if (mockStations.length > 0) {
-        setSelectedStationId(mockStations[0].id);
-      }
-      setLoading(false);
-    }, 400);
+    const storeFuel: FuelStation[] = cmsStore.getFuelStations().map((f) => {
+      const amenities: string[] = [];
+      if (f.hasEvFastCharger) amenities.push("EV Fast Charging");
+      if (f.hasRestroom) amenities.push("24/7 Restrooms");
+      if (f.hasConvenienceStore) amenities.push("Highway Mart");
+      if (f.hasRepairShop) amenities.push("Repair Shop");
 
-    return () => clearTimeout(timer);
+      const fuelTypes: string[] = [];
+      if (f.stationType.includes("Petrol") || f.petrolPrice) fuelTypes.push("Petrol");
+      if (f.stationType.includes("Diesel") || f.dieselPrice) fuelTypes.push("Diesel");
+      if (f.stationType.includes("EV") || f.evRate) fuelTypes.push("EV Fast Charging");
+
+      return {
+        id: f.id,
+        name: f.name,
+        description: `${f.name} offers quality fuel, EV charging facilities, and travel services along the highway corridor.`,
+        image: f.imageUrl || "https://images.unsplash.com/photo-1545454675-3531b543be5d?auto=format&fit=crop&w=800&q=80",
+        rating: 4.8,
+        reviews: 42,
+        location: f.location,
+        price: f.petrolPrice || f.evRate || 175,
+        currency: f.currency || "NPR",
+        fuelTypes: fuelTypes.length > 0 ? fuelTypes : ["Petrol", "Diesel", "EV"],
+        amenities: amenities.length > 0 ? amenities : ["24/7 Restrooms", "Air & Water Pump"],
+        hours: f.openingHours || "24 Hours Open",
+        contact: f.contactNumber || "+977 1 4220000",
+      };
+    });
+
+    setStations(storeFuel);
+    if (storeFuel.length > 0) {
+      setSelectedStationId(storeFuel[0].id);
+    }
+    setLoading(false);
   }, []);
 
   const handleOpenYelpDetail = (station: FuelStation) => {

@@ -25,6 +25,8 @@ import {
 import { cmsStore } from "@/lib/cms-store";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
+import { LocationFormSection } from "@/components/common/LocationFormSection";
+import { TagInputSection } from "@/components/common/TagInputSection";
 
 import {
   listRestaurants,
@@ -586,8 +588,24 @@ export default function RestaurantsPage() {
         const currency = matchingStore?.currency || item.currency || "NRs";
         const averageMealPrice = matchingStore?.averageMealPrice !== undefined ? matchingStore.averageMealPrice : (Number(item.averageMealPrice) || 650);
 
+        const cuisineTypes = (Array.isArray(matchingStore?.cuisineTypes) && matchingStore.cuisineTypes.length > 0)
+          ? matchingStore.cuisineTypes
+          : (Array.isArray(item.cuisineTypes) ? item.cuisineTypes : []);
+
+        const dietaryOptions = (Array.isArray(matchingStore?.dietaryOptions) && matchingStore.dietaryOptions.length > 0)
+          ? matchingStore.dietaryOptions
+          : (Array.isArray(item.dietaryOptions) ? item.dietaryOptions : []);
+
+        const recommendedDishes = (Array.isArray(matchingStore?.recommendedDishes) && matchingStore.recommendedDishes.length > 0)
+          ? matchingStore.recommendedDishes
+          : (Array.isArray(item.recommendedDishes) ? item.recommendedDishes : []);
+
         return {
           ...item,
+          ...(matchingStore || {}),
+          cuisineTypes,
+          dietaryOptions,
+          recommendedDishes,
           currency,
           averageMealPrice,
           approvalStatus,
@@ -661,15 +679,16 @@ export default function RestaurantsPage() {
       restaurantName: "",
       location: "",
       contactDetails: "",
-      cuisineTypes: [],
-      openingHours: "",
+      cuisineTypes: ["Thakali", "Nepali Authentic"],
+      dietaryOptions: ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"],
+      recommendedDishes: ["Authentic Thakali Thali", "Steamed Momo", "Thukpa Noodle Soup"],
+      openingHours: "07:00 AM - 10:00 PM",
       priceRange: "NPR NPR",
       photos: [],
       imageUrl: "",
-      recommendedDishes: [],
       approvalStatus: "Draft",
       createdByName: "Content Team",
-    });
+    } as any);
 
     setIsModalOpen(true);
   };
@@ -681,11 +700,26 @@ export default function RestaurantsPage() {
   const handleOpenEditModal = (restaurant: RestaurantEntry) => {
     const existingImage = restaurant.imageUrl || restaurant.photos?.[0] || "";
 
+    const cuisineTypes = Array.isArray(restaurant.cuisineTypes)
+      ? restaurant.cuisineTypes
+      : ["Thakali", "Nepali Authentic"];
+
+    const dietaryOptions = Array.isArray((restaurant as any).dietaryOptions)
+      ? (restaurant as any).dietaryOptions
+      : ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"];
+
+    const recommendedDishes = Array.isArray(restaurant.recommendedDishes)
+      ? restaurant.recommendedDishes
+      : ["Authentic Thakali Thali", "Steamed Momo", "Thukpa Noodle Soup"];
+
     setEditingRest({
       ...restaurant,
+      cuisineTypes,
+      dietaryOptions,
+      recommendedDishes,
       imageUrl: existingImage,
       photos: restaurant.photos || (existingImage ? [existingImage] : []),
-    });
+    } as any);
 
     setIsModalOpen(true);
   };
@@ -695,24 +729,16 @@ export default function RestaurantsPage() {
   // ============================================================
 
   const handleDelete = async (id: string | number) => {
-    if (!confirm("Delete this restaurant record?")) {
+    if (!confirm("Are you sure you want to delete this restaurant record?")) {
       return;
     }
 
     try {
       setLoading(true);
-
-      console.log(`DELETE /api/v1/restaurants/${id}`);
-
-      await deleteRestaurant(String(id));
-
-      console.log("Restaurant deleted successfully:", id);
-
+      await cmsStore.deleteRestaurant(id);
       await loadRestaurants();
     } catch (error) {
       console.error("Failed to delete restaurant:", error);
-
-      alert("Failed to delete restaurant from database.");
     } finally {
       setLoading(false);
     }
@@ -846,6 +872,8 @@ export default function RestaurantsPage() {
         location: payload.location,
         contactDetails: payload.contactDetails,
         cuisineTypes: payload.cuisineTypes,
+        dietaryOptions: (editingRest as any).dietaryOptions || [],
+        recommendedDishes: editingRest.recommendedDishes || [],
         openingHours: payload.openingHours,
         priceRange: payload.priceRange as any,
         currency: (editingRest as any).currency || "NRs",
@@ -1192,70 +1220,59 @@ export default function RestaurantsPage() {
                 />
               </div>
 
-              {/* LOCATION + CONTACT */}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    Location
-                  </label>
-
-                  <input
-                    type="text"
-                    value={editingRest.location || ""}
-                    onChange={(event) =>
-                      setEditingRest({
-                        ...editingRest,
-                        location: event.target.value,
-                      })
-                    }
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    Contact Details
-                  </label>
-
-                  <input
-                    type="text"
-                    value={editingRest.contactDetails || ""}
-                    onChange={(event) =>
-                      setEditingRest({
-                        ...editingRest,
-                        contactDetails: event.target.value,
-                      })
-                    }
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                    placeholder="+977-9856011999"
-                  />
-                </div>
-              </div>
-
-              {/* CUISINE */}
+              {/* STRUCTURED LOCATION (COUNTRY, STATE, CITY, FULL ADDRESS) */}
+              <LocationFormSection
+                locationString={editingRest.location || ""}
+                onChange={({ combinedLocation }) => {
+                  setEditingRest((prev: any) => ({
+                    ...prev,
+                    location: combinedLocation,
+                  }));
+                }}
+              />
 
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">
-                  Cuisine Types (comma separated)
+                  Contact Details
                 </label>
 
                 <input
                   type="text"
-                  value={(editingRest.cuisineTypes || []).join(", ")}
+                  value={editingRest.contactDetails || ""}
                   onChange={(event) =>
                     setEditingRest({
                       ...editingRest,
-                      cuisineTypes: event.target.value
-                        .split(",")
-                        .map((value) => value.trim())
-                        .filter(Boolean),
+                      contactDetails: event.target.value,
                     })
                   }
                   className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  placeholder="Thakali, Nepali, Italian"
+                  placeholder="+977-9856011999"
                 />
               </div>
+
+              {/* CUISINE */}
+
+              <TagInputSection
+                label="Cuisine Types & Categories"
+                placeholder="Type cuisine (e.g. Thakali) & press Enter or comma..."
+                value={editingRest.cuisineTypes}
+                onChange={(tags) =>
+                  setEditingRest((prev: any) => ({
+                    ...prev,
+                    cuisineTypes: tags,
+                  }))
+                }
+                suggestions={[
+                  "Thakali",
+                  "Nepali Authentic",
+                  "Indian North & South",
+                  "Continental",
+                  "Italian / Pizza",
+                  "Chinese / Dim Sum",
+                  "Street Food & Snacks",
+                  "Bakery & Cafe",
+                ]}
+              />
 
               {/* OPENING, CURRENCY, MEAL PRICE + PRICE RANGE */}
 
@@ -1364,48 +1381,51 @@ export default function RestaurantsPage() {
                 />
               </div>
 
-              {/* DIETARY OPTIONS & AMENITIES */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  Dietary Options & Amenities (comma separated)
-                </label>
-                <input
-                  type="text"
-                  value={((editingRest as any).dietaryOptions || ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"]).join(", ")}
-                  onChange={(event) =>
-                    setEditingRest({
-                      ...editingRest,
-                      dietaryOptions: event.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-                    } as any)
-                  }
-                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  placeholder="Organic Ingredients, Outdoor Seating, Free Wi-Fi, Highway Parking, Vegetarian Friendly"
-                />
-              </div>
+              {/* DIETARY OPTIONS & AMENITIES TAG CHIP BOXES */}
+              <TagInputSection
+                label="Dietary Options & Dining Amenities"
+                placeholder="Type amenity (e.g. Vegetarian Friendly) & press Enter or comma..."
+                value={(editingRest as any).dietaryOptions}
+                onChange={(tags) =>
+                  setEditingRest((prev: any) => ({
+                    ...prev,
+                    dietaryOptions: tags,
+                  }))
+                }
+                suggestions={[
+                  "Organic Ingredients",
+                  "Outdoor Seating",
+                  "Free Wi-Fi",
+                  "Highway Parking",
+                  "Vegetarian Friendly",
+                  "Halal Certified",
+                  "Gluten-Free",
+                  "Air Conditioned",
+                  "Live Music",
+                ]}
+              />
 
-              {/* DISHES */}
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  Recommended Dishes & Menu Highlights (comma separated)
-                </label>
-
-                <input
-                  type="text"
-                  value={(editingRest.recommendedDishes || []).join(", ")}
-                  onChange={(event) =>
-                    setEditingRest({
-                      ...editingRest,
-                      recommendedDishes: event.target.value
-                        .split(",")
-                        .map((value) => value.trim())
-                        .filter(Boolean),
-                    })
-                  }
-                  className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
-                  placeholder="Dal Bhat, Momo, Thukpa"
-                />
-              </div>
+              {/* RECOMMENDED DISHES & MENU HIGHLIGHTS TAG CHIP BOXES */}
+              <TagInputSection
+                label="Recommended Dishes & Menu Highlights"
+                placeholder="Type dish (e.g. Authentic Thakali Thali) & press Enter or comma..."
+                value={editingRest.recommendedDishes}
+                onChange={(tags) =>
+                  setEditingRest((prev: any) => ({
+                    ...prev,
+                    recommendedDishes: tags,
+                  }))
+                }
+                suggestions={[
+                  "Authentic Thakali Thali",
+                  "Steamed Momo",
+                  "Chowmein",
+                  "Thukpa Noodle Soup",
+                  "Butter Chicken",
+                  "Woodfired Pizza",
+                  "Local Fresh Fish",
+                ]}
+              />
 
               {/* IMAGE */}
 

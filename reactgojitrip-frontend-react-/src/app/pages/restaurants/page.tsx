@@ -549,8 +549,10 @@ const RestaurantsPage: React.FC = () => {
           const averageMealPrice = storeMatch?.averageMealPrice !== undefined ? storeMatch.averageMealPrice : (Number(bItem.averageMealPrice) || 650);
 
           const base = mapRestaurant(bItem);
+          const location = (storeMatch?.location && storeMatch.location.trim() !== '' && storeMatch.location !== 'N/A') ? storeMatch.location : base.location;
           return {
             ...base,
+            location,
             currency,
             averageMealPrice,
             image: imageUrl,

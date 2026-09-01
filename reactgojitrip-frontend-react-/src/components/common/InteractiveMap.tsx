@@ -23,13 +23,77 @@ interface InteractiveMapProps {
   selectedId?: string | number | null;
   onMarkerClick: (id: string) => void;
   center?: { lat: number; lng: number };
+  drawPolyline?: boolean;
 }
 
 // Extensive dictionary for cities, states, and countries
 const LOCATION_COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
-  // India Cities & Regions
+  // Punjab & North India
+  "punjab": { lat: 30.9009, lng: 75.8573 },
+  "panjab": { lat: 30.9009, lng: 75.8573 },
+  "chandigarh": { lat: 30.7333, lng: 76.7794 },
+  "ludhiana": { lat: 30.9009, lng: 75.8573 },
+  "amritsar": { lat: 31.6340, lng: 74.8723 },
+  "jalandhar": { lat: 31.3260, lng: 75.5762 },
+  "patiala": { lat: 30.3398, lng: 76.3869 },
+  "pathankot": { lat: 32.2686, lng: 75.6496 },
+  "bathinda": { lat: 30.2110, lng: 74.9455 },
+  "haryana": { lat: 29.0588, lng: 76.0856 },
+  "gurgaon": { lat: 28.4595, lng: 77.0266 },
+  "gurugram": { lat: 28.4595, lng: 77.0266 },
+
+  // Goa & South/West India
+  "goa": { lat: 15.2993, lng: 74.1240 },
+  "panaji": { lat: 15.4909, lng: 73.8278 },
+  "panjim": { lat: 15.4909, lng: 73.8278 },
+  "margao": { lat: 15.2832, lng: 73.9862 },
+  "vasco": { lat: 15.3960, lng: 73.8157 },
+  "maharashtra": { lat: 19.7515, lng: 75.7139 },
+  "nashik": { lat: 19.9975, lng: 73.7898 },
+  "kolhapur": { lat: 16.7050, lng: 74.2433 },
+  "karnataka": { lat: 15.3173, lng: 75.7139 },
+  "hubli": { lat: 15.3647, lng: 75.1240 },
+  "belgaum": { lat: 15.8497, lng: 74.4977 },
+
+  // Central & Other India Cities & Regions
   "bhopal": { lat: 23.2599, lng: 77.4126 },
+  "berasia": { lat: 23.6333, lng: 77.4333 },
+  "berasiya": { lat: 23.6333, lng: 77.4333 },
+  "madhya pradesh": { lat: 23.2599, lng: 77.4126 },
+  "m.p": { lat: 23.2599, lng: 77.4126 },
+  "m. p": { lat: 23.2599, lng: 77.4126 },
+  "gwalior": { lat: 26.2183, lng: 78.1784 },
+  "jabalpur": { lat: 23.1815, lng: 79.9864 },
+  "sagar": { lat: 23.8388, lng: 78.7378 },
+  "rewa": { lat: 24.5362, lng: 81.3037 },
+  "satna": { lat: 24.6005, lng: 80.8322 },
+  "sehore": { lat: 23.2030, lng: 77.0844 },
+  "ashta": { lat: 23.0189, lng: 76.5502 },
+  "sonkatch": { lat: 22.9772, lng: 76.3688 },
+  "dewas": { lat: 22.9676, lng: 76.0534 },
   "indore": { lat: 22.7196, lng: 75.8577 },
+  "ujjain": { lat: 23.1765, lng: 75.7885 },
+  "ratlam": { lat: 23.3315, lng: 75.0367 },
+  "omkareshwar": { lat: 22.2464, lng: 76.1517 },
+  "maheshwar": { lat: 22.1770, lng: 75.5843 },
+  "dhar": { lat: 22.5976, lng: 75.3023 },
+  "mandav": { lat: 22.4357, lng: 75.3411 },
+  "mhow": { lat: 22.5526, lng: 75.7554 },
+
+  // Nepal Highway Corridor Locations
+  "naubise": { lat: 27.7144, lng: 85.1764 },
+  "malekhu": { lat: 27.8105, lng: 84.8290 },
+  "mugling": { lat: 27.8596, lng: 84.5574 },
+  "kurintar": { lat: 27.8683, lng: 84.5800 },
+  "dumre": { lat: 27.9734, lng: 84.4258 },
+  "bandipur": { lat: 27.9372, lng: 84.4172 },
+  "damauli": { lat: 27.9701, lng: 84.2828 },
+  "bharatpur": { lat: 27.6833, lng: 84.4333 },
+  "kusma": { lat: 28.2255, lng: 83.6789 },
+  "beni": { lat: 28.3449, lng: 83.5647 },
+  "tatopani": { lat: 28.4900, lng: 83.6550 },
+  "jomsom": { lat: 28.7818, lng: 83.7431 },
+  "kagbeni": { lat: 28.8378, lng: 83.7828 },
   "delhi": { lat: 28.6139, lng: 77.2090 },
   "new delhi": { lat: 28.6139, lng: 77.2090 },
   "mumbai": { lat: 19.0760, lng: 72.8777 },
@@ -40,7 +104,6 @@ const LOCATION_COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
   "hyderabad": { lat: 17.3850, lng: 78.4867 },
   "jaipur": { lat: 26.9124, lng: 75.7873 },
   "agra": { lat: 27.1767, lng: 78.0081 },
-  "goa": { lat: 15.2993, lng: 74.1240 },
   "pune": { lat: 18.5204, lng: 73.8567 },
   "ahmedabad": { lat: 23.0225, lng: 72.5714 },
   "surat": { lat: 21.1702, lng: 72.8311 },
@@ -80,40 +143,87 @@ const LOCATION_COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
   "bhairahawa": { lat: 27.5050, lng: 83.4533 },
   "nepalgunj": { lat: 28.0500, lng: 81.6167 },
   "dhangadhi": { lat: 28.6833, lng: 80.6000 },
-  "bandipur": { lat: 27.9372, lng: 84.4172 },
   "gorkha": { lat: 28.0000, lng: 84.6333 },
   "nepal": { lat: 28.3949, lng: 84.1240 },
 };
 
-function resolveCoordinates(item: MapMarkerItem): { lat: number; lng: number } {
-  // 1. If explicit valid lat & lng exist
-  if (item.lat && !isNaN(item.lat) && item.lat !== 0 && item.lng && !isNaN(item.lng) && item.lng !== 0) {
-    return { lat: item.lat, lng: item.lng };
-  }
+function lookupSingleCoordinate(str: string): { lat: number; lng: number } | null {
+  const strLower = str.toLowerCase().trim();
+  if (!strLower) return null;
 
-  // 2. Check location string & name against known dictionary
-  const locLower = (item.location || "").toLowerCase().trim();
-  const nameLower = (item.name || "").toLowerCase().trim();
+  // 1. Search specific city/region keys (sorted by length descending, ignoring generic country names)
+  const cityKeysSorted = Object.keys(LOCATION_COORDINATES_MAP)
+    .filter((k) => k !== "india" && k !== "nepal")
+    .sort((a, b) => b.length - a.length);
 
-  for (const [key, coords] of Object.entries(LOCATION_COORDINATES_MAP)) {
-    if (locLower.includes(key) || nameLower.includes(key)) {
-      const jitterLat = (Math.random() - 0.5) * 0.02;
-      const jitterLng = (Math.random() - 0.5) * 0.02;
-      return { lat: coords.lat + jitterLat, lng: coords.lng + jitterLng };
+  for (const key of cityKeysSorted) {
+    if (strLower.includes(key)) {
+      return LOCATION_COORDINATES_MAP[key];
     }
   }
 
-  // 3. Fallback: deterministic offset hash based on location text
-  const strToHash = locLower || nameLower || "default";
+  // 2. Fallback to generic country centers if no specific city matches
+  if (strLower.includes("india")) return LOCATION_COORDINATES_MAP["india"];
+  if (strLower.includes("nepal")) return LOCATION_COORDINATES_MAP["nepal"];
+
+  return null;
+}
+
+function resolveCoordinates(item: MapMarkerItem): { lat: number; lng: number } {
+  const rawText = `${item.location || ""} ${item.name || ""}`.trim();
+  const textLower = rawText.toLowerCase();
+
+  // 1. Top priority: Text location lookup against known cities/regions (e.g. Bhopal, Indore, Pokhara, Kathmandu, Annapurna)
+  // If the user's location string explicitly names a city, use that city's coordinates over old default lat/lng
+  const singleMatch = lookupSingleCoordinate(rawText);
+  if (singleMatch) {
+    const hash = textLower.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const jitterLat = ((hash % 100) / 10000) - 0.005;
+    const jitterLng = (((hash >> 2) % 100) / 10000) - 0.005;
+    return { lat: singleMatch.lat + jitterLat, lng: singleMatch.lng + jitterLng };
+  }
+
+  // 2. Compound highway hub or address delimiter split e.g. "Bhopal, M.P - Devki Nagar", "Panjab - Goa"
+  const splitDelimiters = [" - ", " – ", " — ", " to ", " ➔ ", " -> "];
+  for (const delim of splitDelimiters) {
+    if (textLower.includes(delim)) {
+      const parts = textLower.split(delim);
+      if (parts.length >= 2) {
+        const c1 = lookupSingleCoordinate(parts[0]);
+        const c2 = lookupSingleCoordinate(parts[1]);
+        if (c1 && c2) {
+          return {
+            lat: (c1.lat + c2.lat) / 2,
+            lng: (c1.lng + c2.lng) / 2,
+          };
+        }
+        if (c1) return c1;
+        if (c2) return c2;
+      }
+    }
+  }
+
+  // 3. Next priority: If no city match in text, use explicit numeric lat & lng (if valid & not default 0)
+  const numLat = Number(item.lat);
+  const numLng = Number(item.lng);
+  if (!isNaN(numLat) && numLat !== 0 && !isNaN(numLng) && numLng !== 0) {
+    return { lat: numLat, lng: numLng };
+  }
+
+  // 4. Smart fallback based on country keywords
+  const indianTokens = ["india", "panjab", "punjab", "goa", "delhi", "mumbai", "bhopal", "indore", "jaipur", "highway", "hub"];
+  const isIndian = indianTokens.some((t) => textLower.includes(t));
+  const baseCenter = isIndian ? { lat: 20.5937, lng: 78.9629 } : { lat: 28.2096, lng: 83.9856 };
+
   let hash = 0;
-  for (let i = 0; i < strToHash.length; i++) {
-    hash = (hash << 5) - hash + strToHash.charCodeAt(i);
+  for (let i = 0; i < textLower.length; i++) {
+    hash = (hash << 5) - hash + textLower.charCodeAt(i);
     hash |= 0;
   }
   const latOffset = (Math.abs(hash) % 200) / 100 - 1;
   const lngOffset = (Math.abs(hash >> 3) % 200) / 100 - 1;
 
-  return { lat: 28.2096 + latOffset, lng: 83.9856 + lngOffset };
+  return { lat: baseCenter.lat + latOffset, lng: baseCenter.lng + lngOffset };
 }
 
 export const InteractiveMap: React.FC<InteractiveMapProps> = ({
@@ -121,10 +231,12 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   selectedId,
   onMarkerClick,
   center = { lat: 28.2096, lng: 83.9856 },
+  drawPolyline = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
+  const polylineRef = useRef<any>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -174,9 +286,14 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
     const map = mapInstanceRef.current;
 
-    // Clear old markers
+    // Clear old markers & polyline
     Object.values(markersRef.current).forEach((m) => m.remove());
     markersRef.current = {};
+
+    if (polylineRef.current) {
+      polylineRef.current.remove();
+      polylineRef.current = null;
+    }
 
     if (items.length === 0) return;
 
@@ -241,15 +358,29 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       group.push([itemLat, itemLng]);
     });
 
-    if (group.length > 0) {
+    if (drawPolyline && group.length > 1) {
+      polylineRef.current = L.polyline(group, {
+        color: "#2563eb",
+        weight: 4,
+        opacity: 0.85,
+        dashArray: "6, 8"
+      }).addTo(map);
+    }
+
+    if (selectedId && markersRef.current[String(selectedId)]) {
+      const selMarker = markersRef.current[String(selectedId)];
+      const latLng = selMarker.getLatLng();
+      map.setView([latLng.lat, latLng.lng], 13, { animate: true });
+      selMarker.openPopup();
+    } else if (group.length > 0) {
       if (group.length === 1) {
         map.setView(group[0], 11);
       } else {
         const bounds = L.latLngBounds(group);
-        map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
       }
     }
-  }, [loaded, items, selectedId, center, onMarkerClick]);
+  }, [loaded, items, selectedId, center, onMarkerClick, drawPolyline]);
 
   return (
     <div className="w-full h-full relative rounded-2xl overflow-hidden shadow-inner bg-slate-100">

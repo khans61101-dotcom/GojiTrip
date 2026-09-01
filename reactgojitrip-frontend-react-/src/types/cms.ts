@@ -22,6 +22,9 @@ export interface TransportEntry {
   licenceVerified: boolean;
   activeStatus: 'Active' | 'Inactive';
   approvalStatus: ApprovalStatus;
+  driverLicense?: string;
+  vehicleAmenities?: string[];
+  description?: string;
   createdAt: string;
   updatedAt: string;
   createdByName: string;
@@ -131,6 +134,7 @@ export interface RestaurantEntry {
   photos: string[];
   imageUrl?: string;
   recommendedDishes: string[];
+  dietaryOptions?: string[];
   approvalStatus: ApprovalStatus;
   createdAt: string;
   updatedAt: string;
@@ -188,9 +192,51 @@ export interface MediaItem {
   uploadedBy: string;
 }
 
+export interface FamousPlaceEntry {
+  id: string;
+  name: string;
+  category: string; // Heritage, Adventure, Scenic, Religious, Nature, Temple
+  location: string;
+  description: string;
+  bestTimeToVisit?: string;
+  entryFee?: number;
+  currency?: string;
+  rating?: number;
+  reviews?: number;
+  imageUrl?: string;
+  photos: string[];
+  approvalStatus: ApprovalStatus;
+  createdAt: string;
+  updatedAt: string;
+  createdByName?: string;
+}
+
+export interface FuelStationEntry {
+  id: string;
+  name: string;
+  stationType: 'Petrol & Diesel' | 'EV Charging Station' | 'Combined Fuel & EV' | 'CNG / LPG';
+  location: string;
+  contactNumber?: string;
+  openingHours?: string;
+  petrolPrice?: number;
+  dieselPrice?: number;
+  evRate?: number;
+  currency?: string;
+  hasEvFastCharger: boolean;
+  hasRestroom: boolean;
+  hasConvenienceStore: boolean;
+  hasRepairShop: boolean;
+  imageUrl?: string;
+  photos: string[];
+  approvalStatus: ApprovalStatus;
+  createdAt: string;
+  updatedAt: string;
+  createdByName?: string;
+}
+
 export interface WorkflowHistoryLog {
   id: string;
-  entityType: 'Transport' | 'Route' | 'Hotel' | 'Restaurant' | 'Activity';
+  entityType: 'Transport' | 'Route' | 'Hotel' | 'Restaurant' | 'Activity' | 'Place' | 'FuelStation';
   entityId: string;
   entityTitle: string;
   previousStatus: ApprovalStatus;

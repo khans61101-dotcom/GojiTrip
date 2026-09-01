@@ -5,6 +5,7 @@ import { cmsStore } from "@/lib/cms-store";
 import { GuideEntry } from "@/types/cms";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { TagInputSection } from "@/components/common/TagInputSection";
 import {
   Users,
   Plus,
@@ -658,6 +659,29 @@ export default function GuidesPage() {
                   />
                 </div>
               </div>
+
+              {/* LANGUAGES SPOKEN TAG CHIP BOXES */}
+              <TagInputSection
+                label="Languages Spoken"
+                placeholder="Type language (e.g. English, Nepali, Hindi) & press Enter or comma..."
+                value={editingGuide.languages || ["English", "Nepali", "Hindi"]}
+                onChange={(tags) =>
+                  setEditingGuide((prev: any) => ({
+                    ...prev,
+                    languages: tags,
+                  }))
+                }
+                suggestions={[
+                  "English",
+                  "Nepali",
+                  "Hindi",
+                  "Chinese (Mandarin)",
+                  "French",
+                  "German",
+                  "Japanese",
+                  "Spanish",
+                ]}
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

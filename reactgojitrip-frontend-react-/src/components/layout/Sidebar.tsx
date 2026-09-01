@@ -15,6 +15,7 @@ import {
   Sparkles,
   Users,
   User,
+  Fuel,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -69,6 +70,18 @@ export const Sidebar: React.FC = () => {
       badge: stats.activitiesCount,
     },
     { label: "Guides", href: "/guides", icon: User, badge: stats.guidesCount },
+    {
+      label: "Famous Attractions",
+      href: "/famous-places",
+      icon: Mountain,
+      badge: stats.placesCount,
+    },
+    {
+      label: "Fuel & EV Stations",
+      href: "/fuel-stations",
+      icon: Fuel,
+      badge: stats.fuelStationsCount,
+    },
     {
       label: "Media Library",
       href: "/media",

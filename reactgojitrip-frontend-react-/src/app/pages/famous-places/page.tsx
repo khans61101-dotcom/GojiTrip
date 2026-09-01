@@ -18,6 +18,7 @@ import {
 
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
+import { cmsStore } from "@/lib/cms-store";
 
 // ============================================================
 // TYPES
@@ -276,183 +277,96 @@ const FamousPlacesPage: React.FC = () => {
         setLoading(true);
         setError("");
 
-        // ----------------------------------------------------
-        // No route selected
-        // ----------------------------------------------------
+        // 1. Get places from cmsStore
+        const storePlaces = cmsStore.getPlaces().map((p) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description || "Famous landmark and tourist attraction.",
+          image: p.imageUrl || (p.photos && p.photos[0]),
+          images: p.photos || [],
+          rating: p.rating || 4.8,
+          category: p.category ? [p.category] : ["Attraction"],
+          categories: p.category ? [p.category] : ["Attraction"],
+          bestTime: p.bestTimeToVisit || "All Year",
+          price: p.entryFee || 0,
+          location: p.location || "Nepal",
+        }));
 
-        if (!source || !destination) {
-          setPlaces([]);
-          setRouteInfo(null);
-          setLoading(false);
-          return;
-        }
+        let placesList: FamousPlace[] = storePlaces as any;
 
-        console.log("Fetching route places:", {
-          source,
-          destination,
-          date,
-          travellers,
-        });
-
-        // ----------------------------------------------------
-        // PLAN ROUTE
-        // ----------------------------------------------------
-
-        const response = await apiRequest<RoutePlanResponse>("/routes/plan", {
-          method: "POST",
-
-          body: {
-            source: {
-              name: source.trim(),
-            },
-
-            destination: {
-              name: destination.trim(),
-            },
-
-            date: date || undefined,
-
-            travellers: travellers ? Number(travellers) : undefined,
-          },
-        });
-
-        if (cancelled) {
-          return;
-        }
-
-        console.log("Route plan response:", response);
-
-        setRouteInfo(response);
-
-        // ----------------------------------------------------
-        // TAKE INTERMEDIATE STOPS
-        // ----------------------------------------------------
-
-        const routeStops =
-          response.intermediateStops ?? response.stops ?? response.route ?? [];
-
-        // ----------------------------------------------------
-        // REMOVE DUPLICATES
-        // ----------------------------------------------------
-
-        const uniqueStops = routeStops.filter((stop, index, array) => {
-          const currentName = (stop.name || "").trim().toLowerCase();
-
-          return (
-            array.findIndex(
-              (item) => (item.name || "").trim().toLowerCase() === currentName,
-            ) === index
-          );
-        });
-
-        // ----------------------------------------------------
-        // CONVERT ROUTE STOPS → FAMOUS PLACES
-        // ----------------------------------------------------
-
-        const normalized = uniqueStops.map((stop, index) =>
-          normalizePlace(stop, index),
-        );
-
-        setPlaces(normalized);
-
-        // ----------------------------------------------------
-        // FETCH ACTUAL PLACE DETAILS
-        // ----------------------------------------------------
-
+        // 2. Fetch backend API /places if available
         try {
-          const placeResults = await Promise.all(
-            normalized.map(async (place) => {
-              try {
-                const query = encodeURIComponent(place.name);
-
-                const placeResponse = await apiRequest<unknown>(
-                  `/places?search=${query}`,
-                  {
-                    method: "GET",
-                  },
-                );
-
-                const responseData = placeResponse as {
-                  data?: unknown;
-                };
-
-                let backendData: RouteStop | null = null;
-
-                if (Array.isArray(placeResponse)) {
-                  backendData =
-                    (placeResponse[0] as RouteStop | undefined) ?? null;
-                } else if (Array.isArray(responseData?.data)) {
-                  backendData =
-                    (responseData.data[0] as RouteStop | undefined) ?? null;
-                } else if (
-                  responseData?.data &&
-                  typeof responseData.data === "object"
-                ) {
-                  backendData = responseData.data as RouteStop;
-                } else if (placeResponse && typeof placeResponse === "object") {
-                  backendData = placeResponse as RouteStop;
-                }
-
-                return {
-                  routePlace: place,
-                  backendData,
-                };
-              } catch (placeError) {
-                console.warn(
-                  `Unable to fetch details for ${place.name}`,
-                  placeError,
-                );
-
-                return {
-                  routePlace: place,
-                  backendData: null,
-                };
-              }
-            }),
-          );
-
-          if (cancelled) {
-            return;
+          const apiRes = await apiRequest<any[]>("/places").catch(() => null);
+          if (Array.isArray(apiRes) && apiRes.length > 0) {
+            const apiPlaces = apiRes.map((p: any, index: number) => normalizePlace(p, index));
+            const mergedMap = new Map<string, FamousPlace>();
+            placesList.forEach((p) => mergedMap.set(p.name.toLowerCase().trim(), p));
+            apiPlaces.forEach((p) => mergedMap.set(p.name.toLowerCase().trim(), p));
+            placesList = Array.from(mergedMap.values());
           }
+        } catch (e) {
+          console.warn("Backend /places API check:", e);
+        }
 
-          const merged = placeResults.map(({ routePlace, backendData }) => {
-            if (!backendData) {
-              return routePlace;
-            }
-
-            return normalizePlace(
-              {
-                ...routePlace,
-                ...backendData,
-
-                // Preserve route information
-                distanceFromPrevious: routePlace.distanceFromPrevious,
-
-                durationFromPrevious: routePlace.durationFromPrevious,
-
-                placeId: backendData.placeId ?? routePlace.placeId,
+        // 3. If source & destination are provided, fetch /routes/plan API
+        if (source && destination) {
+          try {
+            const response = await apiRequest<RoutePlanResponse>("/routes/plan", {
+              method: "POST",
+              body: {
+                source: { name: source.trim() },
+                destination: { name: destination.trim() },
+                date: date || undefined,
+                travellers: travellers ? Number(travellers) : undefined,
               },
-              0,
-            );
-          });
+            }).catch(() => null);
 
-          setPlaces(merged);
-        } catch (placeError) {
-          console.warn(
-            "Place details API unavailable. Using route data:",
-            placeError,
-          );
+            if (response && !cancelled) {
+              setRouteInfo(response);
+              const routeStops = response.intermediateStops ?? response.stops ?? response.route ?? [];
+              if (routeStops.length > 0) {
+                const uniqueStops = routeStops.filter((stop, index, array) => {
+                  const currentName = (stop.name || "").trim().toLowerCase();
+                  return array.findIndex((item) => (item.name || "").trim().toLowerCase() === currentName) === index;
+                });
+                const normalizedRoutePlaces = uniqueStops.map((stop, index) => normalizePlace(stop, index));
+                
+                const mergedMap = new Map<string, FamousPlace>();
+                normalizedRoutePlaces.forEach((p) => mergedMap.set(p.name.toLowerCase().trim(), p));
+                placesList.forEach((p) => {
+                  if (!mergedMap.has(p.name.toLowerCase().trim())) {
+                    mergedMap.set(p.name.toLowerCase().trim(), p);
+                  }
+                });
+                placesList = Array.from(mergedMap.values());
+              }
+            }
+          } catch (planErr) {
+            console.warn("Route plan fetch error fallback:", planErr);
+          }
+        }
+
+        if (!cancelled) {
+          setPlaces(placesList);
         }
       } catch (err: unknown) {
         console.error("Route places fetch failed:", err);
-
         if (!cancelled) {
-          const errorMessage =
-            err instanceof Error ? err.message : "Unable to load route places.";
-
-          setError(errorMessage);
-
-          setPlaces([]);
+          setError(err instanceof Error ? err.message : "Unable to load famous places.");
+          const storePlaces = cmsStore.getPlaces().map((p) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description || "Famous landmark and tourist attraction.",
+            image: p.imageUrl || (p.photos && p.photos[0]),
+            images: p.photos || [],
+            rating: p.rating || 4.8,
+            category: p.category ? [p.category] : ["Attraction"],
+            categories: p.category ? [p.category] : ["Attraction"],
+            bestTime: p.bestTimeToVisit || "All Year",
+            price: p.entryFee || 0,
+            location: p.location || "Nepal",
+          }));
+          setPlaces(storePlaces as any);
         }
       } finally {
         if (!cancelled) {
@@ -523,7 +437,7 @@ const FamousPlacesPage: React.FC = () => {
     }
 
     navigate(
-      `/famous-places/${encodeURIComponent(place.id)}?${params.toString()}`,
+      `/pages/famous-places/${encodeURIComponent(place.id)}?${params.toString()}`,
     );
   };
 
@@ -622,39 +536,9 @@ const FamousPlacesPage: React.FC = () => {
         </div>
       </section>
 
-      {/* ======================================================
-          NO ROUTE
-      ====================================================== */}
-
-      {!source || !destination ? (
-        <section className="max-w-4xl mx-auto px-4 py-16">
-          <div className="bg-white rounded-2xl p-10 text-center shadow-sm border">
-            <Navigation size={48} className="mx-auto mb-5 text-blue-600" />
-
-            <h2 className="text-2xl font-bold text-gray-900 mb-3">
-              Search a Route First
-            </h2>
-
-            <p className="text-gray-500 mb-6">
-              Select source and destination from the route planner to see famous
-              places along your journey.
-            </p>
-
-            <button
-              type="button"
-              onClick={() => navigate("/routes")}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg
-                hover:bg-blue-700 transition-colors font-medium"
-            >
-              Plan a Route
-            </button>
-          </div>
-        </section>
-      ) : (
-        <>
-          {/* ====================================================
-              FILTERS
-          ==================================================== */}
+      {/* ====================================================
+          FILTERS
+      ==================================================== */}
 
           <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             <div className="bg-white p-4 md:p-5 rounded-xl shadow-sm border border-gray-100">
@@ -934,8 +818,6 @@ const FamousPlacesPage: React.FC = () => {
               </div>
             )}
           </section>
-        </>
-      )}
     </main>
   );
 };
