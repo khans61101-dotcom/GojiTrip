@@ -4,7 +4,7 @@ import React from "react";
 import { cmsStore } from "@/lib/cms-store";
 import { GuideEntry } from "@/types/cms";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { ImageFileInput, validateImagePayloads } from "@/components/common/ImageFileInput";
 import { TagInputSection } from "@/components/common/TagInputSection";
 import {
   Users,
@@ -72,9 +72,11 @@ function MediaPickerModal({
       return;
     }
 
-    const maxSize = 4 * 1024 * 1024;
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
-      setUploadError("File size must be below 4MB");
+      const msg = "File size exceeds 5MB limit. Please select an image under 5MB.";
+      setUploadError(msg);
+      alert(msg);
       setSelectedFile(null);
       setImagePreview(null);
       e.target.value = "";
@@ -337,16 +339,19 @@ export default function GuidesPage() {
 
   const handleOpenCreateModal = () => {
     setEditingGuide({
-      fullName: "Pasang Sherpa",
-      contactNumber: "+977-9846110022",
-      licenseNumber: "NPL-MTN-8848",
+      id: undefined,
+      fullName: "",
+      contactNumber: "",
+      licenseNumber: "NPL-MTN-101",
       languages: ["English", "Nepali", "Hindi"],
-      experienceYears: 8,
+      experienceYears: 5,
       specialization: "High Altitude Trekking & Climbing",
       dailyRate: 3500,
-      bio: "Certified Annapurna & Everest Base Camp guide with 8+ years experience.",
-      photoUrl:
-        "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=400&q=80",
+      currency: "NRs",
+      bio: "",
+      photoUrl: "",
+      imageUrl: "",
+      location: "Annapurna / Everest",
       approvalStatus: "Published",
     });
     setIsModalOpen(true);
@@ -367,6 +372,12 @@ export default function GuidesPage() {
     e.preventDefault();
     if (!editingGuide) return;
 
+    const imageCheck = validateImagePayloads([editingGuide.photoUrl, editingGuide.imageUrl]);
+    if (!imageCheck.valid) {
+      alert(imageCheck.errorMsg);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (!editingGuide.fullName || !editingGuide.contactNumber) {
@@ -375,7 +386,10 @@ export default function GuidesPage() {
         return;
       }
 
-      await cmsStore.saveGuide(editingGuide);
+      await cmsStore.saveGuide({
+        ...editingGuide,
+        id: editingGuide.id ? String(editingGuide.id) : undefined,
+      });
       setIsModalOpen(false);
       setEditingGuide(null);
     } catch (error) {

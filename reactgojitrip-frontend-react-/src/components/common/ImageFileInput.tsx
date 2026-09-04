@@ -12,6 +12,77 @@ interface ImageFileInputProps {
   category?: "Hotels" | "Restaurants" | "Transport" | "Activities" | "Destinations" | "Routes";
 }
 
+/**
+ * Strict Pre-Save Image Payload Validation.
+ * Checks if any image Base64 data string exceeds ~900KB limit (1.2 million chars).
+ */
+export function validateImagePayloads(images: (string | null | undefined)[]): { valid: boolean; errorMsg?: string } {
+  const MAX_BASE64_LENGTH = 1.2 * 1024 * 1024; // ~900KB max per Base64 image
+  for (const img of images) {
+    if (!img) continue;
+    if (typeof img === "string" && img.startsWith("data:")) {
+      if (img.length > MAX_BASE64_LENGTH) {
+        return {
+          valid: false,
+          errorMsg: "Warning: Attached image size is too large (>900KB compressed). Please select a smaller image file so your data can be saved permanently.",
+        };
+      }
+    }
+  }
+  return { valid: true };
+}
+
+export function compressImageFile(file: File, maxDimension = 800, quality = 0.65): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const maxSize = 5 * 1024 * 1024; // 5MB limit
+    if (file.size > maxSize) {
+      reject(new Error("File size exceeds 5MB limit. Please select an image under 5MB."));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(event.target?.result as string);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedDataUrl = canvas.toDataURL(file.type === "image/png" ? "image/png" : "image/jpeg", quality);
+        resolve(compressedDataUrl);
+      };
+
+      img.onerror = () => {
+        resolve(event.target?.result as string);
+      };
+
+      img.src = event.target?.result as string;
+    };
+
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
 export const ImageFileInput: React.FC<ImageFileInputProps> = ({
   label = "Upload Image File from Device",
   value,
@@ -24,13 +95,14 @@ export const ImageFileInput: React.FC<ImageFileInputProps> = ({
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     setError(null);
 
-    // Validate size (max 8MB)
-    const maxSize = 8 * 1024 * 1024;
+    // Validate size (max 5MB)
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
-      setError("File size must be under 8MB");
+      setError("File size exceeds 5MB limit. Please upload an image under 5MB.");
+      alert("File size exceeds 5MB limit. Please upload an image under 5MB.");
       return;
     }
 
@@ -43,10 +115,9 @@ export const ImageFileInput: React.FC<ImageFileInputProps> = ({
 
     setIsUploading(true);
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      
+    try {
+      const dataUrl = await compressImageFile(file, 1200, 0.82);
+
       // Auto-save to CMS Media Store
       try {
         cmsStore.addMedia({
@@ -66,15 +137,12 @@ export const ImageFileInput: React.FC<ImageFileInputProps> = ({
       }
 
       onChange(dataUrl);
+    } catch (err: any) {
+      setError(err?.message || "Failed to process image file.");
+      alert(err?.message || "Failed to process image file.");
+    } finally {
       setIsUploading(false);
-    };
-
-    reader.onerror = () => {
-      setError("Failed to read image file.");
-      setIsUploading(false);
-    };
-
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -4,7 +4,7 @@ import React from "react";
 import { cmsStore } from "@/lib/cms-store";
 import { ActivityEntry } from "@/types/cms";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { ImageFileInput, validateImagePayloads } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import {
   Compass,
@@ -75,10 +75,12 @@ function MediaPickerModal({
       return;
     }
 
-    // Validate file size (max 4MB)
-    const maxSize = 4 * 1024 * 1024;
+    // Validate file size (max 5MB)
+    const maxSize = 5 * 1024 * 1024;
     if (file.size > maxSize) {
-      setUploadError("File size must be below 4MB");
+      const msg = "File size exceeds 5MB limit. Please select an image under 5MB.";
+      setUploadError(msg);
+      alert(msg);
       setSelectedFile(null);
       setImagePreview(null);
       e.target.value = "";
@@ -448,16 +450,18 @@ export default function ActivitiesPage() {
 
   const handleOpenCreateModal = () => {
     setEditingAct({
-      activityName: "Muktinath Holy Pilgrimage Horse Ride",
-      guideName: "Pasang Tamang",
-      guideContactDetails: "+977-9846110022",
+      id: undefined,
+      activityName: "",
+      guideName: "",
+      guideContactDetails: "",
       pricing: 3500,
+      currency: "NRs",
       duration: "2 Hours",
-      difficultyLevel: "Easy",
+      difficultyLevel: "Moderate",
       photos: [],
       imageUrl: "",
       availability: "Daily" as AvailabilityType,
-      approvalStatus: "Draft",
+      approvalStatus: "Published",
     });
     setIsModalOpen(true);
   };
@@ -500,6 +504,12 @@ export default function ActivitiesPage() {
     e.preventDefault();
     if (!editingAct) return;
 
+    const imageCheck = validateImagePayloads([editingAct.imageUrl, ...(editingAct.photos || [])]);
+    if (!imageCheck.valid) {
+      alert(imageCheck.errorMsg);
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       if (!editingAct.activityName || !editingAct.guideName) {
@@ -514,7 +524,7 @@ export default function ActivitiesPage() {
 
       const activityToSave = {
         ...editingAct,
-        id: editingAct.id || `activity_${Date.now()}`,
+        id: editingAct.id ? String(editingAct.id) : undefined,
         photos: photos,
         imageUrl: editingAct.imageUrl || photos[0] || "",
         createdAt: editingAct.createdAt || new Date().toISOString(),

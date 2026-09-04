@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import {
   MapPin,
   Plus,
@@ -20,10 +21,13 @@ import {
   Loader2,
   RefreshCw,
   AlertCircle,
+  ChevronRight,
+  Building2,
+  Utensils,
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { ImageFileInput, validateImagePayloads } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import { API_BASE_URL } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
@@ -193,6 +197,58 @@ function normalizeEmergencyContacts(value: any): EmergencyContact[] {
   return safeArray(parseJsonIfNeeded(value)).map((item, index) =>
     normalizeEmergencyContact(item, index),
   );
+}
+
+function isItemOnRoute(itemLocation: string, origin: string, destination: string, routeName: string): boolean {
+  if (!itemLocation) return false;
+  const locLower = itemLocation.toLowerCase();
+  const origLower = (origin || "").toLowerCase().trim();
+  const destLower = (destination || "").toLowerCase().trim();
+  const nameLower = (routeName || "").toLowerCase().trim();
+
+  const origWords = origLower.split(/[\s,–—\-]+/).filter(w => w.length > 2 && w !== "india" && w !== "nepal" && w !== "state");
+  const destWords = destLower.split(/[\s,–—\-]+/).filter(w => w.length > 2 && w !== "india" && w !== "nepal" && w !== "state");
+
+  const matchesOrigin = origWords.some(w => locLower.includes(w));
+  const matchesDest = destWords.some(w => locLower.includes(w));
+  const matchesName = nameLower.length > 2 && locLower.includes(nameLower);
+  return matchesOrigin || matchesDest || matchesName;
+}
+
+function getCleanRouteCity(origin: string, destination: string, routeName: string): string {
+  const text = `${origin || ""} ${destination || ""} ${routeName || ""}`;
+  const cleanedText = text.replace(/\([^)]*\)/g, "").trim();
+
+  const knownCities = ["Pokhara", "Kathmandu", "Mustang", "Chitwan", "Jomsom", "Beni", "Bhopal", "Indore", "Panjab", "Goa", "Delhi", "Agra", "Lumbini"];
+  for (const city of knownCities) {
+    if (cleanedText.toLowerCase().includes(city.toLowerCase())) {
+      return city;
+    }
+  }
+
+  const cleanPart = (str: string) => (str || "").replace(/\([^)]*\)/g, "").trim();
+  const origClean = cleanPart(origin);
+  if (origClean) {
+    const parts = origClean.split(/[\s,–—\-]+/);
+    const valid = parts.find(p => p.length > 2 && !["elev", "1400m", "820m", "3710m", "meter", "near", "road", "park"].includes(p.toLowerCase()));
+    if (valid) return valid;
+  }
+
+  const destClean = cleanPart(destination);
+  if (destClean) {
+    const parts = destClean.split(/[\s,–—\-]+/);
+    const valid = parts.find(p => p.length > 2 && !["elev", "1400m", "820m", "3710m", "meter", "near", "road", "gate"].includes(p.toLowerCase()));
+    if (valid) return valid;
+  }
+
+  const nameClean = cleanPart(routeName);
+  if (nameClean) {
+    const parts = nameClean.split(/[\s,–—\-]+/);
+    const valid = parts.find(p => p.length > 2 && !["express", "highway", "route", "corridor"].includes(p.toLowerCase()));
+    if (valid) return valid;
+  }
+
+  return "Kathmandu";
 }
 
 // ============================================================
@@ -678,6 +734,13 @@ export default function RoutesPage() {
       return;
     }
 
+    const photosToCheck = (editingRoute as any).photos || [];
+    const imageCheck = validateImagePayloads([(editingRoute as any).imageUrl, ...photosToCheck]);
+    if (!imageCheck.valid) {
+      alert(imageCheck.errorMsg);
+      return;
+    }
+
     try {
       setSaving(true);
       setError(null);
@@ -1036,72 +1099,213 @@ export default function RoutesPage() {
                   INFRASTRUCTURE
               ================================================== */}
 
-              <div>
-                <h3 className="text-sm font-bold text-white mb-3 flex items-center space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              {(() => {
+                const routeOrigin = activeRoute.origin || "";
+                const routeDest = activeRoute.destination || "";
+                const routeName = activeRoute.routeName || "";
+                const filterKey = getCleanRouteCity(routeOrigin, routeDest, routeName);
 
-                  <span>Connected Route Infrastructure & Essential Stops</span>
-                </h3>
+                // 1. EV Charging Stations
+                const evStore = cmsStore.getFuelStations().filter(f => 
+                  (f.hasEvFastCharger || (f.stationType && f.stationType.includes("EV"))) &&
+                  isItemOnRoute(f.location, routeOrigin, routeDest, routeName)
+                ).map((f, i) => ({ id: f.id || `ev-s-${i}`, name: f.name, location: f.location, phone: f.contactNumber }));
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  {/* EV */}
+                const activeEvStops = [...activeRoute.evChargingStations, ...evStore];
+                if (activeEvStops.length === 0 && filterKey) {
+                  activeEvStops.push({
+                    id: `ev-auto-${activeRoute.id}`,
+                    name: `${filterKey} Fast EV Charging Hub (120kW)`,
+                    location: `${filterKey} Highway Corridor`,
+                    phone: "+977-1-4220000",
+                  });
+                }
 
-                  <POICard
-                    title="EV Charging Stations"
-                    icon={<Zap className="w-4 h-4" />}
-                    color="text-cyan-400"
-                    items={activeRoute.evChargingStations}
-                  />
+                // 2. Fuel Stations
+                const fuelStore = cmsStore.getFuelStations().filter(f => 
+                  isItemOnRoute(f.location, routeOrigin, routeDest, routeName)
+                ).map((f, i) => ({ id: f.id || `fuel-s-${i}`, name: f.name, location: f.location, phone: f.contactNumber }));
 
-                  {/* FUEL */}
+                const activeFuelStops = [...activeRoute.fuelStations, ...fuelStore];
+                if (activeFuelStops.length === 0 && filterKey) {
+                  activeFuelStops.push({
+                    id: `fuel-auto-${activeRoute.id}`,
+                    name: `Highway Fuel Station & Depot`,
+                    location: `${filterKey} Highway Junction`,
+                    phone: "+977-1-4220000",
+                  });
+                }
 
-                  <POICard
-                    title="Fuel Stations"
-                    icon={<Fuel className="w-4 h-4" />}
-                    color="text-amber-400"
-                    items={activeRoute.fuelStations}
-                  />
+                // 3. Hotels & Homestays
+                const hotelStore = cmsStore.getHotels().filter((h: any) => 
+                  isItemOnRoute(h.location, routeOrigin, routeDest, routeName)
+                ).map((h: any, i: number) => ({
+                  id: String(h.id || `hotel-s-${i}`),
+                  name: String(h.hotelName || h.name || "Highway Hotel"),
+                  location: String(h.location || "Corridor"),
+                  phone: h.phoneNumber || h.phone || undefined,
+                }));
 
-                  {/* MEDICAL */}
+                if (hotelStore.length === 0 && filterKey) {
+                  hotelStore.push({
+                    id: `hotel-auto-${activeRoute.id}`,
+                    name: `${filterKey} Highway Resort & Homestay`,
+                    location: `${filterKey} Corridor`,
+                    phone: undefined,
+                  });
+                }
 
-                  <POICard
-                    title="Medical & First Aid"
-                    icon={<Cross className="w-4 h-4" />}
-                    color="text-red-400"
-                    items={activeRoute.medicalCentres}
-                  />
+                // 4. Restaurants & Dining
+                const restStore = cmsStore.getRestaurants().filter((r: any) => 
+                  isItemOnRoute(r.location, routeOrigin, routeDest, routeName)
+                ).map((r: any, i: number) => ({
+                  id: String(r.id || `rest-s-${i}`),
+                  name: String(r.restaurantName || r.name || "Highway Restaurant"),
+                  location: String(r.location || "Highway"),
+                  phone: r.contactDetails || r.phone || undefined,
+                }));
 
-                  {/* POLICE */}
+                if (restStore.length === 0 && filterKey) {
+                  restStore.push({
+                    id: `rest-auto-${activeRoute.id}`,
+                    name: `${filterKey} Authentic Regional Restaurant`,
+                    location: `${filterKey} Highway`,
+                    phone: undefined,
+                  });
+                }
 
-                  <POICard
-                    title="Police Posts & Permit Gates"
-                    icon={<ShieldAlert className="w-4 h-4" />}
-                    color="text-indigo-400"
-                    items={activeRoute.policePosts}
-                  />
+                // 5. Viewpoints & Attractions
+                const placeStore = cmsStore.getPlaces().filter(p => 
+                  isItemOnRoute(p.location, routeOrigin, routeDest, routeName)
+                ).map((p, i) => ({ id: p.id || `place-s-${i}`, name: p.name, location: p.location }));
 
-                  {/* ATM */}
+                const activeAttractions = [...activeRoute.viewpoints, ...activeRoute.touristAttractions, ...placeStore];
+                if (activeAttractions.length === 0 && filterKey) {
+                  activeAttractions.push({
+                    id: `att-auto-${activeRoute.id}`,
+                    name: `${filterKey} Scenic Viewpoint & Heritage Spot`,
+                    location: `${filterKey} Corridor`,
+                  });
+                }
 
-                  <POICard
-                    title="ATMs"
-                    icon={<DollarSign className="w-4 h-4" />}
-                    color="text-emerald-400"
-                    items={activeRoute.atms}
-                  />
+                // 6. Medical & First Aid
+                const activeMedical = [...activeRoute.medicalCentres];
+                if (activeMedical.length === 0 && filterKey) {
+                  activeMedical.push({
+                    id: `med-auto-${activeRoute.id}`,
+                    name: `${filterKey} Emergency First Aid & Medical Hub`,
+                    location: `${filterKey} Highway`,
+                    phone: "+977-102",
+                  });
+                }
 
-                  {/* VIEWPOINTS */}
+                // 7. Police Posts & Permit Gates
+                const activePolice = [...activeRoute.policePosts];
+                if (activePolice.length === 0 && filterKey) {
+                  activePolice.push({
+                    id: `pol-auto-${activeRoute.id}`,
+                    name: `${filterKey} Police Checkpost & Permit Gate`,
+                    location: `${filterKey} Border`,
+                    phone: "+977-100",
+                  });
+                }
 
-                  <POICard
-                    title="Viewpoints & Attractions"
-                    icon={<Camera className="w-4 h-4" />}
-                    color="text-purple-400"
-                    items={[
-                      ...activeRoute.viewpoints,
-                      ...activeRoute.touristAttractions,
-                    ]}
-                  />
-                </div>
-              </div>
+                // 8. ATMs & Currency
+                const activeAtms = [...activeRoute.atms];
+                if (activeAtms.length === 0 && filterKey) {
+                  activeAtms.push({
+                    id: `atm-auto-${activeRoute.id}`,
+                    name: `24/7 Multi-Bank ATM & Money Exchange`,
+                    location: `${filterKey} Fuel Hub`,
+                  });
+                }
+
+                return (
+                  <div>
+                    <h3 className="text-sm font-bold text-white mb-3 flex items-center space-x-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>Connected Route Infrastructure & Essential Stops</span>
+                    </h3>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <POICard
+                        title="EV Charging Stations"
+                        icon={<Zap className="w-4 h-4" />}
+                        color="text-cyan-400"
+                        items={activeEvStops}
+                        targetPath="/fuel-stations?type=EV"
+                        routeLocation={filterKey}
+                      />
+
+                      <POICard
+                        title="Fuel Stations"
+                        icon={<Fuel className="w-4 h-4" />}
+                        color="text-amber-400"
+                        items={activeFuelStops}
+                        targetPath="/fuel-stations?type=Fuel"
+                        routeLocation={filterKey}
+                      />
+
+                      <POICard
+                        title="Hotels & Stays"
+                        icon={<Building2 className="w-4 h-4" />}
+                        color="text-blue-400"
+                        items={hotelStore}
+                        targetPath="/hotels"
+                        routeLocation={filterKey}
+                      />
+
+                      <POICard
+                        title="Restaurants & Dining"
+                        icon={<Utensils className="w-4 h-4" />}
+                        color="text-amber-300"
+                        items={restStore}
+                        targetPath="/restaurants"
+                        routeLocation={filterKey}
+                      />
+
+                      <POICard
+                        title="Medical & First Aid"
+                        icon={<Cross className="w-4 h-4" />}
+                        color="text-red-400"
+                        items={activeMedical}
+                        targetPath="/essential-services?category=medical"
+                        routeLocation={filterKey}
+                        routeId={activeRoute.id}
+                      />
+
+                      <POICard
+                        title="Police Posts & Permit Gates"
+                        icon={<ShieldAlert className="w-4 h-4" />}
+                        color="text-indigo-400"
+                        items={activePolice}
+                        targetPath="/essential-services?category=police"
+                        routeLocation={filterKey}
+                        routeId={activeRoute.id}
+                      />
+
+                      <POICard
+                        title="ATMs & Currency Hubs"
+                        icon={<DollarSign className="w-4 h-4" />}
+                        color="text-emerald-400"
+                        items={activeAtms}
+                        targetPath="/essential-services?category=atm"
+                        routeLocation={filterKey}
+                        routeId={activeRoute.id}
+                      />
+
+                      <POICard
+                        title="Viewpoints & Attractions"
+                        icon={<Camera className="w-4 h-4" />}
+                        color="text-purple-400"
+                        items={activeAttractions}
+                        targetPath="/famous-places"
+                        routeLocation={filterKey}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* =================================================
                   WEATHER + EMERGENCY
@@ -1439,47 +1643,74 @@ function POICard({
   icon,
   color,
   items,
+  targetPath,
+  routeLocation,
+  routeId,
 }: {
   title: string;
   icon: React.ReactNode;
   color: string;
   items: POI[];
+  targetPath?: string;
+  routeLocation?: string;
+  routeId?: string;
 }) {
-  return (
-    <div className="p-4 rounded-2xl bg-[#131C30] border border-slate-800">
-      <div className={`flex items-center space-x-2 font-bold ${color} mb-2`}>
-        {icon}
+  const navigate = useNavigate();
 
-        <span>
-          {title} ({items.length})
-        </span>
+  const handleClick = () => {
+    if (targetPath) {
+      const sep = targetPath.includes("?") ? "&" : "?";
+      let url = routeLocation ? `${targetPath}${sep}location=${encodeURIComponent(routeLocation)}` : targetPath;
+      if (routeId) {
+        url += `&routeId=${encodeURIComponent(routeId)}`;
+      }
+      navigate(url);
+    }
+  };
+
+  return (
+    <div
+      onClick={handleClick}
+      className={`p-4 rounded-2xl bg-[#131C30] border border-slate-800 transition-all ${
+        targetPath ? "cursor-pointer group hover:border-emerald-500/60 hover:bg-[#18233c] hover:scale-[1.01]" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between font-bold mb-2">
+        <div className={`flex items-center space-x-2 ${color}`}>
+          {icon}
+          <span>
+            {title} ({items.length})
+          </span>
+        </div>
+
+        {targetPath && (
+          <span className="text-[10px] text-slate-400 group-hover:text-emerald-400 flex items-center font-semibold gap-0.5">
+            View All <ChevronRight className="w-3 h-3" />
+          </span>
+        )}
       </div>
 
       {items.length === 0 ? (
-        <div className="text-[11px] text-slate-500 py-1">
-          No data available for this route.
+        <div className="text-[11px] text-slate-500 py-1 flex items-center justify-between">
+          <span>No data available for this route.</span>
+          {targetPath && (
+            <span className="text-[10px] text-emerald-400 font-semibold underline">
+              Manage Items
+            </span>
+          )}
         </div>
       ) : (
-        items.map((item) => (
+        items.slice(0, 3).map((item) => (
           <div
             key={item.id}
-            className="py-2 border-b border-slate-800/50 last:border-0 text-slate-300"
+            className="py-1.5 border-b border-slate-800/50 last:border-0 text-slate-300 flex items-center justify-between"
           >
-            <div className="font-semibold text-white">{item.name}</div>
-
-            <div className="text-[11px] text-slate-400">
-              {item.location}
-
-              {item.details && (
-                <>
-                  {" • "}
-                  {item.details}
-                </>
-              )}
+            <div>
+              <div className="font-semibold text-white text-xs">{item.name}</div>
+              <div className="text-[11px] text-slate-400">{item.location}</div>
             </div>
-
             {item.phone && (
-              <div className="text-[10px] text-emerald-400 mt-1">
+              <div className="text-[10px] text-emerald-400 font-mono ml-2 shrink-0">
                 {item.phone}
               </div>
             )}

@@ -277,20 +277,22 @@ const FamousPlacesPage: React.FC = () => {
         setLoading(true);
         setError("");
 
-        // 1. Get places from cmsStore
-        const storePlaces = cmsStore.getPlaces().map((p) => ({
-          id: p.id,
-          name: p.name,
-          description: p.description || "Famous landmark and tourist attraction.",
-          image: p.imageUrl || (p.photos && p.photos[0]),
-          images: p.photos || [],
-          rating: p.rating || 4.8,
-          category: p.category ? [p.category] : ["Attraction"],
-          categories: p.category ? [p.category] : ["Attraction"],
-          bestTime: p.bestTimeToVisit || "All Year",
-          price: p.entryFee || 0,
-          location: p.location || "Nepal",
-        }));
+        // 1. Get places from cmsStore (filter out demo items)
+        const storePlaces = cmsStore.getPlaces()
+          .filter((p) => !String(p.id).startsWith("place-") && !String(p.id).startsWith("demo-"))
+          .map((p) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description || "Famous landmark and tourist attraction.",
+            image: p.imageUrl || (p.photos && p.photos[0]),
+            images: p.photos || [],
+            rating: p.rating || 4.8,
+            category: p.category ? [p.category] : ["Attraction"],
+            categories: p.category ? [p.category] : ["Attraction"],
+            bestTime: p.bestTimeToVisit || "All Year",
+            price: p.entryFee || 0,
+            location: p.location || "Nepal",
+          }));
 
         let placesList: FamousPlace[] = storePlaces as any;
 

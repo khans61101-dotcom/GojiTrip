@@ -22,6 +22,8 @@ import PublicRestaurantsPage from "@/app/pages/restaurants/page";
 import PublicRoutePage from "@/app/pages/route/page";
 import PublicTransportPage from "@/app/pages/transport/page";
 import PublicAboutPage from "@/app/pages/about/page";
+import TripPlannerPage from "@/app/pages/trip-planner/page";
+import AIRouteAnalysisPage from "@/app/pages/ai-route-analysis/page";
 
 // ============================================================
 // AUTH PAGES
@@ -46,6 +48,7 @@ import AdminFuelStationsPage from "@/app/(dashboard)/fuel-stations/page";
 import MediaLibraryPage from "@/app/(dashboard)/media/page";
 import TransportPage from "@/app/(dashboard)/transport/page";
 import WorkflowPage from "@/app/(dashboard)/workflow/page";
+import EssentialServicesPage from "@/app/(dashboard)/essential-services/page";
 
 // ============================================================
 // APP
@@ -126,6 +129,33 @@ export function App() {
           element={
             <PublicLayout>
               <PublicRoutePage />
+            </PublicLayout>
+          }
+        />
+
+        <Route
+          path="/pages/route"
+          element={
+            <PublicLayout>
+              <PublicRoutePage />
+            </PublicLayout>
+          }
+        />
+
+        <Route
+          path="/pages/trip-planner"
+          element={
+            <PublicLayout>
+              <TripPlannerPage />
+            </PublicLayout>
+          }
+        />
+
+        <Route
+          path="/pages/ai-route-analysis"
+          element={
+            <PublicLayout>
+              <AIRouteAnalysisPage />
             </PublicLayout>
           }
         />
@@ -310,6 +340,24 @@ export function App() {
             <DashboardLayout>
               <WorkflowPage />
             </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/essential-services"
+          element={
+            <DashboardLayout>
+              <EssentialServicesPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/pages/essential-services"
+          element={
+            <PublicLayout>
+              <EssentialServicesPage />
+            </PublicLayout>
           }
         />
 

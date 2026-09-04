@@ -3,6 +3,7 @@
 import React, { useRef, useState } from "react";
 import { Plus, X, Image as ImageIcon, Link as LinkIcon, FolderOpen, Loader2 } from "lucide-react";
 import { cmsStore } from "@/lib/cms-store";
+import { compressImageFile } from "@/components/common/ImageFileInput";
 
 interface MultiImageFileInputProps {
   label?: string;
@@ -42,6 +43,15 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
     setError(null);
     const fileArray = Array.from(files);
 
+    // Check size limit (5MB) for all files
+    const overSized = fileArray.find(f => f.size > 5 * 1024 * 1024);
+    if (overSized) {
+      const msg = `File "${overSized.name}" exceeds 5MB limit. Please select images under 5MB.`;
+      setError(msg);
+      alert(msg);
+      return;
+    }
+
     if (safeImages.length + fileArray.length > maxImages) {
       setError(`Maximum limit is ${maxImages} images.`);
     }
@@ -56,7 +66,7 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
     try {
       const base64Results = await Promise.all(
         filesToProcess.map(async (file) => {
-          const dataUrl = await readFileAsDataUrl(file);
+          const dataUrl = await compressImageFile(file, 1200, 0.82);
           try {
             cmsStore.addMedia({
               id: `media_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
@@ -79,9 +89,10 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
 
       const updated = [...safeImages, ...base64Results];
       onChange(updated);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to process uploaded images:", err);
-      setError("Failed to process image files. Please try again.");
+      setError(err?.message || "Failed to process image files. Please try again.");
+      alert(err?.message || "Failed to process image files. Please try again.");
     } finally {
       setIsUploading(false);
     }

@@ -402,7 +402,18 @@ export const MediaPickerModal: React.FC<MediaPickerModalProps> = ({
                   id="media-file-upload"
                   type="file"
                   accept="image/*"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      if (file.size > 5 * 1024 * 1024) {
+                        alert("File size exceeds 5MB limit. Please select an image under 5MB.");
+                        e.target.value = "";
+                        setSelectedFile(null);
+                        return;
+                      }
+                      setSelectedFile(file);
+                    }
+                  }}
                   className="hidden"
                 />
 

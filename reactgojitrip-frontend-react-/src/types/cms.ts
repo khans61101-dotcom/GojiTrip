@@ -79,10 +79,13 @@ export interface RouteEntry {
 
 export interface RoomTypeInfo {
   id: string;
-  typeName: string; // Deluxe Twin, Standard Single, Dormitory
+  typeName: string; // Deluxe Twin, Standard Single, Executive Suite, Family Room
   ratePerNight: number;
-  capacity: number;
-  photos: string[];
+  capacity: number; // Max Guests
+  bedType?: string; // King Bed, Twin Beds, Double Bed, Single Bed
+  facilities?: string[]; // AC, Attached Bathroom, Balcony, TV, Mountain View
+  imageUrl?: string;
+  photos?: string[];
 }
 
 export interface HotelEntry {

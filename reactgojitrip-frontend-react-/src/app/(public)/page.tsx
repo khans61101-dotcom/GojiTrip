@@ -4,8 +4,6 @@ import AboutSection from "@/components/landing/AboutSection";
 import FamousRoutes from "@/components/landing/FamousRoutes";
 import HowItWorks from "@/components/landing/HowItWorks";
 import AIFeatures from "@/components/landing/AIFeatures";
-import WhyChooseGojiTrip from "@/components/landing/WhyChooseGojiTrip";
-import Features from "@/components/landing/Features";
 import Testimonials from "@/components/landing/Testimonials";
 import FinalCta from "@/components/landing/FinalCta";
 import Footer from "@/components/landing/Footer";
@@ -18,8 +16,6 @@ export default function Home() {
       <FamousRoutes />
       <HowItWorks />
       <AIFeatures />
-      <WhyChooseGojiTrip />
-      <Features />
       <Testimonials />
       <FinalCta />
       <Footer />

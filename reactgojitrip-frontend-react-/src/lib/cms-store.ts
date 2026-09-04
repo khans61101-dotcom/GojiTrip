@@ -12,6 +12,7 @@ import {
   WorkflowHistoryLog,
   FamousPlaceEntry,
   FuelStationEntry,
+  RoomTypeInfo,
 } from '@/types/cms';
 import { INITIAL_ACTIVITIES, INITIAL_HOTELS, INITIAL_MEDIA, INITIAL_RESTAURANTS, INITIAL_ROUTES, INITIAL_TRANSPORTS, INITIAL_GUIDES, INITIAL_LOGS, INITIAL_PLACES, INITIAL_FUEL_STATIONS } from '@/lib/initial-data';
 
@@ -102,6 +103,14 @@ function mapHotel(h: any): HotelEntry {
     ? h.photos
     : (imageUrl ? [imageUrl] : []);
 
+  let roomTypes: RoomTypeInfo[] = [];
+  const rawRT = h.roomTypes || h.room_types;
+  if (Array.isArray(rawRT)) {
+    roomTypes = rawRT;
+  } else if (typeof rawRT === 'string' && rawRT.trim()) {
+    try { roomTypes = JSON.parse(rawRT); } catch (e) {}
+  }
+
   return {
     id: String(h.id),
     hotelName: h.hotelName,
@@ -111,7 +120,7 @@ function mapHotel(h: any): HotelEntry {
     location: h.location,
     latitude: h.latitude,
     longitude: h.longitude,
-    roomTypes: Array.isArray(h.roomTypes) ? h.roomTypes : [],
+    roomTypes,
     facilities: Array.isArray(h.facilities) ? h.facilities : [],
     checkInTime: h.checkInTime,
     checkOutTime: h.checkOutTime,
@@ -268,7 +277,23 @@ class CMSStore {
       localStorage.setItem('gojitrip_cms_places', JSON.stringify(this.places));
       localStorage.setItem('gojitrip_cms_fuel_stations', JSON.stringify(this.fuelStations));
     } catch (e) {
-      console.warn("Failed to save CMS store to localStorage:", e);
+      console.warn("Failed to save CMS store to localStorage, performing lightweight image optimization:", e);
+      try {
+        const cleanHotels = this.hotels.map(h => ({
+          ...h,
+          imageUrl: (h.imageUrl && h.imageUrl.length > 200000) ? '' : h.imageUrl,
+          hotelPhotos: (h.hotelPhotos || []).filter(p => p.length <= 200000),
+          photos: (h.photos || []).filter(p => p.length <= 200000),
+          roomTypes: (h.roomTypes || []).map(r => ({
+            ...r,
+            imageUrl: (r.imageUrl && r.imageUrl.length > 200000) ? '' : r.imageUrl,
+            photos: (r.photos || []).filter(p => p.length <= 200000),
+          })),
+        }));
+        localStorage.setItem('gojitrip_cms_hotels', JSON.stringify(cleanHotels));
+      } catch (innerErr) {
+        throw new Error("Storage Quota Exceeded: Your browser storage is full. Please use smaller image files so your entries persist permanently.");
+      }
     }
   }
 
@@ -336,10 +361,13 @@ class CMSStore {
           })
         : (prevRoutes.filter(r => !String(r.id).startsWith('rt-')));
 
-      this.hotels = Array.isArray(hotels) && hotels.length > 0
+      const mergedHotels: HotelEntry[] = Array.isArray(hotels) && hotels.length > 0
         ? hotels.map((h: any) => {
             const mapped = mapHotel(h);
-            const prev = prevHotels.find(p => String(p.id) === String(mapped.id));
+            const prev = prevHotels.find(p =>
+              String(p.id) === String(mapped.id) ||
+              (p.hotelName && mapped.hotelName && p.hotelName.toLowerCase().trim() === mapped.hotelName.toLowerCase().trim())
+            );
             const photos = (Array.isArray(prev?.hotelPhotos) && prev.hotelPhotos.length > 0)
               ? prev.hotelPhotos
               : (Array.isArray(prev?.photos) && prev.photos.length > 0)
@@ -351,14 +379,24 @@ class CMSStore {
             const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Draft';
             const pricePerNight = prev?.pricePerNight !== undefined ? prev.pricePerNight : mapped.pricePerNight;
             const currency = prev?.currency || mapped.currency || 'NRs';
-            const location = (prev?.location && prev.location.trim() !== '' && prev.location !== 'N/A') ? prev.location : mapped.location;
-            const latitude = prev?.latitude || mapped.latitude;
-            const longitude = prev?.longitude || mapped.longitude;
-            return { ...mapped, location, latitude, longitude, facilities, pricePerNight, currency, approvalStatus, hotelPhotos: photos, photos: photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+            const loc = (prev?.location && prev.location.trim() !== '' && prev.location !== 'N/A') ? prev.location : mapped.location;
+            const lat = prev?.latitude || mapped.latitude;
+            const lng = prev?.longitude || mapped.longitude;
+            const roomTypes = (Array.isArray(prev?.roomTypes) && prev.roomTypes.length > 0)
+              ? prev.roomTypes
+              : (mapped.roomTypes || []);
+            return { ...mapped, location: loc, latitude: lat, longitude: lng, facilities, roomTypes, pricePerNight, currency, approvalStatus, hotelPhotos: photos, photos: photos, imageUrl: mapped.imageUrl || photos[0] || '' } as unknown as HotelEntry;
           })
         : (prevHotels.length > 0 ? prevHotels : INITIAL_HOTELS);
 
-      this.restaurants = Array.isArray(restaurants) && restaurants.length > 0
+      prevHotels.forEach((ph) => {
+        if (!mergedHotels.some(m => String(m.id) === String(ph.id) || (m.hotelName && ph.hotelName && m.hotelName.toLowerCase().trim() === ph.hotelName.toLowerCase().trim()))) {
+          mergedHotels.unshift(ph as HotelEntry);
+        }
+      });
+      this.hotels = mergedHotels;
+
+      const mergedRestaurants: RestaurantEntry[] = Array.isArray(restaurants) && restaurants.length > 0
         ? restaurants.map((r: any) => {
             const mapped = mapRestaurant(r);
             const prev = prevRestaurants.find(p => String(p.id) === String(mapped.id));
@@ -378,12 +416,19 @@ class CMSStore {
             const averageMealPrice = prev?.averageMealPrice !== undefined ? prev.averageMealPrice : mapped.averageMealPrice;
             const currency = prev?.currency || mapped.currency || 'NRs';
             const location = (prev?.location && prev.location.trim() !== '' && prev.location !== 'N/A') ? prev.location : mapped.location;
-            return { ...mapped, location, cuisineTypes, dietaryOptions, recommendedDishes, averageMealPrice, currency, approvalStatus, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+            return { ...mapped, location, cuisineTypes, dietaryOptions, recommendedDishes, averageMealPrice, currency, approvalStatus, photos, imageUrl: mapped.imageUrl || photos[0] || '' } as RestaurantEntry;
           })
         : (prevRestaurants.length > 0 ? prevRestaurants : INITIAL_RESTAURANTS);
 
+      prevRestaurants.forEach((pr) => {
+        if (!mergedRestaurants.some(m => String(m.id) === String(pr.id))) {
+          mergedRestaurants.unshift(pr as RestaurantEntry);
+        }
+      });
+      this.restaurants = mergedRestaurants;
+
       const prevActivities = this.activities;
-      this.activities = Array.isArray(activities) && activities.length > 0
+      const mergedActivities: ActivityEntry[] = Array.isArray(activities) && activities.length > 0
         ? activities.map((a: any) => {
             const mapped = mapActivity(a);
             const prev = prevActivities.find(p => String(p.id) === String(mapped.id));
@@ -393,21 +438,35 @@ class CMSStore {
             const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Draft';
             const pricing = prev?.pricing !== undefined ? prev.pricing : mapped.pricing;
             const currency = prev?.currency || mapped.currency || 'NRs';
-            return { ...mapped, pricing, currency, approvalStatus, photos, imageUrl: mapped.imageUrl || photos[0] || '' };
+            return { ...mapped, pricing, currency, approvalStatus, photos, imageUrl: mapped.imageUrl || photos[0] || '' } as ActivityEntry;
           })
         : (prevActivities.length > 0 ? prevActivities : INITIAL_ACTIVITIES);
 
+      prevActivities.forEach((pa) => {
+        if (!mergedActivities.some(m => String(m.id) === String(pa.id))) {
+          mergedActivities.unshift(pa as ActivityEntry);
+        }
+      });
+      this.activities = mergedActivities;
+
       const prevGuides = this.guides;
-      this.guides = Array.isArray(guides) && guides.length > 0
+      const mergedGuides: GuideEntry[] = Array.isArray(guides) && guides.length > 0
         ? guides.map((g: any) => {
             const mapped = mapGuide(g);
             const prev = prevGuides.find(p => String(p.id) === String(mapped.id));
             const approvalStatus = prev?.approvalStatus || mapped.approvalStatus || 'Published';
             const dailyRate = prev?.dailyRate !== undefined ? prev.dailyRate : mapped.dailyRate;
             const currency = prev?.currency || mapped.currency || 'NRs';
-            return prev ? { ...mapped, ...prev, dailyRate, currency, approvalStatus } : { ...mapped, dailyRate, currency, approvalStatus };
+            return (prev ? { ...mapped, ...prev, dailyRate, currency, approvalStatus } : { ...mapped, dailyRate, currency, approvalStatus }) as GuideEntry;
           })
         : (prevGuides.length > 0 ? prevGuides : INITIAL_GUIDES);
+
+      prevGuides.forEach((pg) => {
+        if (!mergedGuides.some(m => String(m.id) === String(pg.id))) {
+          mergedGuides.unshift(pg as GuideEntry);
+        }
+      });
+      this.guides = mergedGuides;
 
       const rawMediaList = Array.isArray(media) && media.length > 0 ? media.map(mapMedia) : INITIAL_MEDIA;
       const uniqueMediaList: MediaItem[] = [];
@@ -433,7 +492,7 @@ class CMSStore {
       if (this.transports.length === 0) this.transports = INITIAL_TRANSPORTS;
       if (this.activities.length === 0) this.activities = INITIAL_ACTIVITIES;
       if (this.guides.length === 0) this.guides = INITIAL_GUIDES;
-      if (this.places.length === 0) this.places = INITIAL_PLACES;
+      this.places = this.places.filter(p => !String(p.id).startsWith('place-') && !String(p.id).startsWith('demo-'));
       this.fuelStations = this.fuelStations.filter(f => !String(f.id).startsWith('fuel-'));
       if (this.media.length === 0) this.media = INITIAL_MEDIA;
       if (this.logs.length === 0) this.logs = INITIAL_LOGS;
@@ -450,21 +509,47 @@ class CMSStore {
   setRole(role: RoleType) { this.currentRole = role; this.notify(); }
 
   getStats() {
+    const places = this.getPlaces();
+    const fuelStations = this.getFuelStations();
+    const allItems: any[] = [
+      ...this.transports,
+      ...this.routes,
+      ...this.hotels,
+      ...this.restaurants,
+      ...this.activities,
+      ...this.guides,
+      ...places,
+      ...fuelStations,
+    ];
+
+    let draftCount = 0;
+    let underReviewCount = 0;
+    let approvedCount = 0;
+    let publishedCount = 0;
+
+    allItems.forEach((item) => {
+      const status = item.approvalStatus || item.status || "Published";
+      if (status === "Draft") draftCount++;
+      else if (status === "Under Review") underReviewCount++;
+      else if (status === "Approved") approvedCount++;
+      else publishedCount++;
+    });
+
     return {
-      totalEntries: this.transports.length + this.routes.length + this.hotels.length + this.restaurants.length + this.activities.length + this.guides.length + this.places.length + this.fuelStations.length + this.media.length,
+      totalEntries: allItems.length + this.media.length,
       transportsCount: this.transports.length,
       routesCount: this.routes.length,
       hotelsCount: this.hotels.length,
       restaurantsCount: this.restaurants.length,
       activitiesCount: this.activities.length,
       guidesCount: this.guides.length,
-      placesCount: this.places.length,
-      fuelStationsCount: this.fuelStations.length,
+      placesCount: places.length,
+      fuelStationsCount: fuelStations.length,
       mediaCount: this.media.length,
-      draftCount: 0,
-      underReviewCount: 0,
-      approvedCount: 0,
-      publishedCount: 0,
+      draftCount,
+      underReviewCount,
+      approvedCount,
+      publishedCount,
     };
   }
 
@@ -476,13 +561,13 @@ class CMSStore {
   getActivities() { return this.activities; }
   getGuides() { return this.guides; }
   getPlaces() {
-    if (this.places.length === 0) {
-      this.places = INITIAL_PLACES;
-    }
-    return this.places;
+    return this.places.filter(p => !String(p.id).startsWith('place-') && !String(p.id).startsWith('demo-'));
   }
   getFuelStations() {
-    return this.fuelStations.filter(f => !String(f.id).startsWith('fuel-'));
+    if (!Array.isArray(this.fuelStations) || this.fuelStations.length === 0) {
+      return INITIAL_FUEL_STATIONS;
+    }
+    return this.fuelStations;
   }
   getMedia() { return this.media; }
   isHydrated() { return this.hydrated; }
@@ -493,13 +578,15 @@ class CMSStore {
   getFuelStationById(id: string) { return this.getFuelStations().find(x => x.id === id); }
 
   async savePlace(entry: FamousPlaceEntry) {
-    const existingIndex = this.places.findIndex(p => p.id === entry.id);
+    const isEdit = Boolean(entry.id && String(entry.id).trim() !== '' && String(entry.id) !== 'undefined');
+    const id = isEdit ? String(entry.id) : `place_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const existingIndex = this.places.findIndex(p => String(p.id) === id);
     if (existingIndex >= 0) {
-      this.places[existingIndex] = { ...entry, updatedAt: new Date().toISOString() };
+      this.places[existingIndex] = { ...entry, id, updatedAt: new Date().toISOString() };
     } else {
       this.places.unshift({
         ...entry,
-        id: entry.id || `place_${Date.now()}`,
+        id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -509,18 +596,20 @@ class CMSStore {
   }
 
   async deletePlace(id: string) {
-    this.places = this.places.filter(p => p.id !== id);
+    this.places = this.places.filter(p => String(p.id) !== String(id));
     this.notify();
   }
 
   async saveFuelStation(entry: FuelStationEntry) {
-    const existingIndex = this.fuelStations.findIndex(f => f.id === entry.id);
+    const isEdit = Boolean(entry.id && String(entry.id).trim() !== '' && String(entry.id) !== 'undefined');
+    const id = isEdit ? String(entry.id) : `fuel_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const existingIndex = this.fuelStations.findIndex(f => String(f.id) === id);
     if (existingIndex >= 0) {
-      this.fuelStations[existingIndex] = { ...entry, updatedAt: new Date().toISOString() };
+      this.fuelStations[existingIndex] = { ...entry, id, updatedAt: new Date().toISOString() };
     } else {
       this.fuelStations.unshift({
         ...entry,
-        id: entry.id || `fuel_${Date.now()}`,
+        id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -671,6 +760,9 @@ class CMSStore {
       : (entry.imageUrl ? [entry.imageUrl] : []);
     const imageUrl = entry.imageUrl || photos[0] || '';
 
+    const roomTypes = Array.isArray(entry.roomTypes) ? entry.roomTypes : [];
+    const facilities = Array.isArray(entry.facilities) ? entry.facilities : [];
+
     const payload = {
       hotelName: entry.hotelName || 'New Hotel',
       propertyType: entry.propertyType || 'Hotel',
@@ -688,23 +780,35 @@ class CMSStore {
       photos: photos,
       pricePerNight: Number(entry.pricePerNight) || 2500,
       currency: entry.currency || 'NRs',
-      approvalStatus: entry.approvalStatus || 'Draft',
+      facilities: facilities,
+      roomTypes: roomTypes,
+      approvalStatus: entry.approvalStatus || 'Published',
       createdByName: entry.createdByName || 'API',
     };
 
-    if (entry.id) {
-      this.hotels = this.hotels.map(h => String(h.id) === String(entry.id) ? { ...h, ...entry, imageUrl, hotelPhotos: photos, photos: photos, currency: entry.currency || h.currency || 'NRs' } as HotelEntry : h);
+    const isEdit = Boolean(entry.id && String(entry.id).trim() !== '' && String(entry.id) !== 'undefined');
+    const savedId = isEdit ? String(entry.id) : `ht_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    if (isEdit) {
+      this.hotels = this.hotels.map(h =>
+        (String(h.id) === String(entry.id) || (h.hotelName && entry.hotelName && h.hotelName.toLowerCase().trim() === entry.hotelName.toLowerCase().trim()))
+          ? { ...h, ...entry, id: savedId, imageUrl, hotelPhotos: photos, photos: photos, roomTypes, facilities, currency: entry.currency || h.currency || 'NRs' } as unknown as HotelEntry
+          : h
+      );
     } else {
-      const newHotel: HotelEntry = { id: `ht-${Date.now()}`, ...entry, imageUrl, hotelPhotos: photos, photos: photos, currency: entry.currency || 'NRs' } as HotelEntry;
+      const newHotel: HotelEntry = { ...entry, id: savedId, imageUrl, hotelPhotos: photos, photos: photos, roomTypes, facilities, currency: entry.currency || 'NRs' } as unknown as HotelEntry;
       this.hotels.unshift(newHotel);
     }
     this.notify();
 
     try {
-      const method = entry.id ? 'PATCH' : 'POST';
-      const path = entry.id ? `/hotels/${Number(entry.id)}` : '/hotels';
-      await apiRequest(path, { method, body: payload });
-      await this.refreshAll();
+      const method = isEdit ? 'PATCH' : 'POST';
+      const path = isEdit ? `/hotels/${Number(entry.id)}` : '/hotels';
+      const backendRes: any = await apiRequest(path, { method, body: payload }).catch(() => null);
+      if (backendRes && backendRes.id && !isEdit) {
+        this.hotels = this.hotels.map(h => String(h.id) === String(savedId) ? { ...h, id: String(backendRes.id) } as HotelEntry : h);
+        this.notify();
+      }
     } catch (err) {
       console.warn("Hotel save backend sync error, kept in local state:", err);
     }
@@ -740,23 +844,29 @@ class CMSStore {
       averageMealPrice: Number(entry.averageMealPrice) || 650,
       imageUrl: imageUrl || null,
       photos: photos,
-      approvalStatus: entry.approvalStatus || 'Draft',
+      approvalStatus: entry.approvalStatus || 'Published',
       createdByName: entry.createdByName || 'API',
     };
 
-    if (entry.id) {
-      this.restaurants = this.restaurants.map(r => String(r.id) === String(entry.id) ? { ...r, ...entry, imageUrl, photos: photos, currency: entry.currency || r.currency || 'NRs' } as RestaurantEntry : r);
+    const isEdit = Boolean(entry.id && String(entry.id).trim() !== '' && String(entry.id) !== 'undefined');
+    const savedId = isEdit ? String(entry.id) : `res_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    if (isEdit) {
+      this.restaurants = this.restaurants.map(r => String(r.id) === String(entry.id) ? { ...r, ...entry, id: savedId, imageUrl, photos: photos, currency: entry.currency || r.currency || 'NRs' } as RestaurantEntry : r);
     } else {
-      const newRest: RestaurantEntry = { id: `res-${Date.now()}`, ...entry, imageUrl, photos: photos, currency: entry.currency || 'NRs' } as RestaurantEntry;
+      const newRest: RestaurantEntry = { ...entry, id: savedId, imageUrl, photos: photos, currency: entry.currency || 'NRs' } as RestaurantEntry;
       this.restaurants.unshift(newRest);
     }
     this.notify();
+
     try {
-      const isNew = !entry.id || String(entry.id).startsWith('res-');
-      const method = isNew ? 'POST' : 'PATCH';
-      const path = isNew ? '/restaurants' : `/restaurants/${Number(entry.id)}`;
-      await apiRequest(path, { method, body: payload });
-      await this.refreshAll();
+      const method = isEdit ? 'PATCH' : 'POST';
+      const path = isEdit ? `/restaurants/${Number(entry.id)}` : '/restaurants';
+      const backendRes: any = await apiRequest(path, { method, body: payload }).catch(() => null);
+      if (backendRes && backendRes.id && !isEdit) {
+        this.restaurants = this.restaurants.map(r => String(r.id) === String(savedId) ? { ...r, id: String(backendRes.id) } as RestaurantEntry : r);
+        this.notify();
+      }
     } catch (err) {
       console.warn("Restaurant save backend sync error, kept in local state:", err);
     }
@@ -790,26 +900,31 @@ class CMSStore {
       duration: entry.duration || 'N/A',
       difficultyLevel: entry.difficultyLevel || 'Easy',
       availability: entry.availability || 'Daily',
-      approvalStatus: entry.approvalStatus || 'Draft',
+      approvalStatus: entry.approvalStatus || 'Published',
       createdByName: entry.createdByName || 'API',
       imageUrl: imageUrl || '',
       photos: photos,
     };
 
-    if (entry.id) {
-      this.activities = this.activities.map(a => a.id === String(entry.id) ? { ...a, ...entry, imageUrl, photos, currency: entry.currency || a.currency || 'NRs' } as ActivityEntry : a);
+    const isEdit = Boolean(entry.id && String(entry.id).trim() !== '' && String(entry.id) !== 'undefined');
+    const savedId = isEdit ? String(entry.id) : `act_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    if (isEdit) {
+      this.activities = this.activities.map(a => String(a.id) === String(entry.id) ? { ...a, ...entry, id: savedId, imageUrl, photos, currency: entry.currency || a.currency || 'NRs' } as ActivityEntry : a);
     } else {
-      const newAct: ActivityEntry = { id: `act-${Date.now()}`, ...entry, imageUrl, photos, currency: entry.currency || 'NRs' } as ActivityEntry;
+      const newAct: ActivityEntry = { ...entry, id: savedId, imageUrl, photos, currency: entry.currency || 'NRs' } as ActivityEntry;
       this.activities.unshift(newAct);
     }
     this.notify();
 
     try {
-      const isNew = !entry.id || String(entry.id).startsWith('act-') || String(entry.id).startsWith('activity_');
-      const method = isNew ? 'POST' : 'PATCH';
-      const path = isNew ? '/activities' : `/activities/${Number(entry.id) || entry.id}`;
-      await apiRequest(path, { method, body: payload }).catch(() => null);
-      await this.refreshAll();
+      const method = isEdit ? 'PATCH' : 'POST';
+      const path = isEdit ? `/activities/${Number(entry.id) || entry.id}` : '/activities';
+      const backendRes: any = await apiRequest(path, { method, body: payload }).catch(() => null);
+      if (backendRes && backendRes.id && !isEdit) {
+        this.activities = this.activities.map(a => String(a.id) === String(savedId) ? { ...a, id: String(backendRes.id) } as ActivityEntry : a);
+        this.notify();
+      }
     } catch (err) {
       console.warn("Activity save backend sync error, kept in local state:", err);
     }

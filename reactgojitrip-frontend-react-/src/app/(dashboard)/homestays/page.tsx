@@ -8,10 +8,11 @@ import {
 } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { ImageFileInput, validateImagePayloads } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import { LocationFormSection } from "@/components/common/LocationFormSection";
 import { TagInputSection } from "@/components/common/TagInputSection";
+import { RoomTypesInputSection } from "@/components/common/RoomTypesInputSection";
 import { ApprovalStatus } from "@/types/cms";
 import {
   Home,
@@ -28,11 +29,14 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { MediaPickerModal } from "@/components/media/MediaPickerModal";
+import { MultiMarkerMap } from "@/components/common/MultiMarkerMap";
 
 export default function HomestaysPage() {
   const [homestays, setHomestays] = React.useState<HotelRecord[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [selectedLocation, setSelectedLocation] = React.useState("");
+  const [selectedId, setSelectedId] = React.useState<string | number>("");
   const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
 
   // Modal State
@@ -69,13 +73,22 @@ export default function HomestaysPage() {
       const backendData = await listHotels().catch(() => []);
       const data = Array.isArray(backendData) ? backendData : [];
 
-      const allItems = data.length > 0 ? data : storeHotels;
+      const allItems = [...storeHotels];
+      data.forEach((dh: any) => {
+        if (!allItems.some((s) => String(s.id) === String(dh.id))) {
+          allItems.push(dh);
+        }
+      });
+
       const filteredHomestays = allItems.filter(
         (h: any) => h.propertyType === "Homestay" || (h.hotelName && h.hotelName.toLowerCase().includes("homestay"))
       );
 
       const merged = filteredHomestays.map((h: any) => {
-        const match = storeHotels.find((s: any) => String(s.id) === String(h.id));
+        const match = storeHotels.find((s: any) =>
+          String(s.id) === String(h.id) ||
+          (s.hotelName && h.hotelName && s.hotelName.toLowerCase().trim() === h.hotelName.toLowerCase().trim())
+        );
         const photos = (Array.isArray(match?.hotelPhotos) && match.hotelPhotos.length > 0)
           ? match.hotelPhotos
           : (Array.isArray(match?.photos) && match.photos.length > 0)
@@ -91,6 +104,14 @@ export default function HomestaysPage() {
         const approvalStatus = match?.approvalStatus || h.approvalStatus || "Draft";
         const location = match?.location || h.location || "N/A";
 
+        const rawRT = match?.roomTypes || h.roomTypes || h.room_types;
+        let roomTypes = Array.isArray(rawRT) ? rawRT : [];
+        if (typeof rawRT === "string" && (rawRT as string).trim()) {
+          try { roomTypes = JSON.parse(rawRT); } catch (e) {}
+        }
+
+        const finalRoomTypes = (Array.isArray(match?.roomTypes) && match.roomTypes.length > 0) ? match.roomTypes : roomTypes;
+
         return {
           ...h,
           propertyType: "Homestay",
@@ -102,13 +123,14 @@ export default function HomestaysPage() {
           photos: photos,
           imageUrl: h.imageUrl || photos[0] || "",
           ...(match || {}),
+          roomTypes: finalRoomTypes,
         };
       });
 
       setHomestays(merged as any);
     } catch (error) {
       console.error("Error fetching homestays:", error);
-      const fallback = cmsStore.getHotels().filter((h) => h.propertyType === "Homestay");
+      const fallback = cmsStore.getHotels().filter((h) => h.propertyType === "Homestay" || (h.hotelName && h.hotelName.toLowerCase().includes("homestay")));
       setHomestays(fallback as any);
     } finally {
       setLoading(false);
@@ -127,22 +149,24 @@ export default function HomestaysPage() {
 
   const handleOpenCreateModal = () => {
     setEditingHomestay({
-      hotelName: "New Traditional Homestay",
+      id: undefined,
+      hotelName: "",
       propertyType: "Homestay",
-      contactPerson: "Local Village Host",
-      phoneNumber: "+977-98XXXXXXXX",
-      location: "Mustang Village, Nepal",
-      latitude: 28.78,
-      longitude: 83.73,
+      contactPerson: "",
+      phoneNumber: "",
+      location: "",
+      latitude: undefined,
+      longitude: undefined,
       checkInTime: "12:00 PM",
       checkOutTime: "10:00 AM",
       availabilityStatus: "Available",
       partnerStatus: "Verified Partner",
-      approvalStatus: "Draft",
+      approvalStatus: "Published",
       createdByName: "Admin",
       facilities: ["Home-Cooked Meals", "Organic Garden", "Hot Water", "Wi-Fi", "Local Guide", "Cultural Dance"],
       hotelPhotos: [],
       photos: [],
+      imageUrl: "",
     } as any);
     setIsModalOpen(true);
   };
@@ -160,10 +184,23 @@ export default function HomestaysPage() {
       ? (h as any).facilities
       : ["Home-Cooked Meals", "Organic Garden", "Hot Water", "Wi-Fi", "Local Guide", "Cultural Dance"];
 
+    const rawRoomTypes = (h as any).roomTypes;
+    let roomTypes: any[] = [];
+    if (Array.isArray(rawRoomTypes)) {
+      roomTypes = rawRoomTypes;
+    } else if (typeof rawRoomTypes === "string" && (rawRoomTypes as string).trim()) {
+      try {
+        roomTypes = JSON.parse(rawRoomTypes);
+      } catch (e) {
+        roomTypes = [];
+      }
+    }
+
     setEditingHomestay({
       ...h,
       propertyType: "Homestay",
       facilities,
+      roomTypes,
       hotelPhotos: existingPhotos,
       photos: existingPhotos,
       imageUrl: h.imageUrl || existingPhotos[0] || "",
@@ -185,6 +222,13 @@ export default function HomestaysPage() {
   const handleSaveHomestay = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingHomestay) return;
+
+    const photosToCheck = (editingHomestay as any).hotelPhotos || (editingHomestay as any).photos || [];
+    const imageCheck = validateImagePayloads([editingHomestay.imageUrl, ...photosToCheck]);
+    if (!imageCheck.valid) {
+      alert(imageCheck.errorMsg);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -208,10 +252,10 @@ export default function HomestaysPage() {
 
       setIsModalOpen(false);
       setEditingHomestay(null);
-      fetchHomestays();
-    } catch (error) {
+      await fetchHomestays();
+    } catch (error: any) {
       console.error("Error saving homestay:", error);
-      alert("Failed to save homestay. Please try again.");
+      alert(error?.message || "Failed to save homestay. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -283,113 +327,161 @@ export default function HomestaysPage() {
         </div>
       </div>
 
-      {/* CONTENT LIST */}
+      {/* CONTENT LIST (2-COLUMN LIST LEFT + MAP RIGHT) */}
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
         </div>
-      ) : filteredItems.length === 0 ? (
-        <div className="bg-[#111827] p-12 rounded-2xl border border-slate-800 text-center">
-          <Home className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-white">No Homestays Found</h3>
-          <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-            No traditional homestay records match your filter criteria. Click "Add New Homestay" to register a new village stay.
-          </p>
-        </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredItems.map((h) => {
-            const photoList = (h as any).hotelPhotos || (h as any).photos || (h.imageUrl ? [h.imageUrl] : []);
-            return (
-              <div
-                key={h.id}
-                className="bg-[#111827] border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all flex flex-col justify-between group"
-              >
-                <div>
-                  <div className="relative h-44 w-full bg-slate-900 overflow-hidden">
-                    <img
-                      src={h.imageUrl || photoList[0] || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80"}
-                      alt={h.hotelName}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-transparent to-transparent opacity-80" />
-
-                    <div className="absolute top-3 left-3 flex items-center space-x-2">
-                      <span className="px-2.5 py-1 rounded-lg bg-emerald-500/90 text-white font-bold text-[10px] uppercase backdrop-blur-sm shadow">
-                        Homestay
-                      </span>
-                    </div>
-
-                    <div className="absolute top-3 right-3">
-                      <StatusBadge status={h.approvalStatus as ApprovalStatus} />
-                    </div>
-
-                    <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                      <div className="px-2 py-1 rounded bg-black/60 backdrop-blur-md text-[10px] text-slate-300 font-medium">
-                        📸 {photoList.length} Photos Gallery
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-5 space-y-3">
-                    <div>
-                      <h3 className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors">
-                        {h.hotelName}
-                      </h3>
-                      <p className="text-xs text-slate-400 flex items-center mt-1">
-                        <MapPin className="w-3.5 h-3.5 text-emerald-400 mr-1 flex-shrink-0" />
-                        <span className="truncate">{h.location}</span>
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                      <div>
-                        <span className="text-slate-500 block text-[9px] uppercase font-bold">Host Person</span>
-                        <span className="font-semibold text-slate-200">{h.contactPerson || "Local Host"}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-500 block text-[9px] uppercase font-bold">Phone Contact</span>
-                        <span className="font-semibold text-slate-200">{h.phoneNumber || "N/A"}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="px-5 py-3.5 bg-slate-900/40 border-t border-slate-800/80 flex items-center justify-between">
-                  <div className="text-[11px] text-slate-400 flex items-center">
-                    <Clock className="w-3.5 h-3.5 text-slate-500 mr-1" />
-                    <span>In: {h.checkInTime || "12 PM"} • Out: {h.checkOutTime || "10 AM"}</span>
-                  </div>
-
-                  <div className="flex items-center space-x-1.5">
-                    <button
-                      onClick={() => handleOpenEditModal(h)}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 transition-all border border-slate-700"
-                      title="Edit Homestay"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(Number(h.id))}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-300 hover:text-red-400 transition-all border border-slate-700"
-                      title="Delete Homestay"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* LIST (LEFT 7 COLS) */}
+          <div className="lg:col-span-7 space-y-4">
+            {filteredItems.length === 0 ? (
+              <div className="bg-[#111827] p-12 rounded-2xl border border-slate-800 text-center">
+                <Home className="w-12 h-12 text-slate-600 mx-auto mb-3" />
+                <h3 className="text-base font-bold text-white">No Homestays Found</h3>
+                <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                  No traditional homestay records match your filter criteria. Click "Add New Homestay" to register a new village stay.
+                </p>
               </div>
-            );
-          })}
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {filteredItems.map((h) => {
+                  const photoList = (h as any).hotelPhotos || (h as any).photos || (h.imageUrl ? [h.imageUrl] : []);
+                  return (
+                    <div
+                      key={h.id}
+                      onMouseEnter={() => setSelectedId(h.id)}
+                      onClick={() => setSelectedId(h.id)}
+                      className={`bg-[#111827] border rounded-2xl overflow-hidden transition-all flex flex-col justify-between group cursor-pointer ${
+                        selectedId && String(selectedId) === String(h.id)
+                          ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-lg shadow-emerald-500/10"
+                          : "border-slate-800 hover:border-emerald-500/60"
+                      }`}
+                    >
+                      <div>
+                        <div className="relative h-44 w-full bg-slate-900 overflow-hidden">
+                          <img
+                            src={h.imageUrl || photoList[0] || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80"}
+                            alt={h.hotelName}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-[#111827] via-transparent to-transparent opacity-80" />
+
+                          <div className="absolute top-3 left-3 flex items-center space-x-2">
+                            <span className="px-2.5 py-1 rounded-lg bg-emerald-500/90 text-white font-bold text-[10px] uppercase backdrop-blur-sm shadow">
+                              Homestay
+                            </span>
+                          </div>
+
+                          <div className="absolute top-3 right-3">
+                            <StatusBadge status={h.approvalStatus as ApprovalStatus} />
+                          </div>
+
+                          <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+                            <div className="px-2 py-1 rounded bg-black/60 backdrop-blur-md text-[10px] text-slate-300 font-medium">
+                              📸 {photoList.length} Photos Gallery
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 space-y-3">
+                          <div>
+                            <h3 className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors">
+                              {h.hotelName}
+                            </h3>
+                            <p className="text-xs text-slate-400 mt-1 flex items-center">
+                              <MapPin className="w-3.5 h-3.5 text-emerald-400 mr-1 flex-shrink-0" />
+                              <span className="truncate">{h.location}</span>
+                            </p>
+                          </div>
+
+                          {/* Room Types summary pill */}
+                          {Array.isArray((h as any).roomTypes) && (h as any).roomTypes.length > 0 && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
+                              <span className="font-bold text-emerald-400">
+                                {((h as any).roomTypes).length} Rooms Available
+                              </span>
+                              <span className="text-slate-600">•</span>
+                              <span className="text-slate-400 truncate">
+                                {((h as any).roomTypes).map((r: any) => r.typeName).join(", ")}
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                            <div>
+                              <span className="text-slate-500 block text-[9px] uppercase font-bold">Host Person</span>
+                              <span className="font-semibold text-slate-200">{h.contactPerson || "Local Host"}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block text-[9px] uppercase font-bold">Phone Contact</span>
+                              <span className="font-semibold text-slate-200">{h.phoneNumber || "N/A"}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="px-4 py-3 bg-slate-900/40 border-t border-slate-800/80 flex items-center justify-between">
+                        <div className="text-[11px] text-slate-400 flex items-center">
+                          <Clock className="w-3.5 h-3.5 text-slate-500 mr-1" />
+                          <span>In: {h.checkInTime || "12 PM"} • Out: {h.checkOutTime || "10 AM"}</span>
+                        </div>
+
+                        <div className="flex items-center space-x-1.5">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditModal(h);
+                            }}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-emerald-500/20 text-slate-300 hover:text-emerald-400 transition-all border border-slate-700"
+                            title="Edit Homestay"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(Number(h.id));
+                            }}
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-red-500/20 text-slate-300 hover:text-red-400 transition-all border border-slate-700"
+                            title="Delete Homestay"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* MULTI-MARKER PLOTTED MAP (RIGHT 5 COLS) */}
+          <div className="lg:col-span-5">
+            <MultiMarkerMap
+              items={filteredItems.map((h) => ({
+                id: h.id,
+                title: h.hotelName,
+                location: h.location,
+                category: "Homestay",
+                imageUrl: h.imageUrl,
+              }))}
+              selectedId={selectedId}
+              onItemSelect={(item) => setSelectedId(item.id)}
+              title="Village Homestays Map View"
+            />
+          </div>
         </div>
       )}
 
       {/* FORM MODAL */}
       {isModalOpen && editingHomestay && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl bg-[#111827] border border-slate-800 rounded-2xl p-6 text-white space-y-4 my-8 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold flex items-center space-x-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#111827] border border-slate-700 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-800 bg-[#182238] flex justify-between items-center shrink-0">
+              <h3 className="text-base font-bold text-white flex items-center space-x-2">
                 <Home className="w-5 h-5 text-emerald-400" />
                 <span>{editingHomestay.id ? "Edit Homestay Details" : "Add New Village Homestay"}</span>
               </h3>
@@ -401,7 +493,7 @@ export default function HomestaysPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveHomestay} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveHomestay} className="p-6 overflow-y-auto space-y-4 text-xs flex-1 text-white">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-300 font-bold mb-1">Homestay Name</label>
@@ -534,6 +626,18 @@ export default function HomestaysPage() {
                   "Parking Space",
                   "Pet Friendly",
                 ]}
+              />
+
+              {/* ROOM TYPES & ROOM RATES MANAGEMENT */}
+              <RoomTypesInputSection
+                roomTypes={(editingHomestay as any).roomTypes || []}
+                onChange={(rooms) =>
+                  setEditingHomestay((prev: any) => ({
+                    ...prev,
+                    roomTypes: rooms,
+                  }))
+                }
+                currency={(editingHomestay as any).currency || "NRs"}
               />
 
               {/* PHOTO GALLERY INPUTS */}

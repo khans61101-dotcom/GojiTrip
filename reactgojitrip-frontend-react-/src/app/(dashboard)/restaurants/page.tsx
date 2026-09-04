@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 import { cmsStore } from "@/lib/cms-store";
-import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { ImageFileInput, validateImagePayloads } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import { LocationFormSection } from "@/components/common/LocationFormSection";
 import { TagInputSection } from "@/components/common/TagInputSection";
@@ -37,6 +37,7 @@ import {
 
 import { RestaurantEntry } from "@/types/cms";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { MultiMarkerMap } from "@/components/common/MultiMarkerMap";
 
 // ============================================================
 // TYPES
@@ -167,10 +168,12 @@ function MediaPickerModal({
       return;
     }
 
-    const maxSize = 4 * 1024 * 1024;
+    const maxSize = 5 * 1024 * 1024;
 
     if (file.size > maxSize) {
-      setUploadError("File size must be below 4MB.");
+      const msg = "File size exceeds 5MB limit. Please select an image under 5MB.";
+      setUploadError(msg);
+      alert(msg);
       setSelectedFile(null);
       setImagePreview(null);
 
@@ -545,6 +548,8 @@ export default function RestaurantsPage() {
   const [loading, setLoading] = React.useState(true);
 
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [selectedLocation, setSelectedLocation] = React.useState("");
+  const [selectedId, setSelectedId] = React.useState<string | number>("");
 
   const [statusFilter, setStatusFilter] = React.useState("ALL");
 
@@ -630,16 +635,14 @@ export default function RestaurantsPage() {
   }, []);
 
   React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const loc = params.get("location") || params.get("search") || params.get("q");
+    if (loc && loc.trim()) {
+      setSearchQuery(loc.trim());
+    }
     loadRestaurants();
     const unsubscribe = cmsStore.subscribe(() => {
-      const storeItems = cmsStore.getRestaurants();
-      setRestaurants((prev: any) => {
-        if (!Array.isArray(prev) || prev.length === 0) return storeItems as any;
-        return prev.map((item: any) => {
-          const match = storeItems.find((s: any) => String(s.id) === String(item.id));
-          return match ? { ...item, ...match } : item;
-        });
-      });
+      setRestaurants(cmsStore.getRestaurants() as RestaurantEntry[]);
     });
     return () => {
       if (typeof unsubscribe === "function") unsubscribe();
@@ -676,6 +679,7 @@ export default function RestaurantsPage() {
 
   const handleOpenCreateModal = () => {
     setEditingRest({
+      id: undefined,
       restaurantName: "",
       location: "",
       contactDetails: "",
@@ -683,11 +687,13 @@ export default function RestaurantsPage() {
       dietaryOptions: ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"],
       recommendedDishes: ["Authentic Thakali Thali", "Steamed Momo", "Thukpa Noodle Soup"],
       openingHours: "07:00 AM - 10:00 PM",
-      priceRange: "NPR NPR",
+      priceRange: "$$",
+      currency: "NRs",
+      averageMealPrice: 650,
+      approvalStatus: "Published",
+      createdByName: "Admin",
       photos: [],
       imageUrl: "",
-      approvalStatus: "Draft",
-      createdByName: "Content Team",
     } as any);
 
     setIsModalOpen(true);
@@ -848,13 +854,11 @@ export default function RestaurantsPage() {
 
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
-
     if (!editingRest) return;
 
-    const restaurantName = editingRest.restaurantName?.trim();
-
-    if (!restaurantName) {
-      alert("Please enter a restaurant name.");
+    const imageCheck = validateImagePayloads([editingRest.imageUrl, ...(editingRest.photos || [])]);
+    if (!imageCheck.valid) {
+      alert(imageCheck.errorMsg);
       return;
     }
 
@@ -884,7 +888,7 @@ export default function RestaurantsPage() {
         createdByName: payload.createdByName,
       });
 
-      await loadRestaurants();
+      setRestaurants(cmsStore.getRestaurants() as RestaurantEntry[]);
 
       setIsModalOpen(false);
       setEditingRest(null);
@@ -997,173 +1001,134 @@ export default function RestaurantsPage() {
             ),
           )}
         </div>
-      </div>
+      </div>      {/* GRID (2-COLUMN LIST LEFT + MAP RIGHT) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* LIST (LEFT 7 COLS) */}
+        <div className="lg:col-span-7 space-y-4">
+          {filtered.length === 0 ? (
+            <div className="glass-panel p-12 rounded-2xl text-center border border-slate-800 text-slate-400">
+              <UtensilsCrossed className="w-10 h-10 mx-auto text-slate-600 mb-3" />
+              <p className="text-sm font-semibold">
+                No restaurant entries found matching filters.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {filtered.map((item) => {
+                const cardImage = item.imageUrl || item.photos?.[0] || "";
+                return (
+                  <div
+                    key={String(item.id)}
+                    onMouseEnter={() => setSelectedId(item.id)}
+                    onClick={() => setSelectedId(item.id)}
+                    className={`glass-panel rounded-2xl border overflow-hidden flex flex-col transition-all cursor-pointer group ${
+                      selectedId && String(selectedId) === String(item.id)
+                        ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-lg shadow-emerald-500/10"
+                        : "border-slate-800/90 hover:border-emerald-500/60"
+                    }`}
+                  >
+                    {/* IMAGE */}
+                    <div className="relative h-44 w-full bg-slate-900 overflow-hidden">
+                      {cardImage ? (
+                        <img
+                          src={cardImage}
+                          alt={safeString(item.restaurantName)}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          onError={(event) => {
+                            event.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-600 text-xs">
+                          No Photo
+                        </div>
+                      )}
 
-      {/* GRID */}
-
-      {filtered.length === 0 ? (
-        <div className="glass-panel p-12 rounded-2xl text-center border border-slate-800 text-slate-400">
-          <UtensilsCrossed className="w-10 h-10 mx-auto text-slate-600 mb-3" />
-
-          <p className="text-sm font-semibold">
-            No restaurant entries found matching filters.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filtered.map((item) => {
-            const cardImage = item.imageUrl || item.photos?.[0] || "";
-
-            return (
-              <div
-                key={String(item.id)}
-                className="glass-panel rounded-2xl border border-slate-800/90 overflow-hidden flex flex-col hover:border-slate-700 transition-all group"
-              >
-                {/* IMAGE */}
-
-                <div className="relative h-52 w-full bg-slate-900 overflow-hidden">
-                  {cardImage ? (
-                    <img
-                      src={cardImage}
-                      alt={safeString(item.restaurantName)}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      onError={(event) => {
-                        event.currentTarget.style.display = "none";
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-600 text-xs">
-                      No Photo
-                    </div>
-                  )}
-
-                  <div className="absolute top-3 left-3 flex space-x-2">
-                    <span className="px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-amber-400 font-bold text-[10px] border border-white/10 flex items-center">
-                      <DollarSign className="w-3 h-3 mr-0.5" />
-                      {(item as any).currency || "NRs"} {(item as any).averageMealPrice || 650} / meal
-                    </span>
-
-                    {item.cuisineTypes?.length > 0 && (
-                      <span className="px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-emerald-400 font-bold text-[10px] border border-white/10">
-                        {item.cuisineTypes[0]}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="absolute top-3 right-3">
-                    <StatusBadge
-                      status={item.approvalStatus}
-                      entityType="Restaurant"
-                      entityId={String(item.id)}
-                    />
-                  </div>
-
-                  <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-white text-[10px] font-bold flex items-center">
-                    <Star className="w-3 h-3 text-yellow-400 mr-1" />
-                    4.3
-                  </div>
-                </div>
-
-                {/* CONTENT */}
-
-                <div className="p-4">
-                  <h3 className="text-base font-bold text-white truncate">
-                    {safeString(item.restaurantName)}
-                  </h3>
-
-                  <p className="text-xs text-slate-300 flex items-center mt-1">
-                    <MapPin className="w-3.5 h-3.5 mr-1 text-emerald-400 flex-shrink-0" />
-
-                    <span className="truncate">
-                      {safeString(item.location)}
-                    </span>
-                  </p>
-
-                  <div className="mt-2 flex items-center justify-between text-xs text-slate-400 border-y border-slate-800 py-2">
-                    <span className="flex items-center min-w-0">
-                      <Phone className="w-3.5 h-3.5 mr-1 flex-shrink-0" />
-
-                      <span className="truncate">
-                        {safeString(item.contactDetails)}
-                      </span>
-                    </span>
-
-                    <span className="flex items-center ml-2">
-                      <Clock className="w-3.5 h-3.5 mr-1 flex-shrink-0" />
-
-                      <span className="truncate">
-                        {safeString(item.openingHours)}
-                      </span>
-                    </span>
-                  </div>
-
-                  {item.cuisineTypes?.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {item.cuisineTypes.slice(0, 3).map((cuisine, index) => (
-                        <span
-                          key={`${cuisine}-${index}`}
-                          className="px-2 py-0.5 rounded bg-slate-800 text-amber-400 text-[10px] font-semibold border border-slate-700"
-                        >
-                          {cuisine}
+                      <div className="absolute top-3 left-3 flex space-x-2">
+                        <span className="px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-amber-400 font-bold text-[10px] border border-white/10 flex items-center">
+                          <DollarSign className="w-3 h-3 mr-0.5" />
+                          {(item as any).currency || "NRs"} {(item as any).averageMealPrice || 650} / meal
                         </span>
-                      ))}
-                    </div>
-                  )}
+                      </div>
 
-                  {item.recommendedDishes?.length > 0 && (
-                    <div className="mt-2">
-                      <span className="text-[10px] font-bold text-amber-400 uppercase flex items-center mb-0.5">
-                        <Sparkles className="w-3 h-3 mr-1" />
-                        Recommended
-                      </span>
-
-                      <div className="flex flex-wrap gap-1">
-                        {item.recommendedDishes
-                          .slice(0, 2)
-                          .map((dish, index) => (
-                            <span
-                              key={`${dish}-${index}`}
-                              className="text-[10px] text-slate-300 bg-[#182238] px-1.5 py-0.5 rounded flex items-center"
-                            >
-                              <ChefHat className="w-2.5 h-2.5 mr-1 text-emerald-400" />
-                              {dish}
-                            </span>
-                          ))}
+                      <div className="absolute top-3 right-3">
+                        <StatusBadge
+                          status={(item.approvalStatus || "Draft") as any}
+                          interactive={false}
+                        />
                       </div>
                     </div>
-                  )}
-                </div>
 
-                {/* FOOTER */}
+                    {/* CONTENT */}
+                    <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                      <div>
+                        <h3 className="font-extrabold text-sm text-white group-hover:text-emerald-400 transition-colors">
+                          {safeString(item.restaurantName)}
+                        </h3>
+                        <p className="text-slate-400 text-xs mt-1 flex items-center">
+                          <MapPin className="w-3.5 h-3.5 text-slate-500 mr-1 shrink-0" />
+                          <span className="truncate">{safeString(item.location)}</span>
+                        </p>
+                      </div>
 
-                <div className="px-4 py-2.5 bg-[#131C30] border-t border-slate-800 flex justify-between items-center mt-auto">
-                  <span className="text-[9px] text-slate-400">
-                    Added by {safeString(item.createdByName)}
-                  </span>
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                        <span>Hours: {safeString(item.openingHours || "07:00 AM - 10:00 PM")}</span>
+                      </div>
+                    </div>
 
-                  <div className="flex space-x-1.5">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenEditModal(item)}
-                      className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-                    >
-                      <Edit className="w-3.5 h-3.5" />
-                    </button>
+                    {/* FOOTER */}
+                    <div className="px-4 py-3 bg-[#131C30] border-t border-slate-800 flex justify-between items-center mt-auto">
+                      <span className="text-[9px] text-slate-400 truncate">
+                        Contact: {safeString(item.contactDetails || "N/A")}
+                      </span>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(item.id)}
-                      className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                      <div className="flex space-x-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEditModal(item);
+                          }}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(item.id);
+                          }}
+                          className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* MULTI-MARKER PLOTTED MAP (RIGHT 5 COLS) */}
+        <div className="lg:col-span-5">
+          <MultiMarkerMap
+            items={filtered.map((item) => ({
+              id: item.id,
+              title: item.restaurantName,
+              location: item.location,
+              category: "Restaurant",
+              imageUrl: item.imageUrl,
+            }))}
+            selectedId={selectedId}
+            onItemSelect={(item) => setSelectedId(item.id)}
+            title="Restaurants & Dining Map View"
+          />
+        </div>
+      </div>
 
       {/* ========================================================
           FORM MODAL

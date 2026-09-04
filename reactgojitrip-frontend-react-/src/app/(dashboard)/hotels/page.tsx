@@ -10,10 +10,11 @@ import {
 } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { ImageFileInput } from "@/components/common/ImageFileInput";
+import { ImageFileInput, validateImagePayloads } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import { LocationFormSection } from "@/components/common/LocationFormSection";
 import { TagInputSection } from "@/components/common/TagInputSection";
+import { RoomTypesInputSection } from "@/components/common/RoomTypesInputSection";
 import { ApprovalStatus } from "@/types/cms";
 import {
   Hotel,
@@ -32,12 +33,15 @@ import {
   Check,
 } from "lucide-react";
 import { MediaPickerModal } from "@/components/media/MediaPickerModal";
+import { MultiMarkerMap } from "@/components/common/MultiMarkerMap";
 
 // =============== MAIN HOTELS PAGE ===============
 export default function HotelsPage() {
 const [hotels, setHotels] = React.useState<HotelRecord[]>([]);
 const [loading, setLoading] = React.useState(true);
 const [searchQuery, setSearchQuery] = React.useState("");
+const [selectedLocation, setSelectedLocation] = React.useState("");
+const [selectedId, setSelectedId] = React.useState<string | number>("");
 const [statusFilter, setStatusFilter] = React.useState<string>("ALL");
 const [isModalOpen, setIsModalOpen] = React.useState(false);
 const [editingHotel, setEditingHotel] =
@@ -48,6 +52,11 @@ const [isSubmitting, setIsSubmitting] = React.useState(false);
 const [mediaPickerOpen, setMediaPickerOpen] = React.useState(false);
 
 React.useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const loc = params.get("location") || params.get("search") || params.get("q");
+  if (loc && loc.trim()) {
+    setSearchQuery(loc.trim());
+  }
   fetchHotels();
   const unsubscribe = cmsStore.subscribe(() => {
     const storeHotels = cmsStore.getHotels();
@@ -72,7 +81,10 @@ const fetchHotels = async () => {
     const data = Array.isArray(backendData) ? backendData : [];
 
     const merged = data.map((h: any) => {
-      const match = storeHotels.find((s: any) => String(s.id) === String(h.id));
+      const match = storeHotels.find((s: any) =>
+        String(s.id) === String(h.id) ||
+        (s.hotelName && h.hotelName && s.hotelName.toLowerCase().trim() === h.hotelName.toLowerCase().trim())
+      );
       const photos = (Array.isArray(match?.hotelPhotos) && match.hotelPhotos.length > 0)
         ? match.hotelPhotos
         : (Array.isArray(match?.photos) && match.photos.length > 0)
@@ -88,6 +100,14 @@ const fetchHotels = async () => {
       const currency = match?.currency || h.currency || "NRs";
       const location = match?.location || h.location || "N/A";
 
+      const rawRT = match?.roomTypes || h.roomTypes || h.room_types;
+      let roomTypes = Array.isArray(rawRT) ? rawRT : [];
+      if (typeof rawRT === "string" && (rawRT as string).trim()) {
+        try { roomTypes = JSON.parse(rawRT); } catch (e) {}
+      }
+
+      const finalRoomTypes = (Array.isArray(match?.roomTypes) && match.roomTypes.length > 0) ? match.roomTypes : roomTypes;
+
       return {
         ...h,
         location,
@@ -98,6 +118,7 @@ const fetchHotels = async () => {
         photos: photos,
         imageUrl: h.imageUrl || photos[0] || "",
         ...(match || {}),
+        roomTypes: finalRoomTypes,
       };
     });
 
@@ -125,6 +146,8 @@ if (loading) {
 }
 
 const filteredHotels = (Array.isArray(hotels) ? hotels : []).filter((h) => {
+  const isNotHomestay = (h.propertyType || "").toLowerCase() !== "homestay";
+
   const matchesSearch =
     (h.hotelName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
     (h.location || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -132,27 +155,29 @@ const filteredHotels = (Array.isArray(hotels) ? hotels : []).filter((h) => {
 
   const matchesStatus =
     statusFilter === "ALL" || h.approvalStatus === statusFilter;
-  return matchesSearch && matchesStatus;
+  return isNotHomestay && matchesSearch && matchesStatus;
 });
 
 const handleOpenCreateModal = () => {
   setEditingHotel({
-    hotelName: "New Mountain Lodge",
-    propertyType: "Homestay",
-    contactPerson: "Local Host",
-    phoneNumber: "+977-98XXXXXXXX",
-    location: "Annapurna Region, Nepal",
-    latitude: 28.5,
-    longitude: 83.9,
+    id: undefined,
+    hotelName: "",
+    propertyType: "Hotel",
+    contactPerson: "",
+    phoneNumber: "",
+    location: "",
+    latitude: undefined,
+    longitude: undefined,
     checkInTime: "12:00 PM",
     checkOutTime: "10:00 AM",
     availabilityStatus: "Available",
     partnerStatus: "Verified Partner",
-    approvalStatus: "Draft",
+    approvalStatus: "Published",
     createdByName: "Admin",
     facilities: ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Shower", "Free Parking", "Breakfast Included"],
     hotelPhotos: [],
     photos: [],
+    imageUrl: "",
   } as any);
   setIsModalOpen(true);
 };
@@ -170,9 +195,22 @@ const handleOpenEditModal = (h: HotelRecord) => {
     ? (h as any).facilities
     : ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Shower", "Free Parking", "Breakfast Included"];
 
+  const rawRoomTypes = (h as any).roomTypes;
+  let roomTypes: any[] = [];
+  if (Array.isArray(rawRoomTypes)) {
+    roomTypes = rawRoomTypes;
+  } else if (typeof rawRoomTypes === "string" && (rawRoomTypes as string).trim()) {
+    try {
+      roomTypes = JSON.parse(rawRoomTypes);
+    } catch (e) {
+      roomTypes = [];
+    }
+  }
+
   setEditingHotel({
     ...h,
     facilities,
+    roomTypes,
     hotelPhotos: existingPhotos,
     photos: existingPhotos,
     imageUrl: h.imageUrl || existingPhotos[0] || "",
@@ -195,6 +233,13 @@ const handleSaveHotel = async (e: React.FormEvent) => {
   e.preventDefault();
   if (!editingHotel) return;
 
+  const photosToCheck = (editingHotel as any).hotelPhotos || (editingHotel as any).photos || [];
+  const imageCheck = validateImagePayloads([editingHotel.imageUrl, ...photosToCheck]);
+  if (!imageCheck.valid) {
+    alert(imageCheck.errorMsg);
+    return;
+  }
+
   setIsSubmitting(true);
   try {
     const rawPhotos = (editingHotel as any).hotelPhotos || (editingHotel as any).photos;
@@ -216,10 +261,10 @@ const handleSaveHotel = async (e: React.FormEvent) => {
 
     setIsModalOpen(false);
     setEditingHotel(null);
-    fetchHotels();
-  } catch (error) {
+    await fetchHotels();
+  } catch (error: any) {
     console.error("Error saving hotel:", error);
-    alert("Failed to save hotel. Please try again.");
+    alert(error?.message || "Failed to save hotel. Please try again.");
   } finally {
     setIsSubmitting(false);
   }
@@ -265,13 +310,13 @@ const handleSaveHotel = async (e: React.FormEvent) => {
         <div>
           <div className="flex items-center space-x-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
             <Hotel className="w-4 h-4" />
-            <span>Accommodations & Homestays</span>
+            <span>Hotels & Resorts</span>
           </div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight">
-            Hotels & Homestays Module
+            Hotels & Resorts Module
           </h1>
           <p className="text-slate-400 text-xs mt-1">
-            Manage mountain lodges, homestays, rates, GPS coordinates, room
+            Manage hotels, mountain lodges, resorts, rates, GPS coordinates, room
             types & verified partner status.
           </p>
         </div>
@@ -317,112 +362,160 @@ const handleSaveHotel = async (e: React.FormEvent) => {
         </div>
       </div>
 
-      {/* Grid of Hotels */}
-      {filteredHotels.length === 0 ? (
-        <div className="glass-panel p-12 rounded-2xl text-center border border-slate-800 text-slate-400">
-          <Hotel className="w-10 h-10 mx-auto text-slate-600 mb-3" />
-          <p className="text-sm font-semibold">
-            No hotel or homestay entries found matching filters.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {filteredHotels.map((item) => (
-            <div
-              key={item.id}
-              className="glass-panel rounded-2xl border border-slate-800/90 overflow-hidden flex flex-col justify-between hover:border-slate-700 transition-all"
-            >
-              <div>
-                {/* Photo Gallery Header */}
-                <div className="relative h-44 w-full bg-slate-900 overflow-hidden">
-                  {item.imageUrl ? (
-                    <img
-                      src={item.imageUrl}
-                      alt={item.hotelName}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
-                        (
-                          e.target as HTMLImageElement
-                        ).parentElement!.innerHTML =
-                          '<div className="w-full h-full flex items-center justify-center text-slate-600 text-xs">Image not available</div>';
-                      }}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-600 text-xs">
-                      No Photo Attached
-                    </div>
-                  )}
-
-                  <div className="absolute top-3 left-3 flex space-x-2">
-                    <span className="px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-emerald-400 font-bold text-[10px] uppercase border border-white/10">
-                      {item.propertyType || "Hotel"}
-                    </span>
-                    {item.partnerStatus === "Verified Partner" && (
-                      <span className="px-2.5 py-1 rounded-full bg-emerald-500 text-white font-bold text-[10px] flex items-center shadow">
-                        <ShieldCheck className="w-3 h-3 mr-1" /> Partner
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="absolute top-3 right-3">
-                    <StatusBadge
-                      status={item.approvalStatus as ApprovalStatus}
-                      entityType="Hotel"
-                      entityId={item.id.toString()}
-                    />
-                  </div>
-                </div>
-
-                <div className="p-5">
-                  <h3 className="text-lg font-bold text-white">
-                    {item.hotelName || "Unnamed Property"}
-                  </h3>
-                  <p className="text-xs text-slate-300 flex items-center mt-1">
-                    <MapPin className="w-3.5 h-3.5 mr-1 text-emerald-400" />
-                    {item.location || "Location not specified"}(
-                    {item.latitude ? item.latitude.toFixed(4) : "0.0000"},
-                    {item.longitude ? item.longitude.toFixed(4) : "0.0000"})
-                  </p>
-
-                  <div className="mt-3 flex items-center space-x-4 text-xs text-slate-300 border-y border-slate-800 py-2.5">
-                    <span className="flex items-center">
-                      <Phone className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                      {item.phoneNumber || "N/A"}
-                    </span>
-                    <span className="text-slate-400">
-                      Contact: {item.contactPerson || "N/A"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Bar */}
-              <div className="px-5 py-3 bg-[#131C30] border-t border-slate-800 flex items-center justify-between">
-                <span className="text-[10px] text-slate-400">
-                  Check-in: {item.checkInTime || "N/A"} • Check-out:{" "}
-                  {item.checkOutTime || "N/A"}
-                </span>
-
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={() => handleOpenEditModal(item)}
-                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
-                  >
-                    <Edit className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
+      {/* Main Two-Column Layout (List Left + Map Right) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* LEFT COLUMN - LIST OF HOTELS */}
+        <div className="lg:col-span-7 space-y-4">
+          {filteredHotels.length === 0 ? (
+            <div className="glass-panel p-12 rounded-2xl text-center border border-slate-800 text-slate-400">
+              <Hotel className="w-10 h-10 mx-auto text-slate-600 mb-3" />
+              <p className="text-sm font-semibold">
+                No hotel or homestay entries found matching filters.
+              </p>
             </div>
-          ))}
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {filteredHotels.map((item) => (
+                <div
+                  key={item.id}
+                  onMouseEnter={() => {
+                    setSelectedLocation(item.location || item.hotelName);
+                    setSelectedId(item.id);
+                  }}
+                  onClick={() => {
+                    setSelectedLocation(item.location || item.hotelName);
+                    setSelectedId(item.id);
+                  }}
+                  className={`glass-panel rounded-2xl border overflow-hidden flex flex-col justify-between transition-all cursor-pointer group ${
+                    selectedId && String(selectedId) === String(item.id)
+                      ? "border-emerald-500 ring-2 ring-emerald-500/20 shadow-lg shadow-emerald-500/10"
+                      : "border-slate-800/90 hover:border-emerald-500/60"
+                  }`}
+                >
+                  <div>
+                    {/* Photo Gallery Header */}
+                    <div className="relative h-44 w-full bg-slate-900 overflow-hidden">
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.hotelName}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none";
+                            (
+                              e.target as HTMLImageElement
+                            ).parentElement!.innerHTML =
+                              '<div className="w-full h-full flex items-center justify-center text-slate-600 text-xs">Image not available</div>';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-600 text-xs">
+                          No Photo Attached
+                        </div>
+                      )}
+
+                      <div className="absolute top-3 left-3 flex space-x-2">
+                        <span className="px-2.5 py-1 rounded-full bg-black/70 backdrop-blur-md text-emerald-400 font-bold text-[10px] uppercase border border-white/10">
+                          {item.propertyType || "Hotel"}
+                        </span>
+                        {item.partnerStatus === "Verified Partner" && (
+                          <span className="px-2.5 py-1 rounded-full bg-emerald-500 text-white font-bold text-[10px] flex items-center shadow">
+                            <ShieldCheck className="w-3 h-3 mr-1" /> Partner
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="absolute top-3 right-3">
+                        <StatusBadge
+                          status={(item.approvalStatus || "Draft") as ApprovalStatus}
+                          interactive={false}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Content */}
+                    <div className="p-4 space-y-3">
+                      <div>
+                        <h3 className="font-extrabold text-sm text-white group-hover:text-emerald-400 transition-colors">
+                          {item.hotelName}
+                        </h3>
+                        <p className="text-slate-400 text-xs mt-1 flex items-center">
+                          <MapPin className="w-3.5 h-3.5 text-slate-500 mr-1 shrink-0" />
+                          <span className="truncate">{item.location}</span>
+                        </p>
+                      </div>
+
+                      {/* Room Types summary pill */}
+                      {Array.isArray((item as any).roomTypes) && (item as any).roomTypes.length > 0 && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-300 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
+                          <Bed className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span className="font-bold text-emerald-400">
+                            {((item as any).roomTypes).length} Rooms
+                          </span>
+                          <span className="text-slate-600">•</span>
+                          <span className="text-slate-400 truncate">
+                            {((item as any).roomTypes).map((r: any) => r.typeName).join(", ")}
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                        <span className="text-slate-400 font-medium">Price / Night</span>
+                        <span className="font-bold text-emerald-400">
+                          {(item as any).currency || "NRs"} {((item as any).pricePerNight || 2500).toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="px-4 py-3 bg-[#182238]/60 border-t border-slate-800/80 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-medium">
+                      Host: {item.contactPerson || "Manager"}
+                    </span>
+                    <div className="flex space-x-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditModal(item);
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(item.id);
+                        }}
+                        className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      )}
+
+        {/* RIGHT COLUMN - MULTI-MARKER PLOTTED MAP */}
+        <div className="lg:col-span-5">
+          <MultiMarkerMap
+            items={filteredHotels.map((h) => ({
+              id: h.id,
+              title: h.hotelName,
+              location: h.location,
+              category: "Hotel",
+              imageUrl: h.imageUrl,
+            }))}
+            selectedId={selectedId}
+            onItemSelect={(item) => setSelectedId(item.id)}
+            title="Hotels & Stays Map View"
+          />
+        </div>
+      </div>
 
       {/* Edit/Create Form Modal */}
       {isModalOpen && editingHotel && (
@@ -449,7 +542,7 @@ const handleSaveHotel = async (e: React.FormEvent) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">
-                    Hotel / Homestay Name *
+                    Hotel Name *
                   </label>
                   <input
                     type="text"
@@ -480,7 +573,6 @@ const handleSaveHotel = async (e: React.FormEvent) => {
                     className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                   >
                     <option value="Hotel">Hotel</option>
-                    <option value="Homestay">Homestay</option>
                     <option value="Resort">Resort</option>
                     <option value="Lodge">Lodge</option>
                     <option value="Guest House">Guest House</option>
@@ -650,6 +742,18 @@ const handleSaveHotel = async (e: React.FormEvent) => {
                   "Generator Backup",
                   "Spa & Wellness",
                 ]}
+              />
+
+              {/* ROOM TYPES & ROOM RATES MANAGEMENT */}
+              <RoomTypesInputSection
+                roomTypes={(editingHotel as any).roomTypes || []}
+                onChange={(rooms) =>
+                  setEditingHotel((prev: any) => ({
+                    ...prev,
+                    roomTypes: rooms,
+                  }))
+                }
+                currency={(editingHotel as any).currency || "NRs"}
               />
 
               {/* OPERATING HOURS / FRONT DESK SCHEDULE */}
