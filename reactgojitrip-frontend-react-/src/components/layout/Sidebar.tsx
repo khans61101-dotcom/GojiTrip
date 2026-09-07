@@ -55,7 +55,7 @@ export const Sidebar: React.FC = () => {
       label: "Homestays",
       href: "/homestays",
       icon: Home,
-      badge: cmsStore.getHotels().filter((h) => h.propertyType === "Homestay").length,
+      badge: stats.homestaysCount,
     },
     {
       label: "Restaurants",

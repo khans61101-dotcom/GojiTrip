@@ -27,7 +27,7 @@ type BackendUser = { id: number; email: string; username: string; full_name?: st
 const fallbackStatus: ApprovalStatus = 'Published';
 
 const emptyStats = {
-  transportsCount: 0, routesCount: 0, hotelsCount: 0, restaurantsCount: 0,
+  transportsCount: 0, routesCount: 0, hotelsCount: 0, homestaysCount: 0, restaurantsCount: 0,
   activitiesCount: 0, mediaCount: 0, draftCount: 0, underReviewCount: 0, approvedCount: 0, publishedCount: 0, guidesCount: 0, placesCount: 0, fuelStationsCount: 0,
 };
 
@@ -535,11 +535,19 @@ class CMSStore {
       else publishedCount++;
     });
 
+    const nonHomestays = this.hotels.filter(
+      (h) => (h.propertyType || "").toLowerCase() !== "homestay" && !(h.hotelName && h.hotelName.toLowerCase().includes("homestay"))
+    );
+    const homestaysOnly = this.hotels.filter(
+      (h) => (h.propertyType || "").toLowerCase() === "homestay" || (h.hotelName && h.hotelName.toLowerCase().includes("homestay"))
+    );
+
     return {
       totalEntries: allItems.length + this.media.length,
       transportsCount: this.transports.length,
       routesCount: this.routes.length,
-      hotelsCount: this.hotels.length,
+      hotelsCount: nonHomestays.length,
+      homestaysCount: homestaysOnly.length,
       restaurantsCount: this.restaurants.length,
       activitiesCount: this.activities.length,
       guidesCount: this.guides.length,

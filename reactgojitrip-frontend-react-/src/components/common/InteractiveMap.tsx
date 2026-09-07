@@ -49,6 +49,20 @@ const LOCATION_COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
   "margao": { lat: 15.2832, lng: 73.9862 },
   "vasco": { lat: 15.3960, lng: 73.8157 },
   "maharashtra": { lat: 19.7515, lng: 75.7139 },
+  "dhule": { lat: 20.9042, lng: 74.7749 },
+  "jalgaon": { lat: 21.0077, lng: 75.5626 },
+  "malegaon": { lat: 20.5579, lng: 74.5089 },
+  "solapur": { lat: 17.6599, lng: 75.9064 },
+  "amravati": { lat: 20.9374, lng: 77.7796 },
+  "nanded": { lat: 19.1383, lng: 77.3210 },
+  "sangli": { lat: 16.8524, lng: 74.5815 },
+  "akola": { lat: 20.7002, lng: 77.0082 },
+  "latur": { lat: 18.4088, lng: 76.5604 },
+  "aurangabad": { lat: 19.8762, lng: 75.3433 },
+  "chhatrapati sambhajinagar": { lat: 19.8762, lng: 75.3433 },
+  "ahmednagar": { lat: 19.0948, lng: 74.7480 },
+  "satara": { lat: 17.6805, lng: 74.0183 },
+  "ratnagiri": { lat: 16.9902, lng: 73.3120 },
   "nashik": { lat: 19.9975, lng: 73.7898 },
   "kolhapur": { lat: 16.7050, lng: 74.2433 },
   "karnataka": { lat: 15.3173, lng: 75.7139 },
@@ -79,6 +93,17 @@ const LOCATION_COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
   "dhar": { lat: 22.5976, lng: 75.3023 },
   "mandav": { lat: 22.4357, lng: 75.3411 },
   "mhow": { lat: 22.5526, lng: 75.7554 },
+  "singrauli": { lat: 24.1993, lng: 82.6739 },
+  "khandwa": { lat: 21.8314, lng: 76.3498 },
+  "khargone": { lat: 21.8245, lng: 75.6105 },
+  "burhanpur": { lat: 21.3145, lng: 76.2253 },
+  "betul": { lat: 21.9048, lng: 77.8980 },
+  "hoshangabad": { lat: 22.7519, lng: 77.7289 },
+  "narmadapuram": { lat: 22.7519, lng: 77.7289 },
+  "harda": { lat: 22.3395, lng: 77.0914 },
+  "vidisha": { lat: 23.5251, lng: 77.8081 },
+  "raisen": { lat: 23.3323, lng: 77.7944 },
+  "chhindwara": { lat: 22.0574, lng: 78.9382 },
 
   // Nepal Highway Corridor Locations
   "naubise": { lat: 27.7144, lng: 85.1764 },
@@ -145,9 +170,23 @@ const LOCATION_COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
   "dhangadhi": { lat: 28.6833, lng: 80.6000 },
   "gorkha": { lat: 28.0000, lng: 84.6333 },
   "nepal": { lat: 28.3949, lng: 84.1240 },
+
+  // International Destinations
+  "sri lanka": { lat: 7.8731, lng: 80.7718 },
+  "srilanka": { lat: 7.8731, lng: 80.7718 },
+  "colombo": { lat: 6.9271, lng: 79.8612 },
+  "kandy": { lat: 7.2906, lng: 80.6337 },
+  "dubai": { lat: 25.2048, lng: 55.2708 },
+  "thailand": { lat: 15.8700, lng: 100.9925 },
+  "bangkok": { lat: 13.7563, lng: 100.5018 },
+  "singapore": { lat: 1.3521, lng: 103.8198 },
+  "maldives": { lat: 3.2028, lng: 73.2207 },
+  "male": { lat: 4.1755, lng: 73.5093 },
 };
 
-function lookupSingleCoordinate(str: string): { lat: number; lng: number } | null {
+export { LOCATION_COORDINATES_MAP };
+
+export function lookupSingleCoordinate(str: string): { lat: number; lng: number } | null {
   const strLower = str.toLowerCase().trim();
   if (!strLower) return null;
 
@@ -169,12 +208,14 @@ function lookupSingleCoordinate(str: string): { lat: number; lng: number } | nul
   return null;
 }
 
-function resolveCoordinates(item: MapMarkerItem): { lat: number; lng: number } {
+function resolveCoordinates(
+  item: MapMarkerItem,
+  prevCoords?: { lat: number; lng: number } | null
+): { lat: number; lng: number } {
   const rawText = `${item.location || ""} ${item.name || ""}`.trim();
   const textLower = rawText.toLowerCase();
 
-  // 1. Top priority: Text location lookup against known cities/regions (e.g. Bhopal, Indore, Pokhara, Kathmandu, Annapurna)
-  // If the user's location string explicitly names a city, use that city's coordinates over old default lat/lng
+  // 1. Top priority: Text location lookup against known cities/regions
   const singleMatch = lookupSingleCoordinate(rawText);
   if (singleMatch) {
     const hash = textLower.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -210,8 +251,27 @@ function resolveCoordinates(item: MapMarkerItem): { lat: number; lng: number } {
     return { lat: numLat, lng: numLng };
   }
 
-  // 4. Smart fallback based on country keywords
-  const indianTokens = ["india", "panjab", "punjab", "goa", "delhi", "mumbai", "bhopal", "indore", "jaipur", "highway", "hub"];
+  // 4. Proximity Fallback: If previous stop in sequence has valid coordinates, extend relative to previous stop!
+  if (prevCoords && typeof prevCoords.lat === "number" && typeof prevCoords.lng === "number" && prevCoords.lat !== 0) {
+    let hash = 0;
+    for (let i = 0; i < textLower.length; i++) {
+      hash = (hash << 5) - hash + textLower.charCodeAt(i);
+      hash |= 0;
+    }
+    const latJitter = ((Math.abs(hash) % 30) / 100) + 0.05;
+    const lngJitter = (((Math.abs(hash >> 2) % 30) / 100) - 0.15);
+    return {
+      lat: prevCoords.lat - latJitter,
+      lng: prevCoords.lng + lngJitter,
+    };
+  }
+
+  // 5. Smart fallback based on country keywords
+  const indianTokens = [
+    "india", "panjab", "punjab", "goa", "delhi", "mumbai", "bhopal", "indore", "jaipur",
+    "highway", "hub", "dhule", "bypass", "session", "extension", "stop", "rest", "corridor",
+    "maharashtra", "gujarat", "rajasthan"
+  ];
   const isIndian = indianTokens.some((t) => textLower.includes(t));
   const baseCenter = isIndian ? { lat: 20.5937, lng: 78.9629 } : { lat: 28.2096, lng: 83.9856 };
 
@@ -298,9 +358,11 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     if (items.length === 0) return;
 
     const group: any[] = [];
+    let lastResolvedCoords: { lat: number; lng: number } | null = null;
 
     items.forEach((item, index) => {
-      const coords = resolveCoordinates(item);
+      const coords = resolveCoordinates(item, lastResolvedCoords);
+      lastResolvedCoords = coords;
       const itemLat = coords.lat;
       const itemLng = coords.lng;
 

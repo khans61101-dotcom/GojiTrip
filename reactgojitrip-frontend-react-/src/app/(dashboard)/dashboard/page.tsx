@@ -33,17 +33,11 @@ import {
 export default function DashboardPage() {
   const [stats, setStats] = React.useState(cmsStore.getStats());
   const [logs, setLogs] = React.useState(cmsStore.getWorkflowLogs());
-  const [homestaysCount, setHomestaysCount] = React.useState(
-    cmsStore.getHotels().filter((h) => h.propertyType === "Homestay").length
-  );
 
   React.useEffect(() => {
     const updateStats = () => {
       setStats(cmsStore.getStats());
       setLogs(cmsStore.getWorkflowLogs());
-      setHomestaysCount(
-        cmsStore.getHotels().filter((h) => h.propertyType === "Homestay").length
-      );
     };
 
     updateStats();
@@ -122,7 +116,7 @@ export default function DashboardPage() {
     {
       name: "Village Homestays",
       desc: "Authentic local host stays, village contact info & cultural stays",
-      count: homestaysCount,
+      count: stats.homestaysCount,
       icon: Home,
       href: "/homestays",
       color: "text-teal-400 border-teal-500/30 bg-teal-500/10",

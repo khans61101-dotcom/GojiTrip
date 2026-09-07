@@ -5,7 +5,7 @@ import "@/styles/pages/route/route.css";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { SafeImage } from "@/components/common/SafeImage";
-import { InteractiveMap, type MapMarkerItem } from "@/components/common/InteractiveMap";
+import { InteractiveMap, lookupSingleCoordinate, type MapMarkerItem } from "@/components/common/InteractiveMap";
 import { apiRequest, planRoute, type RouteSearchData, type RouteStop } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
 import type { RouteEntry, RoutePOI, EmergencyContact } from "@/types/cms";
@@ -96,6 +96,20 @@ export default function RoutePage() {
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [selectedMapMarkerId, setSelectedMapMarkerId] = useState<string | null>(null);
 
+  const handleSelectRoute = useCallback((id: string) => {
+    setSelectedRouteId(id);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem("last_selected_route_id", id);
+        const url = new URL(window.location.href);
+        url.searchParams.set("id", id);
+        window.history.replaceState({}, "", url.toString());
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, []);
+
   /* ----------------------------------------------------------
      STATE: CUSTOM ROUTE SEARCH & TIMELINE
   ---------------------------------------------------------- */
@@ -130,6 +144,96 @@ export default function RoutePage() {
     setRouteExtensions([]);
   }, [selectedRouteId, routeSearch]);
 
+  const calculateExtensionDistance = useCallback((prevCity: string, newCity: string): number => {
+    const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const pKey = norm(prevCity);
+    const nKey = norm(newCity);
+    const pairKey = `${pKey}-${nKey}`;
+    const revPairKey = `${nKey}-${pKey}`;
+
+    const CITY_PAIR_DISTANCES: Record<string, number> = {
+      // From Indore
+      "indoresurat": 450,
+      "indoremumbai": 585,
+      "indoreahmedabad": 385,
+      "indoreujjain": 55,
+      "indoreomkareshwar": 77,
+      "indoreratlam": 135,
+      "indoremandav": 95,
+      "indoredhule": 260,
+      "indorebhopal": 195,
+      "indorepune": 590,
+
+      // From Bhopal
+      "bhopalindore": 195,
+      "bhopalgwalior": 430,
+      "bhopaljabalpur": 310,
+      "bhopalsagar": 170,
+      "bhopalrewa": 490,
+      "bhopaldelhi": 780,
+      "bhopalsurat": 620,
+      "bhopalmumbai": 770,
+      "bhopalvidisha": 55,
+
+      // From Delhi
+      "delhijaipur": 280,
+      "delhiagra": 230,
+      "delhichandigarh": 245,
+      "delhishimla": 345,
+      "delhimanali": 530,
+      "delhidehradun": 245,
+      "delhirishikesh": 240,
+
+      // From Jaipur
+      "jaipurajmer": 135,
+      "jaipurpushkar": 145,
+      "jaipurudaipur": 390,
+      "jaipurjodhpur": 330,
+      "jaipurbikaner": 335,
+
+      // From Mumbai / Goa
+      "mumbaipune": 150,
+      "mumbaigoa": 580,
+      "mumbaisurat": 280,
+      "goagokarna": 140,
+      "goakarwar": 65,
+
+      // From Pokhara / Kathmandu / Nepal
+      "pokharamuktinath": 170,
+      "pokharachitwan": 145,
+      "pokharajomsom": 155,
+      "pokharabandipur": 75,
+      "kathmandupokhara": 200,
+      "kathmanduchitwan": 170,
+      "kathmandunagarkot": 32,
+      "kathmandubhaktapur": 15,
+    };
+
+    if (CITY_PAIR_DISTANCES[pairKey]) return CITY_PAIR_DISTANCES[pairKey];
+    if (CITY_PAIR_DISTANCES[revPairKey]) return CITY_PAIR_DISTANCES[revPairKey];
+
+    const c1 = lookupSingleCoordinate(prevCity);
+    const c2 = lookupSingleCoordinate(newCity);
+
+    if (c1 && c2) {
+      const R = 6371;
+      const dLat = ((c2.lat - c1.lat) * Math.PI) / 180;
+      const dLng = ((c2.lng - c1.lng) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos((c1.lat * Math.PI) / 180) *
+          Math.cos((c2.lat * Math.PI) / 180) *
+          Math.sin(dLng / 2) *
+          Math.sin(dLng / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const straightKm = R * c;
+      const roadDistKm = Math.round(straightKm * 1.3);
+      if (roadDistKm > 10) return roadDistKm;
+    }
+
+    return 65;
+  }, []);
+
   const handleAddExtension = (e?: React.FormEvent, customName?: string, customKm?: number) => {
     if (e) e.preventDefault();
     const nameToAdd = (customName || newExtensionInput).trim();
@@ -140,7 +244,11 @@ export default function RoutePage() {
       return;
     }
 
-    const dist = customKm || Math.floor(Math.random() * 30) + 45;
+    const lastStopName = routeExtensions.length > 0
+      ? routeExtensions[routeExtensions.length - 1].name
+      : (routeSearch ? routeSearch.destination.name : (activeDbRoute?.destination || "Destination"));
+
+    const dist = customKm || calculateExtensionDistance(lastStopName, nameToAdd);
     const newExt: SessionExtension = {
       id: `ext-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: nameToAdd,
@@ -194,14 +302,18 @@ export default function RoutePage() {
       setDbRoutes(uniqueRoutes);
 
       if (uniqueRoutes.length > 0) {
-        setSelectedRouteId((prev) => prev || uniqueRoutes[0].id);
+        const savedId = typeof window !== "undefined" ? sessionStorage.getItem("last_selected_route_id") : null;
+        const validSaved = savedId && uniqueRoutes.some((r) => String(r.id) === String(savedId)) ? savedId : null;
+        setSelectedRouteId((prev) => prev || validSaved || uniqueRoutes[0].id);
       }
     } catch (err) {
       console.error("Fetch DB routes error:", err);
       const storeRoutes = cmsStore.getRoutes();
       setDbRoutes(storeRoutes);
       if (storeRoutes.length > 0) {
-        setSelectedRouteId(storeRoutes[0].id);
+        const savedId = typeof window !== "undefined" ? sessionStorage.getItem("last_selected_route_id") : null;
+        const validSaved = savedId && storeRoutes.some((r) => String(r.id) === String(savedId)) ? savedId : null;
+        setSelectedRouteId(validSaved || storeRoutes[0].id);
       }
     } finally {
       setLoading(false);
@@ -214,7 +326,8 @@ export default function RoutePage() {
 
   // Read URL search params from Hero component redirect or Card clicks
   useEffect(() => {
-    const idParam = searchParams.get("id") || searchParams.get("routeId") || searchParams.get("selectedId");
+    const savedSessionId = typeof window !== "undefined" ? sessionStorage.getItem("last_selected_route_id") : null;
+    const idParam = searchParams.get("id") || searchParams.get("routeId") || searchParams.get("selectedId") || savedSessionId;
     const nameParam = searchParams.get("name") || searchParams.get("title");
     const srcParam = searchParams.get("source") || searchParams.get("origin") || searchParams.get("from");
     const dstParam = searchParams.get("destination") || searchParams.get("to");
@@ -246,6 +359,9 @@ export default function RoutePage() {
 
       if (matched) {
         setSelectedRouteId(matched.id);
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("last_selected_route_id", matched.id);
+        }
         setRouteSearch(null);
       } else if (srcParam || dstParam) {
         if (srcParam) setSourceSearch(srcParam);
@@ -424,7 +540,63 @@ function resolveCorridorStops(
   /* ==========================================================
      TIMELINE STOPS COMPUTATION (DB ROUTE OR SEARCHED ROUTE)
   ========================================================== */
+  /* ==========================================================
+     TIMELINE STOPS COMPUTATION (DB ROUTE OR SEARCHED ROUTE)
+  ========================================================== */
   const timelineStops = useMemo<TimelineStop[]>(() => {
+    const appendExtensions = (baseStops: TimelineStop[]): TimelineStop[] => {
+      if (routeExtensions.length === 0 || baseStops.length === 0) return baseStops;
+      const result = [...baseStops];
+      const origDstIndex = result.length - 1;
+
+      let baseKm = parseFloat(String(result[origDstIndex].distanceKm).replace(/[^0-9.]/g, "")) || 200;
+      let baseHours = parseFloat(String(result[origDstIndex].travelTime).replace(/[^0-9.]/g, "")) || (baseKm / 45);
+
+      if (origDstIndex >= 0) {
+        result[origDstIndex] = {
+          ...result[origDstIndex],
+          isDestination: false,
+          badgeLabel: "CORRIDOR WAYPOINT",
+          color: "bg-emerald-600",
+          badgeBg: "bg-emerald-50 text-emerald-600",
+          subtitle: "Original Corridor Destination",
+          details: `${result[origDstIndex].name} (Original Corridor Terminal). Extended further to custom session stops below.`,
+        };
+      }
+
+      let cumKm = baseKm;
+      let cumHours = baseHours;
+
+      routeExtensions.forEach((ext, extIdx) => {
+        cumKm += ext.distKm;
+        const stepHours = ext.distKm / 50;
+        cumHours += stepHours;
+
+        const isFinalExt = extIdx === routeExtensions.length - 1;
+        const formattedHours = `~${cumHours.toFixed(1)}h`;
+
+        result.push({
+          id: ext.id,
+          name: ext.name,
+          type: "destination",
+          subtitle: isFinalExt ? "Session Extended Destination" : `Extended Stop #${extIdx + 1}`,
+          address: `${ext.name} (Custom Session Stop)`,
+          details: `Custom user extension beyond original route. Distance from previous stop: +${ext.distKm} km (~${stepHours.toFixed(1)}h).`,
+          sequence: result.length + 1,
+          isSource: false,
+          isDestination: isFinalExt,
+          badgeLabel: isFinalExt ? "SESSION DESTINATION" : `EXTENDED STOP #${extIdx + 1}`,
+          color: isFinalExt ? "bg-purple-600" : "bg-indigo-600",
+          badgeBg: isFinalExt ? "bg-purple-50 text-purple-600" : "bg-indigo-50 text-indigo-600",
+          distanceKm: `${cumKm} km`,
+          travelTime: formattedHours,
+          isExtension: true,
+        } as any);
+      });
+
+      return result;
+    };
+
     // 1. Custom Searched Route Timeline
     if (routeSearch) {
       const srcName = routeSearch.source?.name || "Origin";
@@ -487,7 +659,7 @@ function resolveCorridorStops(
             travelTime: `~${(stepKm / 45).toFixed(1)}h`,
           };
         });
-        return [sourceStop, ...intermediates, destStop];
+        return appendExtensions([sourceStop, ...intermediates, destStop]);
       }
 
       const intermediates: TimelineStop[] = apiStops.map((stop, idx) => ({
@@ -502,7 +674,7 @@ function resolveCorridorStops(
         travelTime: `~${(idx + 1) * 1.2}h`,
       }));
 
-      return [sourceStop, ...intermediates, destStop];
+      return appendExtensions([sourceStop, ...intermediates, destStop]);
     }
 
     // 2. DB Active Route Timeline with Full Corridor Intermediate Locations
@@ -582,50 +754,7 @@ function resolveCorridorStops(
         travelTime: activeDbRoute.estimatedTravelTime || "End",
       });
 
-      // Appending Session Route Extensions if any!
-      if (routeExtensions.length > 0) {
-        const origDstIndex = stopsList.length - 1;
-        let baseKm = totalKm;
-        if (origDstIndex >= 0) {
-          stopsList[origDstIndex] = {
-            ...stopsList[origDstIndex],
-            isDestination: false,
-            badgeLabel: "CORRIDOR WAYPOINT",
-            color: "bg-emerald-600",
-            badgeBg: "bg-emerald-50 text-emerald-600",
-            subtitle: "Original Corridor Destination",
-            details: `${stopsList[origDstIndex].name} (Original Corridor Terminal). Extended further to custom session stops below.`,
-          };
-          baseKm = parseFloat(String(stopsList[origDstIndex].distanceKm).replace(/[^0-9.]/g, "")) || totalKm;
-        }
-
-        let cumKm = baseKm;
-        routeExtensions.forEach((ext, extIdx) => {
-          cumKm += ext.distKm;
-          const isFinalExt = extIdx === routeExtensions.length - 1;
-          const hours = (cumKm / 45).toFixed(1);
-
-          stopsList.push({
-            id: ext.id,
-            name: ext.name,
-            type: "destination",
-            subtitle: isFinalExt ? "Session Extended Destination" : `Extended Stop #${extIdx + 1}`,
-            address: `${ext.name} (Custom Session Stop)`,
-            details: `Custom user extension beyond original route. (Session plan only - Not saved to database).`,
-            sequence: stopsList.length + 1,
-            isSource: false,
-            isDestination: isFinalExt,
-            badgeLabel: isFinalExt ? "SESSION DESTINATION" : `EXTENDED STOP #${extIdx + 1}`,
-            color: isFinalExt ? "bg-purple-600" : "bg-indigo-600",
-            badgeBg: isFinalExt ? "bg-purple-50 text-purple-600" : "bg-indigo-50 text-indigo-600",
-            distanceKm: `${cumKm} km`,
-            travelTime: `~${hours}h`,
-            isExtension: true,
-          } as any);
-        });
-      }
-
-      return stopsList;
+      return appendExtensions(stopsList);
     }
 
     return [];
@@ -789,8 +918,10 @@ function resolveCorridorStops(
     if (activeDbRoute) {
       params.set("source", activeDbRoute.origin);
       params.set("destination", activeDbRoute.destination);
+      params.set("routeId", activeDbRoute.id);
+      params.set("id", activeDbRoute.id);
     }
-    window.location.href = `${categoryPath}?${params.toString()}`;
+    navigate(`${categoryPath}?${params.toString()}`);
   };
 
   /* ==========================================================
@@ -884,7 +1015,7 @@ function resolveCorridorStops(
                   onChange={(e) => {
                     if (e.target.value) {
                       setRouteSearch(null);
-                      setSelectedRouteId(e.target.value);
+                      handleSelectRoute(e.target.value);
                     }
                   }}
                   className="w-full px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-bold text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400 cursor-pointer shadow-lg backdrop-blur-md"
@@ -924,7 +1055,7 @@ function resolveCorridorStops(
                         type="button"
                         onClick={() => {
                           setRouteSearch(null);
-                          setSelectedRouteId(r.id);
+                          handleSelectRoute(r.id);
                         }}
                         className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border flex items-center space-x-1.5 shrink-0 ${
                           isActive

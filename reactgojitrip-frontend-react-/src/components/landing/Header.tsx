@@ -63,7 +63,7 @@ export default function Header() {
   const primaryLinks = [
     { name: "About Us", href: "/pages/about", icon: Sparkles },
     { name: "Routes & Maps", href: "/pages/routes", icon: MapPin },
-    { name: "Hotels & Stays", href: "/pages/hotels", icon: Hotel },
+    { name: "Hotels & Homestays", href: "/pages/hotels", icon: Hotel }, 
     { name: "Restaurants", href: "/pages/restaurants", icon: UtensilsCrossed },
   ];
 
