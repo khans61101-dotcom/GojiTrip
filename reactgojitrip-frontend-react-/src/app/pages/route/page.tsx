@@ -274,53 +274,152 @@ export default function RoutePage() {
   }, [dbRoutes, selectedRouteId]);
 
 /* ==========================================================
-   ROUTE CORRIDOR INTERMEDIATE LOCATIONS DATABASE
+   ROUTE CORRIDOR INTERMEDIATE LOCATIONS RESOLVER
 ========================================================== */
-const ROUTE_CORRIDOR_INTERMEDIATES: Record<string, Array<{ name: string; type: string; details: string; distPct: number }>> = {
-  "bhopal-indore": [
-    { name: "Sehore", type: "rest", details: "Sehore Highway Junction & Refreshment Rest Stop", distPct: 0.2 },
-    { name: "Ashta", type: "food", details: "Ashta Highway Service Hub & Food Restaurants", distPct: 0.4 },
-    { name: "Sonkatch", type: "fuel", details: "Sonkatch Fuel & Travel Service Point", distPct: 0.65 },
-    { name: "Dewas", type: "place", details: "Dewas Hilltop Temple & Highway Bypass Hub", distPct: 0.8 },
-  ],
-  "punjab-goa": [
-    { name: "Ludhiana & Chandigarh", type: "rest", details: "Punjab Central Transport & Highway Hub", distPct: 0.1 },
-    { name: "Delhi NCR Corridor", type: "rest", details: "Capital Highway Transit Corridor", distPct: 0.25 },
-    { name: "Jaipur Highway Hub", type: "place", details: "Rajasthan Heritage Waypoint & Tourist Stop", distPct: 0.4 },
-    { name: "Udaipur Lake Corridor", type: "place", details: "Scenic Lake City Travel Stop", distPct: 0.55 },
-    { name: "Ahmedabad Express Hub", type: "fuel", details: "Gujarat Expressway Fuel & Rest Stop", distPct: 0.7 },
-    { name: "Mumbai-Pune Expressway", type: "rest", details: "Coastal Highway Transit Stop", distPct: 0.85 },
-  ],
-  "kathmandu-pokhara": [
-    { name: "Naubise Junction", type: "rest", details: "Kathmandu Valley Exit & Highway Hub", distPct: 0.15 },
-    { name: "Malekhu", type: "food", details: "Malekhu Riverside Fish & Refreshment Stop", distPct: 0.35 },
-    { name: "Mugling Junction", type: "rest", details: "Trishuli River Bridge Highway Hub", distPct: 0.55 },
-    { name: "Dumre / Bandipur", type: "place", details: "Bandipur Hillside Heritage & Viewpoint Stop", distPct: 0.7 },
-    { name: "Damauli Town", type: "fuel", details: "Tanahun Service & Fuel Station Stop", distPct: 0.85 },
-  ],
-  "kathmandu-chitwan": [
-    { name: "Naubise Junction", type: "rest", details: "Highway Transit Point", distPct: 0.15 },
-    { name: "Malekhu", type: "food", details: "Refreshment & Food Stop", distPct: 0.35 },
-    { name: "Mugling Junction", type: "rest", details: "Trishuli Junction", distPct: 0.55 },
-    { name: "Kurintar / Manakamana", type: "place", details: "Manakamana Cable Car & Pilgrimage Hub", distPct: 0.7 },
-    { name: "Bharatpur Gateway", type: "fuel", details: "Chitwan Entrance Fuel & Service Hub", distPct: 0.88 },
-  ],
-  "pokhara-muktinath": [
-    { name: "Kusma", type: "place", details: "Suspension Bridge & Adventure Hub", distPct: 0.3 },
-    { name: "Beni", type: "rest", details: "Myagdi River Junction & Mustang Gateway", distPct: 0.45 },
-    { name: "Tatopani", type: "place", details: "Natural Hot Springs Rest Stop", distPct: 0.6 },
-    { name: "Ghasa", type: "rest", details: "Mustang Checkpost & Pine Forest Corridor", distPct: 0.75 },
-    { name: "Jomsom", type: "place", details: "Apple Orchards & Mountain Airport Hub", distPct: 0.88 },
-    { name: "Kagbeni", type: "place", details: "Sacred River Confluence & Ancient Village", distPct: 0.95 },
-  ],
-  "delhi-jaipur": [
-    { name: "Gurgaon / Manesar", type: "rest", details: "Millennium City Corridor", distPct: 0.15 },
-    { name: "Dharuhera", type: "fuel", details: "Highway Fuel & Fast Charger Station", distPct: 0.3 },
-    { name: "Neemrana", type: "place", details: "Neemrana Fort Heritage Stop", distPct: 0.5 },
-    { name: "Kotputli", type: "rest", details: "Kotputli Highway Junction", distPct: 0.7 },
-    { name: "Shahpura", type: "food", details: "Shahpura Food Court & Rest Area", distPct: 0.85 },
-  ],
-};
+function resolveCorridorStops(
+  src: string,
+  dst: string,
+  routeName?: string,
+  cmsPois?: any[]
+): Array<{ name: string; type: string; details: string; distPct: number }> {
+  const norm = (s: string) =>
+    (s || "")
+      .toLowerCase()
+      .replace(/u/g, "a")
+      .replace(/[^a-z0-9]/g, "");
+
+  const srcNorm = norm(src);
+  const dstNorm = norm(dst);
+  const nameNorm = norm(routeName || "");
+
+  // 1. Check if CMS POIs are explicitly provided
+  if (Array.isArray(cmsPois) && cmsPois.length > 0) {
+    const validPois = cmsPois.filter((p) => p && (p.name || p.title || p.location));
+    if (validPois.length > 0) {
+      return validPois.map((poi, idx) => ({
+        name: poi.name || poi.title || poi.location || `Waypoint ${idx + 1}`,
+        type:
+          poi.category === "Restaurant" || poi.type === "food"
+            ? "food"
+            : poi.category === "Fuel Station" || poi.type === "fuel"
+            ? "fuel"
+            : poi.category === "Viewpoint" || poi.type === "place"
+            ? "place"
+            : "rest",
+        details: poi.details || poi.location || `Key waypoint along corridor.`,
+        distPct: (idx + 1) / (validPois.length + 1),
+      }));
+    }
+  }
+
+  // 2. Predefined Highway Corridor Resolver with Fuzzy Spell Matching
+  // A. Panjab / Punjab -> Goa
+  if (
+    (srcNorm.includes("pnjb") || srcNorm.includes("panjab") || srcNorm.includes("punjab") || nameNorm.includes("panjab") || nameNorm.includes("punjab")) &&
+    (dstNorm.includes("goa") || nameNorm.includes("goa"))
+  ) {
+    return [
+      { name: "Ludhiana & Ambala Junction", type: "rest", details: "Punjab Central Highway & Transport Hub", distPct: 0.12 },
+      { name: "Delhi NCR Expressway Corridor", type: "rest", details: "Capital Transit & Highway Bypass Corridor", distPct: 0.25 },
+      { name: "Jaipur Heritage Waypoint", type: "place", details: "Rajasthan Heritage Waypoint & Tourist Stop", distPct: 0.4 },
+      { name: "Udaipur Lake Corridor", type: "place", details: "Scenic Lake City Travel & Rest Stop", distPct: 0.55 },
+      { name: "Ahmedabad Express Hub", type: "fuel", details: "Gujarat Expressway Fuel, EV & Rest Stop", distPct: 0.7 },
+      { name: "Mumbai-Pune Coastal Expressway", type: "rest", details: "Coastal Highway Transit Stop & Food Court", distPct: 0.85 },
+    ];
+  }
+
+  // B. Bhopal -> Indore
+  if (
+    (srcNorm.includes("bhpl") || srcNorm.includes("bhopal") || nameNorm.includes("bhopal")) &&
+    (dstNorm.includes("indor") || nameNorm.includes("indore"))
+  ) {
+    return [
+      { name: "Sehore Highway Junction", type: "rest", details: "Sehore Bypass & Refreshment Rest Stop", distPct: 0.2 },
+      { name: "Ashta Service Hub", type: "food", details: "Ashta Highway Service Hub & Food Restaurants", distPct: 0.4 },
+      { name: "Sonkatch Fuel Station", type: "fuel", details: "Sonkatch Fuel & Travel Service Point", distPct: 0.65 },
+      { name: "Dewas Hilltop Bypass", type: "place", details: "Dewas Hilltop Temple & Highway Bypass Hub", distPct: 0.8 },
+    ];
+  }
+
+  // C. Delhi -> Jaipur
+  if (
+    (srcNorm.includes("delhi") || nameNorm.includes("delhi")) &&
+    (dstNorm.includes("jaipur") || nameNorm.includes("jaipur"))
+  ) {
+    return [
+      { name: "Gurgaon / Manesar", type: "rest", details: "Millennium City Highway Corridor", distPct: 0.15 },
+      { name: "Dharuhera Express Hub", type: "fuel", details: "Highway Fuel & Fast Charger Station", distPct: 0.3 },
+      { name: "Neemrana Heritage Fort", type: "place", details: "Neemrana Fort Heritage & Culture Stop", distPct: 0.5 },
+      { name: "Kotputli Bypass", type: "rest", details: "Kotputli Highway Junction & Rest Area", distPct: 0.7 },
+      { name: "Shahpura Food Court", type: "food", details: "Shahpura Food Court & Refreshment Stop", distPct: 0.85 },
+    ];
+  }
+
+  // D. Kathmandu -> Pokhara
+  if (
+    (srcNorm.includes("ktm") || srcNorm.includes("kathmandu") || nameNorm.includes("kathmandu")) &&
+    (dstNorm.includes("pkh") || dstNorm.includes("pokhara") || nameNorm.includes("pokhara"))
+  ) {
+    return [
+      { name: "Naubise Junction", type: "rest", details: "Kathmandu Valley Exit & Highway Hub", distPct: 0.15 },
+      { name: "Malekhu Riverside", type: "food", details: "Malekhu Riverside Fish & Refreshment Stop", distPct: 0.35 },
+      { name: "Mugling Bridge Hub", type: "rest", details: "Trishuli River Bridge Highway Hub", distPct: 0.55 },
+      { name: "Dumre / Bandipur Viewpoint", type: "place", details: "Bandipur Hillside Heritage & Viewpoint Stop", distPct: 0.7 },
+      { name: "Damauli Town", type: "fuel", details: "Tanahun Service & Fuel Station Stop", distPct: 0.85 },
+    ];
+  }
+
+  // E. Kathmandu -> Chitwan
+  if (
+    (srcNorm.includes("kathmandu") || nameNorm.includes("kathmandu")) &&
+    (dstNorm.includes("chitwan") || dstNorm.includes("sauraha") || nameNorm.includes("chitwan"))
+  ) {
+    return [
+      { name: "Naubise Junction", type: "rest", details: "Highway Transit Point", distPct: 0.15 },
+      { name: "Malekhu Food Stop", type: "food", details: "Refreshment & Local Food Stop", distPct: 0.35 },
+      { name: "Mugling Junction", type: "rest", details: "Trishuli Confluence Junction", distPct: 0.55 },
+      { name: "Kurintar / Manakamana Cable Car", type: "place", details: "Manakamana Cable Car & Pilgrimage Hub", distPct: 0.7 },
+      { name: "Bharatpur Gateway", type: "fuel", details: "Chitwan Entrance Fuel & Service Hub", distPct: 0.88 },
+    ];
+  }
+
+  // F. Pokhara -> Muktinath
+  if (
+    (srcNorm.includes("pokhara") || nameNorm.includes("pokhara")) &&
+    (dstNorm.includes("muktinath") || dstNorm.includes("jomsom") || nameNorm.includes("muktinath"))
+  ) {
+    return [
+      { name: "Kusma Adventure Bridge", type: "place", details: "Suspension Bridge & Adventure Hub", distPct: 0.3 },
+      { name: "Beni Mustang Gateway", type: "rest", details: "Myagdi River Junction & Mustang Gateway", distPct: 0.45 },
+      { name: "Tatopani Hot Springs", type: "place", details: "Natural Hot Springs Rest Stop", distPct: 0.6 },
+      { name: "Ghasa Pine Forest Checkpost", type: "rest", details: "Mustang Checkpost & Pine Forest Corridor", distPct: 0.75 },
+      { name: "Jomsom Mountain Hub", type: "place", details: "Apple Orchards & Mountain Airport Hub", distPct: 0.88 },
+      { name: "Kagbeni Sacred Village", type: "place", details: "Sacred River Confluence & Ancient Village", distPct: 0.95 },
+    ];
+  }
+
+  // 3. Dynamic Multi-Stop Fallback for ANY Other Route
+  return [
+    {
+      name: `${src} Highway Rest Junction`,
+      type: "rest",
+      details: `Service hub featuring fuel stations, restaurants, and repair facilities near ${src}.`,
+      distPct: 0.25,
+    },
+    {
+      name: `${src} - ${dst} Scenic Viewpoint & Food Stop`,
+      type: "place",
+      details: `Scenic mountain/highway viewpoint, tourist stop & local food dining.`,
+      distPct: 0.55,
+    },
+    {
+      name: `${dst} Fuel & Travel Charging Station`,
+      type: "fuel",
+      details: `Fuel station, EV charging point, and 24/7 travel refreshment center before entering ${dst}.`,
+      distPct: 0.8,
+    },
+  ];
+}
 
   /* ==========================================================
      TIMELINE STOPS COMPUTATION (DB ROUTE OR SEARCHED ROUTE)
@@ -331,9 +430,7 @@ const ROUTE_CORRIDOR_INTERMEDIATES: Record<string, Array<{ name: string; type: s
       const srcName = routeSearch.source?.name || "Origin";
       const dstName = routeSearch.destination?.name || "Destination";
 
-      const key = `${srcName.toLowerCase()}-${dstName.toLowerCase()}`;
-      const revKey = `${dstName.toLowerCase()}-${srcName.toLowerCase()}`;
-      const preMapped = ROUTE_CORRIDOR_INTERMEDIATES[key] || ROUTE_CORRIDOR_INTERMEDIATES[revKey];
+      const preMapped = resolveCorridorStops(srcName, dstName);
 
       const sourceStop: TimelineStop = {
         id: "src-1",
@@ -414,36 +511,15 @@ const ROUTE_CORRIDOR_INTERMEDIATES: Record<string, Array<{ name: string; type: s
       const dstName = activeDbRoute.destination || "Destination";
       const totalKm = activeDbRoute.totalDistanceKm || 200;
 
-      const key = `${srcName.toLowerCase()}-${dstName.toLowerCase()}`;
-      const revKey = `${dstName.toLowerCase()}-${srcName.toLowerCase()}`;
+      const rawPois = [
+        ...(activeDbRoute.recommendedStops || []),
+        ...(activeDbRoute.touristAttractions || []),
+        ...(activeDbRoute.viewpoints || []),
+        ...(activeDbRoute.restaurants || []),
+        ...(activeDbRoute.fuelStations || []),
+      ];
 
-      let corridorIntermediates = ROUTE_CORRIDOR_INTERMEDIATES[key] || ROUTE_CORRIDOR_INTERMEDIATES[revKey];
-
-      if (!corridorIntermediates || corridorIntermediates.length === 0) {
-        const rawIntermediates = [
-          ...(activeDbRoute.recommendedStops || []),
-          ...(activeDbRoute.viewpoints || []),
-          ...(activeDbRoute.restaurants || []),
-        ];
-
-        if (rawIntermediates.length > 0) {
-          corridorIntermediates = rawIntermediates.map((poi, idx) => ({
-            name: poi.name || `Waypoint ${idx + 1}`,
-            type: poi.category === "Restaurant" ? "food" : poi.category === "Fuel Station" ? "fuel" : "rest",
-            details: poi.details || poi.location || `Key waypoint on ${activeDbRoute.routeName}.`,
-            distPct: (idx + 1) / (rawIntermediates.length + 1),
-          }));
-        } else {
-          corridorIntermediates = [
-            {
-              name: `${srcName} - ${dstName} Highway Hub`,
-              type: "rest",
-              details: `Service hub featuring fuel stations, restaurants, and repair facilities.`,
-              distPct: 0.5,
-            },
-          ];
-        }
-      }
+      const corridorIntermediates = resolveCorridorStops(srcName, dstName, activeDbRoute.routeName, rawPois);
 
       const stopsList: TimelineStop[] = [];
 
