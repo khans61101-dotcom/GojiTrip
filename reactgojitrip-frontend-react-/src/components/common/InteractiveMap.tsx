@@ -171,17 +171,52 @@ const LOCATION_COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
   "gorkha": { lat: 28.0000, lng: 84.6333 },
   "nepal": { lat: 28.3949, lng: 84.1240 },
 
-  // International Destinations
-  "sri lanka": { lat: 7.8731, lng: 80.7718 },
-  "srilanka": { lat: 7.8731, lng: 80.7718 },
-  "colombo": { lat: 6.9271, lng: 79.8612 },
-  "kandy": { lat: 7.2906, lng: 80.6337 },
-  "dubai": { lat: 25.2048, lng: 55.2708 },
-  "thailand": { lat: 15.8700, lng: 100.9925 },
-  "bangkok": { lat: 13.7563, lng: 100.5018 },
-  "singapore": { lat: 1.3521, lng: 103.8198 },
-  "maldives": { lat: 3.2028, lng: 73.2207 },
-  "male": { lat: 4.1755, lng: 73.5093 },
+  // Additional Highway Cities & Waypoints across Major Corridors
+  "shivpuri": { lat: 25.4358, lng: 77.6480 },
+  "guna": { lat: 24.6468, lng: 77.3086 },
+  "biaora": { lat: 23.9164, lng: 76.9180 },
+  "sarangpur": { lat: 23.5698, lng: 76.4682 },
+  "shajapur": { lat: 23.4266, lng: 76.2778 },
+  "badarwas": { lat: 24.9680, lng: 77.5684 },
+  "mohana": { lat: 25.9200, lng: 77.9400 },
+  "morena": { lat: 26.4997, lng: 77.9944 },
+  "dholpur": { lat: 26.6997, lng: 77.8932 },
+  "bina": { lat: 24.1706, lng: 78.1837 },
+  "sanchi": { lat: 23.4833, lng: 77.7333 },
+  "ashoknagar": { lat: 24.5770, lng: 77.7280 },
+  "datia": { lat: 25.6698, lng: 78.4612 },
+  "jhansi": { lat: 25.4484, lng: 78.5685 },
+  "shirpur": { lat: 21.3508, lng: 74.8797 },
+  "sendhwa": { lat: 21.6820, lng: 75.0970 },
+  "chandwad": { lat: 20.3289, lng: 74.2419 },
+  "sangamner": { lat: 19.5760, lng: 74.2070 },
+  "narayangaon": { lat: 19.1172, lng: 73.9744 },
+  "khed": { lat: 18.8550, lng: 73.9160 },
+  "rajgurunagar": { lat: 18.8550, lng: 73.9160 },
+  "igatpuri": { lat: 19.6953, lng: 73.5594 },
+  "shahapur": { lat: 19.4533, lng: 73.3294 },
+  "thane": { lat: 19.2183, lng: 72.9781 },
+  "bhiwandi": { lat: 19.2968, lng: 73.0631 },
+  "vadodara": { lat: 22.3072, lng: 73.1812 },
+  "bharuch": { lat: 21.7051, lng: 72.9959 },
+  "ankleshwar": { lat: 21.6264, lng: 73.0033 },
+  "navsari": { lat: 20.9467, lng: 72.9520 },
+  "vapi": { lat: 20.3893, lng: 72.9106 },
+  "dahod": { lat: 22.8373, lng: 74.2562 },
+  "jhabua": { lat: 22.7691, lng: 74.5935 },
+  "godhra": { lat: 22.7778, lng: 73.6144 },
+  "nadiad": { lat: 22.6916, lng: 72.8634 },
+  "anand": { lat: 22.5645, lng: 72.9289 },
+  "kota": { lat: 25.2138, lng: 75.8648 },
+  "jhalawar": { lat: 24.5972, lng: 76.1610 },
+  "chittorgarh": { lat: 24.8887, lng: 74.6269 },
+  "udaipur": { lat: 24.5854, lng: 73.7125 },
+  "bhilwara": { lat: 25.3463, lng: 74.6364 },
+  "ajmer": { lat: 26.4499, lng: 74.6399 },
+  "shahpura": { lat: 27.3876, lng: 75.9625 },
+  "kotputli": { lat: 27.7029, lng: 76.2008 },
+  "neemrana": { lat: 27.9880, lng: 76.3820 },
+  "dharuhera": { lat: 28.2078, lng: 76.7827 },
 };
 
 export { LOCATION_COORDINATES_MAP };
@@ -208,14 +243,11 @@ export function lookupSingleCoordinate(str: string): { lat: number; lng: number 
   return null;
 }
 
-function resolveCoordinates(
-  item: MapMarkerItem,
-  prevCoords?: { lat: number; lng: number } | null
-): { lat: number; lng: number } {
+export function resolveItemDirectCoordinate(item: MapMarkerItem): { lat: number; lng: number } | null {
   const rawText = `${item.location || ""} ${item.name || ""}`.trim();
   const textLower = rawText.toLowerCase();
 
-  // 1. Top priority: Text location lookup against known cities/regions
+  // 1. Single location lookup
   const singleMatch = lookupSingleCoordinate(rawText);
   if (singleMatch) {
     const hash = textLower.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -224,7 +256,7 @@ function resolveCoordinates(
     return { lat: singleMatch.lat + jitterLat, lng: singleMatch.lng + jitterLng };
   }
 
-  // 2. Compound highway hub or address delimiter split e.g. "Bhopal, M.P - Devki Nagar", "Panjab - Goa"
+  // 2. Compound split
   const splitDelimiters = [" - ", " – ", " — ", " to ", " ➔ ", " -> "];
   for (const delim of splitDelimiters) {
     if (textLower.includes(delim)) {
@@ -244,46 +276,136 @@ function resolveCoordinates(
     }
   }
 
-  // 3. Next priority: If no city match in text, use explicit numeric lat & lng (if valid & not default 0)
+  // 3. Explicit numeric lat/lng
   const numLat = Number(item.lat);
   const numLng = Number(item.lng);
   if (!isNaN(numLat) && numLat !== 0 && !isNaN(numLng) && numLng !== 0) {
     return { lat: numLat, lng: numLng };
   }
 
-  // 4. Proximity Fallback: If previous stop in sequence has valid coordinates, extend relative to previous stop!
-  if (prevCoords && typeof prevCoords.lat === "number" && typeof prevCoords.lng === "number" && prevCoords.lat !== 0) {
-    let hash = 0;
-    for (let i = 0; i < textLower.length; i++) {
-      hash = (hash << 5) - hash + textLower.charCodeAt(i);
-      hash |= 0;
+  return null;
+}
+
+export function resolveAllItemCoordinates(items: MapMarkerItem[]): Array<{ lat: number; lng: number }> {
+  if (items.length === 0) return [];
+
+  // Source and destination items
+  const sourceItem = items[0];
+  const destItem = items[items.length - 1];
+
+  const sourceCoords = sourceItem ? lookupSingleCoordinate(`${sourceItem.location || ""} ${sourceItem.name || ""}`) : null;
+  const destCoords = destItem ? lookupSingleCoordinate(`${destItem.location || ""} ${destItem.name || ""}`) : null;
+
+  // Pass 1: Try direct resolution for each item
+  const resolved: Array<{ lat: number; lng: number } | null> = items.map((item, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === items.length - 1;
+
+    // Explicit numeric lat/lng
+    const numLat = Number(item.lat);
+    const numLng = Number(item.lng);
+    if (!isNaN(numLat) && numLat !== 0 && !isNaN(numLng) && numLng !== 0) {
+      return { lat: numLat, lng: numLng };
     }
-    const latJitter = ((Math.abs(hash) % 30) / 100) + 0.05;
-    const lngJitter = (((Math.abs(hash >> 2) % 30) / 100) - 0.15);
-    return {
-      lat: prevCoords.lat - latJitter,
-      lng: prevCoords.lng + lngJitter,
-    };
+
+    const rawText = `${item.location || ""} ${item.name || ""}`.trim();
+    const textLower = rawText.toLowerCase();
+
+    // Generic stop check for intermediate waypoints
+    const hasGenericIndex = /#\d+|stop\s*\d+|waypoint\s*\d+|hub\s*\d+|viewpoint\s*\d+/i.test(rawText);
+    if (!isFirst && !isLast && hasGenericIndex) {
+      return null;
+    }
+
+    const direct = lookupSingleCoordinate(rawText);
+    if (direct) {
+      // Invalidate intermediate direct matches that match source or destination coordinates
+      if (!isFirst && !isLast) {
+        if (sourceCoords && Math.abs(direct.lat - sourceCoords.lat) < 0.05 && Math.abs(direct.lng - sourceCoords.lng) < 0.05) {
+          return null;
+        }
+        if (destCoords && Math.abs(direct.lat - destCoords.lat) < 0.05 && Math.abs(direct.lng - destCoords.lng) < 0.05) {
+          return null;
+        }
+      }
+
+      const hash = textLower.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+      const jitterLat = ((hash % 100) / 10000) - 0.005;
+      const jitterLng = (((hash >> 2) % 100) / 10000) - 0.005;
+      return { lat: direct.lat + jitterLat, lng: direct.lng + jitterLng };
+    }
+
+    return null;
+  });
+
+  // Pass 2: Linearly interpolate missing points between known anchor points
+  const result: Array<{ lat: number; lng: number }> = [];
+
+  // Find all indices that have known coordinates
+  const knownIndices: number[] = [];
+  resolved.forEach((coords, idx) => {
+    if (coords) knownIndices.push(idx);
+  });
+
+  for (let i = 0; i < items.length; i++) {
+    if (resolved[i]) {
+      result.push(resolved[i]!);
+      continue;
+    }
+
+    // Find previous known index and next known index
+    const prevKnown = knownIndices.filter((idx) => idx < i).pop();
+    const nextKnown = knownIndices.find((idx) => idx > i);
+
+    if (prevKnown !== undefined && nextKnown !== undefined) {
+      // Interpolate linearly between prevKnown and nextKnown!
+      const startCoord = resolved[prevKnown]!;
+      const endCoord = resolved[nextKnown]!;
+      const fraction = (i - prevKnown) / (nextKnown - prevKnown);
+
+      const hash = items[i].name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+      const latJitter = ((hash % 10) - 5) / 1000;
+      const lngJitter = (((hash >> 2) % 10) - 5) / 1000;
+
+      result.push({
+        lat: startCoord.lat + fraction * (endCoord.lat - startCoord.lat) + latJitter,
+        lng: startCoord.lng + fraction * (endCoord.lng - startCoord.lng) + lngJitter,
+      });
+    } else if (prevKnown !== undefined) {
+      // Extrapolate beyond prevKnown
+      const startCoord = resolved[prevKnown]!;
+      const stepIndex = i - prevKnown;
+      const hash = items[i].name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+      const latStep = 0.12 + ((hash % 5) / 100);
+      const lngStep = 0.08 + (((hash >> 2) % 5) / 100);
+      result.push({
+        lat: startCoord.lat + stepIndex * latStep,
+        lng: startCoord.lng + stepIndex * lngStep,
+      });
+    } else if (nextKnown !== undefined) {
+      // Prepend before nextKnown
+      const endCoord = resolved[nextKnown]!;
+      const stepIndex = nextKnown - i;
+      const hash = items[i].name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+      const latStep = 0.12 + ((hash % 5) / 100);
+      const lngStep = 0.08 + (((hash >> 2) % 5) / 100);
+      result.push({
+        lat: endCoord.lat - stepIndex * latStep,
+        lng: endCoord.lng - stepIndex * lngStep,
+      });
+    } else {
+      // Fallback center
+      const textLower = (items[i].name + " " + (items[i].location || "")).toLowerCase();
+      const isIndian = !textLower.includes("nepal") && !textLower.includes("pokhara") && !textLower.includes("kathmandu");
+      const baseCenter = isIndian ? { lat: 22.7196, lng: 75.8577 } : { lat: 28.2096, lng: 83.9856 };
+      result.push({
+        lat: baseCenter.lat + (i * 0.1),
+        lng: baseCenter.lng + (i * 0.1),
+      });
+    }
   }
 
-  // 5. Smart fallback based on country keywords
-  const indianTokens = [
-    "india", "panjab", "punjab", "goa", "delhi", "mumbai", "bhopal", "indore", "jaipur",
-    "highway", "hub", "dhule", "bypass", "session", "extension", "stop", "rest", "corridor",
-    "maharashtra", "gujarat", "rajasthan"
-  ];
-  const isIndian = indianTokens.some((t) => textLower.includes(t));
-  const baseCenter = isIndian ? { lat: 20.5937, lng: 78.9629 } : { lat: 28.2096, lng: 83.9856 };
-
-  let hash = 0;
-  for (let i = 0; i < textLower.length; i++) {
-    hash = (hash << 5) - hash + textLower.charCodeAt(i);
-    hash |= 0;
-  }
-  const latOffset = (Math.abs(hash) % 200) / 100 - 1;
-  const lngOffset = (Math.abs(hash >> 3) % 200) / 100 - 1;
-
-  return { lat: baseCenter.lat + latOffset, lng: baseCenter.lng + lngOffset };
+  return result;
 }
 
 export const InteractiveMap: React.FC<InteractiveMapProps> = ({
@@ -296,7 +418,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
-  const polylineRef = useRef<any>(null);
+  const routeLayersRef = useRef<any[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -346,23 +468,21 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
     const map = mapInstanceRef.current;
 
-    // Clear old markers & polyline
+    // Clear old markers & route layers
     Object.values(markersRef.current).forEach((m) => m.remove());
     markersRef.current = {};
 
-    if (polylineRef.current) {
-      polylineRef.current.remove();
-      polylineRef.current = null;
-    }
+    routeLayersRef.current.forEach((layer) => layer.remove());
+    routeLayersRef.current = [];
 
     if (items.length === 0) return;
 
-    const group: any[] = [];
-    let lastResolvedCoords: { lat: number; lng: number } | null = null;
+    // Batch resolve coordinates with linear interpolation for unmapped intermediate waypoints
+    const allCoords = resolveAllItemCoordinates(items);
+    const group: [number, number][] = [];
 
     items.forEach((item, index) => {
-      const coords = resolveCoordinates(item, lastResolvedCoords);
-      lastResolvedCoords = coords;
+      const coords = allCoords[index];
       const itemLat = coords.lat;
       const itemLng = coords.lng;
 
@@ -420,13 +540,70 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
       group.push([itemLat, itemLng]);
     });
 
+    // Draw Proper Road Routes using OSRM Driving Route API (with alternative routes)
     if (drawPolyline && group.length > 1) {
-      polylineRef.current = L.polyline(group, {
-        color: "#2563eb",
-        weight: 4,
-        opacity: 0.85,
-        dashArray: "6, 8"
-      }).addTo(map);
+      const drawFallback = () => {
+        const fallbackPoly = L.polyline(group, {
+          color: "#2563eb",
+          weight: 5,
+          opacity: 0.85,
+          dashArray: "6, 8",
+        }).addTo(map);
+        routeLayersRef.current.push(fallbackPoly);
+      };
+
+      // OSRM expects waypoints in lon,lat order separated by semicolons
+      const osrmWaypoints = group.map((pt) => `${pt[1]},${pt[0]}`).join(";");
+      const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${osrmWaypoints}?overview=full&geometries=geojson&alternatives=true`;
+
+      fetch(osrmUrl)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.code === "Ok" && Array.isArray(data.routes) && data.routes.length > 0) {
+            // Draw alternative routes first (if present)
+            for (let r = data.routes.length - 1; r >= 1; r--) {
+              const route = data.routes[r];
+              if (route.geometry && Array.isArray(route.geometry.coordinates)) {
+                const lineCoords = route.geometry.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
+                const altLine = L.polyline(lineCoords, {
+                  color: r === 1 ? "#0284c7" : "#64748b",
+                  weight: 4,
+                  opacity: 0.75,
+                  dashArray: "8, 8",
+                }).addTo(map);
+
+                const distKm = (route.distance / 1000).toFixed(0);
+                const durHours = (route.duration / 3600).toFixed(1);
+                altLine.bindTooltip(`🛣️ Alternative Route #${r} (${distKm} km • ~${durHours}h)`, { sticky: true });
+                routeLayersRef.current.push(altLine);
+              }
+            }
+
+            // Draw main primary driving route on top
+            const primaryRoute = data.routes[0];
+            if (primaryRoute.geometry && Array.isArray(primaryRoute.geometry.coordinates)) {
+              const mainLineCoords = primaryRoute.geometry.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
+              const mainLine = L.polyline(mainLineCoords, {
+                color: "#2563eb",
+                weight: 6,
+                opacity: 0.9,
+              }).addTo(map);
+
+              const distKm = (primaryRoute.distance / 1000).toFixed(0);
+              const durHours = (primaryRoute.duration / 3600).toFixed(1);
+              mainLine.bindTooltip(`🚗 Main Driving Route (${distKm} km • ~${durHours}h)`, { sticky: true });
+              routeLayersRef.current.push(mainLine);
+            } else {
+              drawFallback();
+            }
+          } else {
+            drawFallback();
+          }
+        })
+        .catch((err) => {
+          console.warn("OSRM routing fetch warning, drawing interpolated path:", err);
+          drawFallback();
+        });
     }
 
     if (selectedId && markersRef.current[String(selectedId)]) {

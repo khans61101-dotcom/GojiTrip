@@ -4,7 +4,7 @@ import React from "react";
 import { cmsStore } from "@/lib/cms-store";
 import { GuideEntry } from "@/types/cms";
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { ImageFileInput, validateImagePayloads } from "@/components/common/ImageFileInput";
+import { ImageFileInput, validateImagePayloads, compressImageFile } from "@/components/common/ImageFileInput";
 import { TagInputSection } from "@/components/common/TagInputSection";
 import {
   Users,
@@ -62,7 +62,7 @@ function MediaPickerModal({
     }
   }, [isOpen]);
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     setUploadError(null);
 
@@ -93,11 +93,13 @@ function MediaPickerModal({
     }
 
     setSelectedFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImagePreview(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressedUrl = await compressImageFile(file, 800, 0.65);
+      setImagePreview(compressedUrl);
+    } catch (err: any) {
+      console.error("Compression error:", err);
+      setUploadError(err.message || "Failed to process image file");
+    }
   };
 
   const handleUploadImage = () => {

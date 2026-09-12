@@ -39,6 +39,14 @@ export default function FamousPlaceDetailPage() {
   const placeNameParam = searchParams.get("name") || "";
   const sourceParam = searchParams.get("source") || "";
   const destParam = searchParams.get("destination") || "";
+  const locationParam = searchParams.get("location") || "";
+  const descriptionParam = searchParams.get("description") || "";
+  const imageParam = searchParams.get("image") || "";
+  const ratingParam = searchParams.get("rating") || "";
+  const categoryParam = searchParams.get("category") || "";
+  const bestTimeParam = searchParams.get("bestTime") || "";
+  const latParam = searchParams.get("latitude") || "";
+  const lngParam = searchParams.get("longitude") || "";
 
   const [place, setPlace] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
@@ -49,45 +57,103 @@ export default function FamousPlaceDetailPage() {
   React.useEffect(() => {
     window.scrollTo(0, 0);
 
-    // 1. Check cmsStore for place
-    const allStorePlaces = cmsStore.getPlaces();
-    let found: any = allStorePlaces.find((p) => String(p.id) === String(id) || p.name.toLowerCase() === placeNameParam.toLowerCase());
+    let cancelled = false;
 
-    // 2. Check INITIAL_PLACES fallback
-    if (!found) {
-      found = INITIAL_PLACES.find((p) => String(p.id) === String(id) || p.name.toLowerCase() === placeNameParam.toLowerCase());
-    }
+    async function resolvePlaceDetails() {
+      setLoading(true);
 
-    // 3. Construct default fallback if ID or Name provided
-    if (!found) {
-      found = {
+      // 1. Check cmsStore for place
+      const allStorePlaces = cmsStore.getPlaces();
+      let found: any = allStorePlaces.find(
+        (p) => String(p.id) === String(id) || p.name.toLowerCase() === placeNameParam.toLowerCase()
+      );
+
+      // 2. Check INITIAL_PLACES fallback
+      if (!found) {
+        found = INITIAL_PLACES.find(
+          (p) => String(p.id) === String(id) || p.name.toLowerCase() === placeNameParam.toLowerCase()
+        );
+      }
+
+      // 3. Construct object from URL query params or live fetch data
+      const targetName = placeNameParam || (found ? found.name : "Famous Landmark Destination");
+      const targetLocation = locationParam || (found ? found.location : (destParam || sourceParam || "Tourism Corridor"));
+      const targetDescription = descriptionParam || (found ? found.description : `A world-renowned landmark and essential sightseeing destination located in ${targetLocation}. Known for stunning scenery, rich heritage, and cultural significance.`);
+      const targetImage = imageParam || (found ? (found.imageUrl || (found.photos && found.photos[0])) : "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1200&q=80");
+      const targetRating = ratingParam ? parseFloat(ratingParam) : (found ? found.rating : 4.8);
+      const targetCategory = categoryParam ? [categoryParam] : (found ? (Array.isArray(found.category) ? found.category : [found.category]) : ["Historical & Cultural Heritage"]);
+      const targetBestTime = bestTimeParam || (found ? found.bestTimeToVisit : "All Year Round (Clear Skies & Pleasant Weather)");
+      const targetLat = latParam ? parseFloat(latParam) : (found ? found.latitude : undefined);
+      const targetLng = lngParam ? parseFloat(lngParam) : (found ? found.longitude : undefined);
+
+      let resolvedPlace: any = {
         id: id || "place-detail",
-        name: placeNameParam || "Famous Tourist Destination",
-        category: "Historical & Cultural Heritage",
-        location: "Nepal",
-        description: "A world-renowned landmark and essential sightseeing stop along popular travel corridors. Known for stunning architecture, rich spiritual heritage, and panoramic natural views.",
-        bestTimeToVisit: "October - March (Clear Skies & Pleasant Weather)",
-        entryFee: 0,
-        currency: "NPR",
-        rating: 4.9,
-        reviews: 850,
-        imageUrl: "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1200&q=80",
-        photos: [
+        name: targetName,
+        category: targetCategory,
+        location: targetLocation,
+        description: targetDescription,
+        bestTimeToVisit: targetBestTime,
+        entryFee: found ? (found.entryFee || 0) : 0,
+        currency: found ? (found.currency || "NPR") : "NPR",
+        rating: targetRating,
+        reviews: found ? (found.reviews || 850) : 450,
+        imageUrl: targetImage,
+        photos: (found && found.photos && found.photos.length > 0) ? found.photos : [
+          targetImage,
           "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1200&q=80",
           "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1200&q=80",
           "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80"
         ],
+        latitude: targetLat,
+        longitude: targetLng,
         approvalStatus: "Published",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
+
+      // 4. Try fetching live Wikipedia REST API summary for deep details & real photos
+      if (targetName && targetName !== "Famous Landmark Destination") {
+        try {
+          const cleanName = targetName.split(",")[0].replace(/#\d+/, "").trim();
+          const wikiRes = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanName)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null);
+
+          if (wikiRes && !cancelled) {
+            if (wikiRes.extract) {
+              resolvedPlace.description = wikiRes.extract;
+            }
+            if (wikiRes.description && (!locationParam || locationParam === "Nepal")) {
+              resolvedPlace.location = `${wikiRes.description}`;
+            }
+            const wikiImg = wikiRes.thumbnail?.source || wikiRes.originalimage?.source;
+            if (wikiImg) {
+              resolvedPlace.imageUrl = wikiImg;
+              resolvedPlace.photos = [wikiImg, ...resolvedPlace.photos.filter((p: string) => p !== wikiImg)];
+            }
+            if (wikiRes.coordinates) {
+              resolvedPlace.latitude = wikiRes.coordinates.lat;
+              resolvedPlace.longitude = wikiRes.coordinates.lon;
+            }
+          }
+        } catch (wikiErr) {
+          console.warn("Wikipedia detail fetch error:", wikiErr);
+        }
+      }
+
+      if (!cancelled) {
+        setPlace(resolvedPlace);
+        setActivePhoto(resolvedPlace.imageUrl);
+        setLoading(false);
+      }
     }
 
-    setPlace(found);
-    const mainImg = (found as any).imageUrl || ((found as any).photos && (found as any).photos[0]) || "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=1200&q=80";
-    setActivePhoto(mainImg);
-    setLoading(false);
-  }, [id, placeNameParam]);
+    resolvePlaceDetails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, placeNameParam, locationParam, descriptionParam, imageParam, ratingParam, categoryParam, bestTimeParam, latParam, lngParam, sourceParam, destParam]);
 
   const handleShare = () => {
     if (navigator.clipboard) {

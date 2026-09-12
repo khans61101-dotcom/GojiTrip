@@ -146,7 +146,7 @@ if (loading) {
 }
 
 const filteredHotels = (Array.isArray(hotels) ? hotels : []).filter((h) => {
-  const isNotHomestay = (h.propertyType || "").toLowerCase() !== "homestay";
+  const isNotHomestay = (h.propertyType || "").toLowerCase() !== "homestay" && !(h.hotelName || "").toLowerCase().includes("homestay");
 
   const matchesSearch =
     (h.hotelName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||

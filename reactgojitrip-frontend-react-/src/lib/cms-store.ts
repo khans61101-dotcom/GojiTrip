@@ -266,35 +266,46 @@ class CMSStore {
     }
   }
 
-  private saveToLocalStorage() {
+  private safeSaveItem(key: string, data: any) {
     if (typeof window === 'undefined') return;
     try {
-      localStorage.setItem('gojitrip_cms_hotels', JSON.stringify(this.hotels));
-      localStorage.setItem('gojitrip_cms_restaurants', JSON.stringify(this.restaurants));
-      localStorage.setItem('gojitrip_cms_routes', JSON.stringify(this.routes));
-      localStorage.setItem('gojitrip_cms_activities', JSON.stringify(this.activities));
-      localStorage.setItem('gojitrip_cms_guides', JSON.stringify(this.guides));
-      localStorage.setItem('gojitrip_cms_places', JSON.stringify(this.places));
-      localStorage.setItem('gojitrip_cms_fuel_stations', JSON.stringify(this.fuelStations));
+      localStorage.setItem(key, JSON.stringify(data));
     } catch (e) {
-      console.warn("Failed to save CMS store to localStorage, performing lightweight image optimization:", e);
+      console.warn(`Failed to save ${key} directly, optimizing large image strings:`, e);
       try {
-        const cleanHotels = this.hotels.map(h => ({
-          ...h,
-          imageUrl: (h.imageUrl && h.imageUrl.length > 200000) ? '' : h.imageUrl,
-          hotelPhotos: (h.hotelPhotos || []).filter(p => p.length <= 200000),
-          photos: (h.photos || []).filter(p => p.length <= 200000),
-          roomTypes: (h.roomTypes || []).map(r => ({
-            ...r,
-            imageUrl: (r.imageUrl && r.imageUrl.length > 200000) ? '' : r.imageUrl,
-            photos: (r.photos || []).filter(p => p.length <= 200000),
-          })),
-        }));
-        localStorage.setItem('gojitrip_cms_hotels', JSON.stringify(cleanHotels));
+        const cleanedData = Array.isArray(data) ? data.map((item: any) => {
+          if (!item || typeof item !== 'object') return item;
+          const cleanItem = { ...item };
+          if (typeof cleanItem.photoUrl === 'string' && cleanItem.photoUrl.length > 400000) {
+            cleanItem.photoUrl = '';
+          }
+          if (typeof cleanItem.imageUrl === 'string' && cleanItem.imageUrl.length > 400000) {
+            cleanItem.imageUrl = '';
+          }
+          if (Array.isArray(cleanItem.photos)) {
+            cleanItem.photos = cleanItem.photos.filter((p: any) => typeof p === 'string' && p.length <= 400000);
+          }
+          if (Array.isArray(cleanItem.hotelPhotos)) {
+            cleanItem.hotelPhotos = cleanItem.hotelPhotos.filter((p: any) => typeof p === 'string' && p.length <= 400000);
+          }
+          return cleanItem;
+        }) : data;
+        localStorage.setItem(key, JSON.stringify(cleanedData));
       } catch (innerErr) {
-        throw new Error("Storage Quota Exceeded: Your browser storage is full. Please use smaller image files so your entries persist permanently.");
+        console.error(`Unable to persist ${key} to localStorage:`, innerErr);
       }
     }
+  }
+
+  private saveToLocalStorage() {
+    if (typeof window === 'undefined') return;
+    this.safeSaveItem('gojitrip_cms_hotels', this.hotels);
+    this.safeSaveItem('gojitrip_cms_restaurants', this.restaurants);
+    this.safeSaveItem('gojitrip_cms_routes', this.routes);
+    this.safeSaveItem('gojitrip_cms_activities', this.activities);
+    this.safeSaveItem('gojitrip_cms_guides', this.guides);
+    this.safeSaveItem('gojitrip_cms_places', this.places);
+    this.safeSaveItem('gojitrip_cms_fuel_stations', this.fuelStations);
   }
 
   private notify() {
@@ -462,8 +473,14 @@ class CMSStore {
         : (prevGuides.length > 0 ? prevGuides : INITIAL_GUIDES);
 
       prevGuides.forEach((pg) => {
-        if (!mergedGuides.some(m => String(m.id) === String(pg.id))) {
+        if (!mergedGuides.some(m => String(m.id) === String(pg.id) || (m.fullName && pg.fullName && m.fullName.toLowerCase().trim() === pg.fullName.toLowerCase().trim()))) {
           mergedGuides.unshift(pg as GuideEntry);
+        }
+      });
+
+      INITIAL_GUIDES.forEach((ig) => {
+        if (!mergedGuides.some(m => String(m.id) === String(ig.id) || (m.fullName && ig.fullName && m.fullName.toLowerCase().trim() === ig.fullName.toLowerCase().trim()))) {
+          mergedGuides.push(ig as GuideEntry);
         }
       });
       this.guides = mergedGuides;

@@ -107,6 +107,15 @@ export function App() {
         />
 
         <Route
+          path="/pages/homestays"
+          element={
+            <PublicLayout>
+              <PublicHotelsPage />
+            </PublicLayout>
+          }
+        />
+
+        <Route
           path="/pages/restaurants"
           element={
             <PublicLayout>

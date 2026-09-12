@@ -228,6 +228,33 @@ export default function FamousRoutes() {
             </Link>
           ))}
         </div>
+
+        {/* FIND MORE BUTTONS BAR */}
+        <div className="mt-10 text-center flex flex-wrap justify-center items-center gap-3">
+          <Link
+            to="/routes"
+            className="inline-flex items-center space-x-2 px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs sm:text-sm transition-all shadow-lg hover:scale-105"
+          >
+            <Map className="w-4 h-4" />
+            <span>Find More Routes</span>
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+
+          <Link
+            to="/pages/famous-places"
+            className="inline-flex items-center space-x-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-extrabold text-xs sm:text-sm transition-all shadow-lg hover:scale-105"
+          >
+            <Star className="w-4 h-4 fill-white" />
+            <span>Find More Famous Places</span>
+          </Link>
+
+          <Link
+            to="/pages/fuel-station"
+            className="inline-flex items-center space-x-2 px-6 py-3 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs sm:text-sm transition-all shadow-lg hover:scale-105"
+          >
+            <span>⛽ Find More Fuel Stations</span>
+          </Link>
+        </div>
       </div>
     </section>
   );

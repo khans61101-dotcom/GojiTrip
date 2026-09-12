@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 import { cmsStore } from "@/lib/cms-store";
-import { ImageFileInput, validateImagePayloads } from "@/components/common/ImageFileInput";
+import { ImageFileInput, validateImagePayloads, compressImageFile } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import { LocationFormSection } from "@/components/common/LocationFormSection";
 import { TagInputSection } from "@/components/common/TagInputSection";
@@ -157,7 +157,7 @@ function MediaPickerModal({
   // FILE SELECT
   // ============================================================
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
 
     setUploadError(null);
@@ -201,21 +201,15 @@ function MediaPickerModal({
 
     setSelectedFile(file);
 
-    const reader = new FileReader();
-
-    reader.onloadend = () => {
-      if (typeof reader.result === "string") {
-        setImagePreview(reader.result);
-      }
-    };
-
-    reader.onerror = () => {
-      setUploadError("Unable to read selected image.");
+    try {
+      const compressedUrl = await compressImageFile(file, 1200, 0.80);
+      setImagePreview(compressedUrl);
+    } catch (err: any) {
+      console.error("Compression error:", err);
+      setUploadError(err.message || "Unable to process selected image.");
       setSelectedFile(null);
       setImagePreview(null);
-    };
-
-    reader.readAsDataURL(file);
+    }
   };
 
   // ============================================================

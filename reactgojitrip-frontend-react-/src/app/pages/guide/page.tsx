@@ -831,6 +831,27 @@ const GuidePage: React.FC = () => {
           location,
         };
       });
+
+      // Always merge storeGuides so custom created guides in cmsStore are NEVER lost
+      storeGuides.forEach((sg) => {
+        if (!guideData.some((g) => String(g.id) === String(sg.id) || (g.name && sg.fullName && g.name.toLowerCase().trim() === sg.fullName.toLowerCase().trim()))) {
+          guideData.unshift({
+            id: String(sg.id),
+            name: sg.fullName,
+            description: sg.bio || `Certified ${sg.specialization} with ${sg.experienceYears || 5}+ years experience across Annapurna & Mustang corridors.`,
+            image: sg.photoUrl || "https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80",
+            rating: 4.9,
+            location: sg.location || "Pokhara / Kathmandu",
+            price: sg.dailyRate || 3500,
+            specialties: sg.specialization ? [sg.specialization, "Trekking", "Mountain Navigation"] : ["Trekking", "Cultural Heritage"],
+            languages: sg.languages && sg.languages.length > 0 ? sg.languages : ["Nepali", "English"],
+            guideContactDetails: sg.contactNumber,
+            availability: "Available Daily",
+            experienceYears: sg.experienceYears || 5,
+            certified: true,
+          });
+        }
+      });
     } catch (guideError) {
       console.error("Failed to fetch guides, loading store fallback:", guideError);
       guideData = [];

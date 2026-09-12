@@ -17,6 +17,8 @@ import {
   ArrowLeft,
   Maximize2,
   Minimize2,
+  Home,
+  Hotel as HotelIcon,
 } from "lucide-react";
 import { listHotels, getHotelRooms, RoomType } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
@@ -45,6 +47,7 @@ interface Hotel {
   contact?: string;
   status?: "draft" | "under-review" | "approved" | "published";
   roomTypes?: RoomType[];
+  propertyType?: string;
 }
 
 interface FilterState {
@@ -594,6 +597,17 @@ const HotelsPage: React.FC = () => {
       setSearchQuery(locParam.trim());
     }
   }, []);
+  const [stayTypeFilter, setStayTypeFilter] = useState<"hotels" | "homestays" | "all">(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const t = params.get("type") || params.get("category");
+      if (t === "homestays" || t === "homestay" || window.location.pathname.includes("/pages/homestays")) {
+        return "homestays";
+      }
+    }
+    return "hotels";
+  });
+
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null);
@@ -694,10 +708,12 @@ const HotelsPage: React.FC = () => {
           ? storeMatch.pricePerNight
           : (typeof hotel.pricePerNight === "number" && hotel.pricePerNight > 0 ? hotel.pricePerNight : 2500);
         const currency = storeMatch?.currency || hotel.currency || "NRs";
+        const hName = hotel.hotelName || hotel.name || "Unnamed Hotel";
+        const rawPropType = storeMatch?.propertyType || hotel.propertyType || (hName.toLowerCase().includes("homestay") ? "Homestay" : "Hotel");
 
         return {
           id: String(hotel.id ?? Math.random()),
-          name: hotel.hotelName || hotel.name || "Unnamed Hotel",
+          name: hName,
           description: hotel.description || "No description available",
           image: imageUrl,
           hotelPhotos: photos.length > 0 ? photos : [imageUrl],
@@ -722,6 +738,7 @@ const HotelsPage: React.FC = () => {
           lat: storeMatch?.latitude || lat,
           lng: storeMatch?.longitude || lng,
           gpsCoordinates: hotel.gpsCoordinates,
+          propertyType: rawPropType,
         };
       });
 
@@ -733,10 +750,12 @@ const HotelsPage: React.FC = () => {
             ? sh.photos
             : (sh.imageUrl ? [sh.imageUrl] : []);
           const imageUrl = sh.imageUrl || photos[0] || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
+          const shName = sh.hotelName || "Unnamed Hotel";
+          const shPropType = sh.propertyType || (shName.toLowerCase().includes("homestay") ? "Homestay" : "Hotel");
 
           transformedHotels.unshift({
             id: String(sh.id),
-            name: sh.hotelName || "Unnamed Hotel",
+            name: shName,
             description: sh.location || "No description available",
             image: imageUrl,
             hotelPhotos: photos,
@@ -753,6 +772,7 @@ const HotelsPage: React.FC = () => {
             roomTypes: [],
             lat: sh.latitude,
             lng: sh.longitude,
+            propertyType: shPropType,
           });
         }
       });
@@ -792,6 +812,20 @@ const HotelsPage: React.FC = () => {
 
   const filterHotels = useCallback(() => {
     let filtered = hotels;
+
+    if (stayTypeFilter === "hotels") {
+      filtered = filtered.filter((h) => {
+        const p = (h.propertyType || "").toLowerCase();
+        const n = (h.name || "").toLowerCase();
+        return p !== "homestay" && !n.includes("homestay");
+      });
+    } else if (stayTypeFilter === "homestays") {
+      filtered = filtered.filter((h) => {
+        const p = (h.propertyType || "").toLowerCase();
+        const n = (h.name || "").toLowerCase();
+        return p === "homestay" || n.includes("homestay");
+      });
+    }
 
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
@@ -842,7 +876,7 @@ const HotelsPage: React.FC = () => {
     }
 
     return filtered;
-  }, [hotels, searchQuery, filters]);
+  }, [hotels, searchQuery, filters, stayTypeFilter]);
 
   useEffect(() => {
     fetchHotels();
@@ -936,13 +970,63 @@ const HotelsPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="pb-3 flex items-center gap-2">
-            <span className="text-sm text-blue-100">
-              {loading ? "Loading..." : `${filteredHotels.length} ${filteredHotels.length === 1 ? "hotel" : "hotels"} found`}
-            </span>
-            {searchQuery && (
-              <span className="text-xs text-blue-200/80 bg-white/10 px-2 py-0.5 rounded-full">"{searchQuery}"</span>
-            )}
+          <div className="pb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center space-x-1.5 bg-black/25 p-1 rounded-xl border border-white/15 backdrop-blur-md">
+              <button
+                type="button"
+                onClick={() => setStayTypeFilter("hotels")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  stayTypeFilter === "hotels"
+                    ? "bg-white text-blue-700 shadow-md scale-105"
+                    : "text-blue-100 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                <HotelIcon className="w-3.5 h-3.5" />
+                <span>Hotels Only</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStayTypeFilter("homestays")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  stayTypeFilter === "homestays"
+                    ? "bg-emerald-500 text-white shadow-md scale-105"
+                    : "text-blue-100 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                <Home className="w-3.5 h-3.5" />
+                <span>Homestays Only</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStayTypeFilter("all")}
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  stayTypeFilter === "all"
+                    ? "bg-purple-600 text-white shadow-md scale-105"
+                    : "text-blue-100 hover:text-white hover:bg-white/10"
+                }`}
+              >
+                <span>All Stays</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs sm:text-sm font-semibold text-blue-100">
+                {loading
+                  ? "Loading..."
+                  : `${filteredHotels.length} ${
+                      stayTypeFilter === "homestays"
+                        ? "homestay" + (filteredHotels.length === 1 ? "" : "s")
+                        : stayTypeFilter === "hotels"
+                        ? "hotel" + (filteredHotels.length === 1 ? "" : "s")
+                        : "stay" + (filteredHotels.length === 1 ? "" : "s")
+                    } found`}
+              </span>
+              {searchQuery && (
+                <span className="text-xs text-blue-200/80 bg-white/10 px-2 py-0.5 rounded-full">"{searchQuery}"</span>
+              )}
+            </div>
           </div>
         </div>
 
