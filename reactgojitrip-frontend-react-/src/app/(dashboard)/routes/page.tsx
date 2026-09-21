@@ -24,13 +24,15 @@ import {
   ChevronRight,
   Building2,
   Utensils,
+  Sparkles,
 } from "lucide-react";
 
 import { StatusBadge } from "@/components/common/StatusBadge";
-import { ImageFileInput, validateImagePayloads } from "@/components/common/ImageFileInput";
+import { ImageFileInput, validateImagePayloads, sanitizeAndCompressImages } from "@/components/common/ImageFileInput";
 import { MultiImageFileInput } from "@/components/common/MultiImageFileInput";
 import { API_BASE_URL } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
+import { calculateRouteDistanceAndTime } from "@/lib/route-calculator";
 
 // ============================================================
 // TYPES
@@ -79,6 +81,10 @@ type RouteRecord = {
   touristAttractions: POI[];
 
   weatherSummary: string;
+
+  imageUrl?: string;
+  photos?: string[];
+  routePhotos?: string[];
 
   emergencyContacts: EmergencyContact[];
 
@@ -495,6 +501,20 @@ function mapRouteFromApi(rawRoute: any): RouteRecord {
       ),
     ).map(String),
 
+    imageUrl: String(
+      valueFromObject(
+        route,
+        "imageUrl",
+        "image_url",
+        "image",
+        "bannerImage",
+        "banner_image",
+      ) ?? "",
+    ) || (safeArray(parseJsonIfNeeded(valueFromObject(route, "photos", "routePhotos", "route_photos", "gallery")))[0] ? String(safeArray(parseJsonIfNeeded(valueFromObject(route, "photos", "routePhotos", "route_photos", "gallery")))[0]) : ""),
+
+    photos: safeArray(parseJsonIfNeeded(valueFromObject(route, "photos", "routePhotos", "route_photos", "gallery"))).map(String),
+    routePhotos: safeArray(parseJsonIfNeeded(valueFromObject(route, "photos", "routePhotos", "route_photos", "gallery"))).map(String),
+
     approvalStatus: (approvalStatus ?? "Draft") as ApprovalStatus,
 
     createdByName: String(
@@ -567,6 +587,9 @@ const EMPTY_ROUTE: Partial<RouteRecord> = {
 
   connectedTransportIds: [],
   connectedHotelIds: [],
+  imageUrl: "",
+  photos: [],
+  routePhotos: [],
 };
 
 // ============================================================
@@ -588,6 +611,60 @@ export default function RoutesPage() {
   const [saving, setSaving] = React.useState(false);
 
   const [error, setError] = React.useState<string | null>(null);
+
+  // Auto route calculation state for Distance (KM) & Est. Travel Time
+  const [isCalculatingRoute, setIsCalculatingRoute] = React.useState(false);
+  const [autoCalcSuccessMsg, setAutoCalcSuccessMsg] = React.useState<string | null>(null);
+
+  // Auto-calculate Distance (KM) and Est. Travel Time whenever Origin or Destination changes
+  React.useEffect(() => {
+    if (!isModalOpen || !editingRoute) return;
+
+    const origin = (editingRoute.origin || "").trim();
+    const destination = (editingRoute.destination || "").trim();
+
+    if (origin.length < 2 || destination.length < 2) {
+      setAutoCalcSuccessMsg(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setIsCalculatingRoute(true);
+        const result = await calculateRouteDistanceAndTime(origin, destination);
+        if (result && result.distanceKm > 0) {
+          setEditingRoute((prev) => {
+            if (!prev) return prev;
+            // Also auto-update routeName if it's currently empty or standard default format
+            const prevName = prev.routeName?.trim() || "";
+            const isDefaultName =
+              !prevName ||
+              prevName.includes("→") ||
+              prevName.includes("➔") ||
+              prevName.includes("-") ||
+              prevName === "Pokhara → Muktinath";
+
+            return {
+              ...prev,
+              totalDistanceKm: result.distanceKm,
+              estimatedTravelTime: result.travelTime,
+              routeName: isDefaultName ? `${origin} → ${destination}` : prev.routeName,
+            };
+          });
+
+          setAutoCalcSuccessMsg(
+            `Auto-calculated: ${result.distanceKm} KM • ${result.travelTime}`
+          );
+        }
+      } catch (err) {
+        console.error("Auto route calculation error:", err);
+      } finally {
+        setIsCalculatingRoute(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [isModalOpen, editingRoute?.origin, editingRoute?.destination]);
 
   // ==========================================================
   // GET ALL ROUTES FROM DATABASE
@@ -674,8 +751,17 @@ export default function RoutesPage() {
   // ==========================================================
 
   const handleOpenEditModal = (route: RouteRecord) => {
+    const rawPhotos = (route.photos && route.photos.length > 0)
+      ? route.photos
+      : (route.routePhotos && route.routePhotos.length > 0)
+      ? route.routePhotos
+      : (route.imageUrl ? [route.imageUrl] : []);
+
     setEditingRoute({
       ...route,
+      imageUrl: route.imageUrl || rawPhotos[0] || "",
+      photos: [...rawPhotos],
+      routePhotos: [...rawPhotos],
 
       fuelStations: [...route.fuelStations],
 
@@ -706,19 +792,10 @@ export default function RoutesPage() {
 
     try {
       setError(null);
-
-      const response = await fetch(`${API_BASE_URL}/routes/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error(`Delete failed. HTTP ${response.status}`);
-      }
-
+      await cmsStore.deleteRoute(id);
       await fetchRoutes();
     } catch (err) {
       console.error("DELETE ROUTE ERROR:", err);
-
       setError(err instanceof Error ? err.message : "Unable to delete route");
     }
   };
@@ -734,8 +811,18 @@ export default function RoutesPage() {
       return;
     }
 
-    const photosToCheck = (editingRoute as any).photos || [];
-    const imageCheck = validateImagePayloads([(editingRoute as any).imageUrl, ...photosToCheck]);
+    const rawPhotos = (editingRoute as any).photos || (editingRoute as any).routePhotos || [];
+    const rawMainImage = (editingRoute as any).imageUrl || rawPhotos[0] || "";
+
+    // Auto-compress any base64 images so they are compact and safe for database persistence
+    const compressedMain = rawMainImage.startsWith("data:image")
+      ? (await sanitizeAndCompressImages([rawMainImage]))[0] || ""
+      : rawMainImage;
+    const compressedPhotos = await sanitizeAndCompressImages(rawPhotos);
+    const finalPhotos = compressedPhotos.length > 0 ? compressedPhotos : (compressedMain ? [compressedMain] : []);
+    const finalImageUrl = compressedMain || finalPhotos[0] || "";
+
+    const imageCheck = validateImagePayloads([finalImageUrl, ...finalPhotos]);
     if (!imageCheck.valid) {
       alert(imageCheck.errorMsg);
       return;
@@ -798,8 +885,9 @@ export default function RoutesPage() {
 
         touristAttractions: editingRoute.touristAttractions ?? [],
 
-        imageUrl: (editingRoute as any).imageUrl || "",
-        photos: (editingRoute as any).imageUrl ? [(editingRoute as any).imageUrl] : [],
+        imageUrl: finalImageUrl,
+        photos: finalPhotos,
+        routePhotos: finalPhotos,
 
         emergencyContacts: editingRoute.emergencyContacts ?? [],
 
@@ -821,6 +909,7 @@ export default function RoutesPage() {
         weatherSummary: payload.weatherSummary,
         imageUrl: payload.imageUrl,
         photos: payload.photos,
+        routePhotos: payload.routePhotos,
         approvalStatus: payload.approvalStatus as any,
         createdByName: payload.createdByName,
       });
@@ -1424,9 +1513,15 @@ export default function RoutesPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    Origin Point
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-300 font-semibold">
+                      Origin Point
+                    </label>
+                    <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                      <Navigation className="w-3 h-3" />
+                      Start
+                    </span>
+                  </div>
 
                   <input
                     type="text"
@@ -1437,14 +1532,21 @@ export default function RoutesPage() {
                         origin: e.target.value,
                       })
                     }
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white"
+                    placeholder="e.g. Pokhara, Bhopal, Delhi"
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    Destination Point
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-300 font-semibold">
+                      Destination Point
+                    </label>
+                    <span className="text-[10px] text-red-400 font-semibold flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      End
+                    </span>
+                  </div>
 
                   <input
                     type="text"
@@ -1455,18 +1557,56 @@ export default function RoutesPage() {
                         destination: e.target.value,
                       })
                     }
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white"
+                    placeholder="e.g. Muktinath, Indore, Jaipur"
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
+
+              {/* AUTO-CALCULATED STATUS NOTIFICATION */}
+              {(isCalculatingRoute || autoCalcSuccessMsg) && (
+                <div
+                  className={`p-2.5 rounded-xl text-xs flex items-center justify-between border transition-all ${
+                    isCalculatingRoute
+                      ? "bg-blue-950/40 border-blue-800/60 text-blue-300"
+                      : "bg-emerald-950/40 border-emerald-800/60 text-emerald-300"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {isCalculatingRoute ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400 shrink-0" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    )}
+                    <span className="font-medium text-[11px]">
+                      {isCalculatingRoute
+                        ? "Auto-calculating Distance & Est. Travel Time..."
+                        : autoCalcSuccessMsg}
+                    </span>
+                  </div>
+
+                  {!isCalculatingRoute && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">
+                      Auto-filled
+                    </span>
+                  )}
+                </div>
+              )}
 
               {/* DISTANCE TIME ROAD */}
 
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    Distance (KM)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-300 font-semibold">
+                      Distance (KM)
+                    </label>
+                    {isCalculatingRoute ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
+                    ) : (
+                      <span className="text-[10px] text-slate-400">Auto</span>
+                    )}
+                  </div>
 
                   <input
                     type="number"
@@ -1478,14 +1618,21 @@ export default function RoutesPage() {
                         totalDistanceKm: Number(e.target.value) || 0,
                       })
                     }
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white"
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 font-semibold mb-1">
-                    Est. Travel Time
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-slate-300 font-semibold">
+                      Est. Travel Time
+                    </label>
+                    {isCalculatingRoute ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-emerald-400" />
+                    ) : (
+                      <span className="text-[10px] text-slate-400">Auto</span>
+                    )}
+                  </div>
 
                   <input
                     type="text"
@@ -1496,8 +1643,8 @@ export default function RoutesPage() {
                         estimatedTravelTime: e.target.value,
                       })
                     }
-                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white"
-                    placeholder="10 Hours"
+                    className="w-full bg-[#182238] border border-slate-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-emerald-500"
+                    placeholder="e.g. 8 Hours, 3.5 Hours"
                   />
                 </div>
 

@@ -13,8 +13,10 @@ import {
   FamousPlaceEntry,
   FuelStationEntry,
   RoomTypeInfo,
+  BookingRecord,
+  BookingStatus,
 } from '@/types/cms';
-import { INITIAL_ACTIVITIES, INITIAL_HOTELS, INITIAL_MEDIA, INITIAL_RESTAURANTS, INITIAL_ROUTES, INITIAL_TRANSPORTS, INITIAL_GUIDES, INITIAL_LOGS, INITIAL_PLACES, INITIAL_FUEL_STATIONS } from '@/lib/initial-data';
+import { INITIAL_ACTIVITIES, INITIAL_HOTELS, INITIAL_MEDIA, INITIAL_RESTAURANTS, INITIAL_ROUTES, INITIAL_TRANSPORTS, INITIAL_GUIDES, INITIAL_LOGS, INITIAL_PLACES, INITIAL_FUEL_STATIONS, INITIAL_BOOKINGS } from '@/lib/initial-data';
 
 type BackendTrip = { id: number; name: string; destination: string; price: number; description?: string | null; duration: number; is_active: boolean; image_url?: string | null; created_at: string; updated_at: string; owner_id?: number | null };
 type BackendRoute = { id: number; name: string; origin: string; destination: string; distance: number; status: string };
@@ -233,6 +235,7 @@ class CMSStore {
   private guides: GuideEntry[] = [];
   private places: FamousPlaceEntry[] = [];
   private fuelStations: FuelStationEntry[] = [];
+  private bookings: BookingRecord[] = INITIAL_BOOKINGS;
   private media: MediaItem[] = [];
   private logs: WorkflowHistoryLog[] = [];
   private currentRole: RoleType = 'Admin';
@@ -247,6 +250,8 @@ class CMSStore {
   private loadFromLocalStorage() {
     if (typeof window === 'undefined') return;
     try {
+      const storedTransports = localStorage.getItem('gojitrip_cms_transports');
+      if (storedTransports) this.transports = JSON.parse(storedTransports);
       const storedHotels = localStorage.getItem('gojitrip_cms_hotels');
       if (storedHotels) this.hotels = JSON.parse(storedHotels);
       const storedRest = localStorage.getItem('gojitrip_cms_restaurants');
@@ -261,6 +266,13 @@ class CMSStore {
       if (storedPlaces) this.places = JSON.parse(storedPlaces);
       const storedFuel = localStorage.getItem('gojitrip_cms_fuel_stations');
       if (storedFuel) this.fuelStations = JSON.parse(storedFuel);
+      const storedBookings = localStorage.getItem('gojitrip_cms_bookings');
+      if (storedBookings) {
+        try {
+          const parsed = JSON.parse(storedBookings);
+          if (Array.isArray(parsed) && parsed.length > 0) this.bookings = parsed;
+        } catch {}
+      }
     } catch (e) {
       console.warn("Failed to load CMS store from localStorage:", e);
     }
@@ -299,6 +311,7 @@ class CMSStore {
 
   private saveToLocalStorage() {
     if (typeof window === 'undefined') return;
+    this.safeSaveItem('gojitrip_cms_transports', this.transports);
     this.safeSaveItem('gojitrip_cms_hotels', this.hotels);
     this.safeSaveItem('gojitrip_cms_restaurants', this.restaurants);
     this.safeSaveItem('gojitrip_cms_routes', this.routes);
@@ -306,6 +319,7 @@ class CMSStore {
     this.safeSaveItem('gojitrip_cms_guides', this.guides);
     this.safeSaveItem('gojitrip_cms_places', this.places);
     this.safeSaveItem('gojitrip_cms_fuel_stations', this.fuelStations);
+    this.safeSaveItem('gojitrip_cms_bookings', this.bookings);
   }
 
   private notify() {
@@ -320,8 +334,8 @@ class CMSStore {
 
   private async refreshAll() {
     try {
-      const [trips, routes, hotels, restaurants, activities, guides, media, logs] = await Promise.all([
-        apiRequest<BackendTrip[]>('/trips'),
+      const [transports, routes, hotels, restaurants, activities, guides, media, logs] = await Promise.all([
+        apiRequest<any[]>('/transport').catch(() => []),
         apiRequest<BackendRoute[]>('/routes'),
         apiRequest<BackendHotel[]>('/hotels'),
         apiRequest<BackendRestaurant[]>('/restaurants'),
@@ -337,26 +351,53 @@ class CMSStore {
       const prevRoutes = this.routes;
       const prevTransports = this.transports;
 
-      this.transports = Array.isArray(trips) && trips.length > 0 
-        ? trips.map((t: any) => {
-            const mapped = mapTrip(t);
-            const prev = prevTransports.find(p => String(p.id) === String(mapped.id));
+      // Map server transport records, merging with any locally-stored extra fields
+      const rawTransports = Array.isArray(transports)
+        ? transports
+        : (transports && Array.isArray((transports as any).data) ? (transports as any).data : []);
+
+      const serverMappedTransports = rawTransports.length > 0
+        ? rawTransports.map((t: any) => {
+            const prev = prevTransports.find(p => String(p.id) === String(t.id));
             const vehicleAmenities = (Array.isArray(prev?.vehicleAmenities) && prev.vehicleAmenities.length > 0)
               ? prev.vehicleAmenities
-              : (Array.isArray((prev as any)?.amenities) && (prev as any).amenities.length > 0)
-              ? (prev as any).amenities
-              : (Array.isArray(t.vehicle_amenities) ? t.vehicle_amenities : (Array.isArray(t.vehicleAmenities) ? t.vehicleAmenities : (Array.isArray(t.amenities) ? t.amenities : [])));
-            const driverLicense = prev?.driverLicense || (prev as any)?.driver_license || (prev as any)?.licenseNumber || t.driver_license || t.driverLicense || t.licenseNumber || '';
-            const description = prev?.description || (prev as any)?.notes || t.description || '';
+              : (Array.isArray(t.vehicleAmenities) ? t.vehicleAmenities : (Array.isArray(t.vehicle_amenities) ? t.vehicle_amenities : (Array.isArray(t.amenities) ? t.amenities : [])));
+            const driverLicense = prev?.driverLicense || t.driverLicense || t.driver_license || t.licenseNumber || '';
+            const description = prev?.description || t.description || t.notes || '';
             return {
-              ...mapped,
+              id: String(t.id),
+              operatorName: t.operatorName || t.name || 'Unknown Operator',
+              contactPerson: t.contactPerson || t.driverName || '',
+              mobileNumber: t.mobileNumber || '',
+              whatsAppNumber: t.whatsAppNumber || '',
+              vehicleType: t.vehicleType || 'Jeep',
+              vehicleNumber: t.vehicleNumber || '',
+              seatCapacity: Number(t.seatCapacity) || 0,
+              route: t.route || '',
+              pickupPoint: t.pickupPoint || '',
+              departureTime: t.departureTime || '',
+              fare: Number(t.fare) || 0,
+              currency: t.currency || 'NPR',
+              luggagePolicy: t.luggagePolicy || '',
+              driverPhotoUrl: t.driverPhotoUrl || (Array.isArray(t.vehiclePhotos) && t.vehiclePhotos[0]) || '',
+              vehiclePhotos: Array.isArray(t.vehiclePhotos) ? t.vehiclePhotos : [],
+              licenceVerified: !!t.licenceVerified,
+              activeStatus: t.activeStatus || 'Active',
+              approvalStatus: (t.approvalStatus || 'Draft') as any,
+              createdAt: t.createdAt || new Date().toISOString(),
+              updatedAt: t.updatedAt || new Date().toISOString(),
+              createdByName: t.createdByName || 'API',
               vehicleAmenities,
               amenities: vehicleAmenities,
               driverLicense,
               description,
-            };
+            } as TransportEntry;
           })
-        : (prevTransports.filter(t => !String(t.id).startsWith('tr-')));
+        : (prevTransports.length > 0 ? prevTransports.filter(t => !String(t.id).startsWith('tr-')) : INITIAL_TRANSPORTS);
+
+      // Preserve locally-added transports (tr- prefix) that haven't been synced to server yet
+      const localOnlyTransports = prevTransports.filter(t => String(t.id).startsWith('tr-'));
+      this.transports = [...serverMappedTransports, ...localOnlyTransports];
       
       this.routes = Array.isArray(routes) && routes.length > 0 
         ? routes.map((r: any) => {
@@ -559,6 +600,8 @@ class CMSStore {
       (h) => (h.propertyType || "").toLowerCase() === "homestay" || (h.hotelName && h.hotelName.toLowerCase().includes("homestay"))
     );
 
+    const pendingBookingsCount = this.bookings.filter(b => b.status === 'Pending').length;
+
     return {
       totalEntries: allItems.length + this.media.length,
       transportsCount: this.transports.length,
@@ -571,6 +614,8 @@ class CMSStore {
       placesCount: places.length,
       fuelStationsCount: fuelStations.length,
       mediaCount: this.media.length,
+      bookingsCount: this.bookings.length,
+      pendingBookingsCount,
       draftCount,
       underReviewCount,
       approvedCount,
@@ -578,8 +623,86 @@ class CMSStore {
     };
   }
 
+  getBookings() { return this.bookings; }
+  getBookingById(id: string) { return this.bookings.find(b => String(b.id) === String(id)); }
+  async saveBooking(entry: Partial<BookingRecord> & { id?: string }) {
+    const id = entry.id || `BK-${Math.floor(1000 + Math.random() * 9000)}`;
+    const existingIdx = this.bookings.findIndex(b => String(b.id) === String(id));
+    const now = new Date().toISOString();
+    const fullBooking: BookingRecord = {
+      id,
+      itemType: entry.itemType || 'Hotel',
+      itemId: String(entry.itemId || ''),
+      itemName: entry.itemName || 'Booking Request',
+      itemImage: entry.itemImage,
+      location: entry.location || '',
+      customerName: entry.customerName || 'Guest User',
+      customerEmail: entry.customerEmail || '',
+      customerPhone: entry.customerPhone || '',
+      userId: entry.userId,
+      checkInDate: entry.checkInDate || now.split('T')[0],
+      checkOutDate: entry.checkOutDate,
+      bookingTime: entry.bookingTime || '12:00 PM',
+      guests: Number(entry.guests) || 1,
+      roomOrSeatType: entry.roomOrSeatType,
+      totalPrice: Number(entry.totalPrice) || 0,
+      currency: entry.currency || 'NPR',
+      status: entry.status || 'Pending',
+      paymentStatus: entry.paymentStatus || 'Pending',
+      specialRequests: entry.specialRequests,
+      createdAt: entry.createdAt || now,
+      updatedAt: now,
+    };
+
+    if (existingIdx >= 0) {
+      this.bookings[existingIdx] = { ...this.bookings[existingIdx], ...fullBooking };
+    } else {
+      this.bookings.unshift(fullBooking);
+    }
+    this.notify();
+    return fullBooking;
+  }
+
+  async updateBookingStatus(id: string, status: BookingStatus) {
+    const idx = this.bookings.findIndex(b => String(b.id) === String(id));
+    if (idx >= 0) {
+      this.bookings[idx] = {
+        ...this.bookings[idx],
+        status,
+        updatedAt: new Date().toISOString(),
+      };
+      this.notify();
+      return this.bookings[idx];
+    }
+    return null;
+  }
+
+  async deleteBooking(id: string) {
+    this.bookings = this.bookings.filter(b => String(b.id) !== String(id));
+    this.notify();
+  }
+
   getWorkflowLogs() { return this.logs; }
   getTransports() { return this.transports; }
+  syncTransports(incoming: TransportEntry[]) {
+    if (!Array.isArray(incoming) || incoming.length === 0) return;
+    const current = [...this.transports];
+    let changed = false;
+    incoming.forEach(inc => {
+      const idx = current.findIndex(c => String(c.id) === String(inc.id));
+      if (idx >= 0) {
+        current[idx] = { ...current[idx], ...inc };
+        changed = true;
+      } else {
+        current.push(inc);
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.transports = current;
+      this.notify();
+    }
+  }
   getRoutes() { return this.routes; }
   getHotels() { return this.hotels; }
   getRestaurants() { return this.restaurants; }
@@ -715,25 +838,60 @@ class CMSStore {
       createdByName: entry.createdByName || 'Goji Admin',
     };
 
+    let tempId: string | null = null;
     if (entry.id) {
-      this.transports = this.transports.map(t => String(t.id) === String(entry.id) ? { ...t, ...entry, ...payload } as any : t);
+      const idx = this.transports.findIndex(t => String(t.id) === String(entry.id));
+      if (idx >= 0) {
+        this.transports[idx] = { ...this.transports[idx], ...entry, ...payload } as any;
+      } else {
+        this.transports.unshift({ id: String(entry.id), ...entry, ...payload } as any);
+      }
     } else {
-      const newTransport: any = { id: `tr-${Date.now()}`, ...entry, ...payload };
+      tempId = `tr-${Date.now()}`;
+      const newTransport: any = { id: tempId, ...entry, ...payload };
       this.transports.unshift(newTransport);
     }
 
     this.notify();
 
-    const method = entry.id ? 'PATCH' : 'POST';
-    const path = entry.id ? `/transport/${Number(entry.id)}` : '/transport';
-    try {
-      await apiRequest(path, { method, body: payload }).catch(() => null);
-    } catch (error) {
-      console.warn("Backend transport save fallback to local memory:", error);
+    if (!entry.id) {
+      // New record -> POST to backend
+      try {
+        const created = await apiRequest<any>('/transport', { method: 'POST', body: payload });
+        if (created && created.id) {
+          this.transports = this.transports.map(t =>
+            String(t.id) === tempId ? { ...t, ...created, id: String(created.id) } : t
+          );
+          this.notify();
+        }
+      } catch (error) {
+        console.warn("Backend transport create fallback to local memory:", error);
+      }
+    } else {
+      // Existing record -> PATCH to backend if numeric ID
+      const numericId = Number(entry.id);
+      if (!isNaN(numericId) && numericId > 0) {
+        try {
+          await apiRequest(`/transport/${numericId}`, { method: 'PATCH', body: payload });
+        } catch (error) {
+          console.warn("Backend transport update fallback to local memory:", error);
+        }
+      }
     }
   }
 
-  async deleteTransport(id: string) { await apiRequest(`/transport/${Number(id)}`, { method: 'DELETE' }); await this.refreshAll(); }
+  async deleteTransport(id: string) {
+    this.transports = this.transports.filter(t => String(t.id) !== String(id));
+    this.notify();
+    const numericId = Number(id);
+    if (!isNaN(numericId) && numericId > 0) {
+      try {
+        await apiRequest(`/transport/${numericId}`, { method: 'DELETE' });
+      } catch (err) {
+        console.warn("Backend delete transport error:", err);
+      }
+    }
+  }
 
   async saveRoute(entry: Partial<RouteEntry> & { id?: string }) {
     const photos = (Array.isArray(entry.photos) && entry.photos.length > 0)

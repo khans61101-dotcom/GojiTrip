@@ -16,6 +16,7 @@ import {
   Users,
   User,
   Fuel,
+  CalendarCheck,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -33,6 +34,13 @@ export const Sidebar: React.FC = () => {
 
   const navItems = [
     { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    {
+      label: "Enquiries & Bookings",
+      href: "/bookings",
+      icon: CalendarCheck,
+      badge: stats.bookingsCount,
+      highlight: (stats.pendingBookingsCount || 0) > 0,
+    },
     {
       label: "Transport Module",
       href: "/transport",

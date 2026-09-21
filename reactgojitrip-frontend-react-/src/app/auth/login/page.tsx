@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, LogIn, ShieldCheck, AlertCircle, Loader2, Home } from 'lucide-react';
-import { loginUser } from '@/lib/auth';
-import { getCurrentUser } from '@/lib/auth';
+import { loginUser, getCurrentUser, getStoredUser, isAdminUser, logoutUser } from '@/lib/auth';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -26,6 +25,15 @@ export default function LoginPage() {
     setError(null);
     try {
       await loginUser({ username: form.username, password: form.password });
+      const user = getStoredUser();
+
+      // Check if this account is authorized for the admin CMS panel
+      if (!isAdminUser(user)) {
+        await logoutUser();
+        setError('Access Denied: This account is registered as a customer/traveler and does not have admin permissions to access the GojiTrip CMS panel.');
+        return;
+      }
+
       await getCurrentUser();
       navigate('/dashboard');
     } catch (err: unknown) {
@@ -45,7 +53,7 @@ export default function LoginPage() {
           className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white text-xs font-bold transition-all shadow-xl backdrop-blur-md group"
         >
           <Home className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-          <span>← Back to Home</span>
+          <span> Back to Home</span>
         </Link>
       </div>
       {/* Animated background glows */}

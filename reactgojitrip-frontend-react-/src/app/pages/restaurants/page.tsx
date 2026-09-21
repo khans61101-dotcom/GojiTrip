@@ -1,4 +1,4 @@
-// RestaurantsPage.tsx - With Split Layout (Left List + Right Map)
+// RestaurantsPage.tsx - With Google Places Integration (Split Layout)
 "use client";
 
 import "@/styles/pages/restaurants/restaurants.css";
@@ -10,8 +10,54 @@ import { cmsStore } from "@/lib/cms-store";
 import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
 import { InteractiveMap, MapMarkerItem } from "@/components/common/InteractiveMap";
 
-import { Search, Filter, Star, MapPin, Clock, Leaf, ArrowLeft, Maximize2, Minimize2 } from "lucide-react";
+import { Search, Filter, Star, MapPin, Clock, Leaf, ArrowLeft, Maximize2, Minimize2, Globe } from "lucide-react";
 
+// ============= GOOGLE PLACES HELPERS =============
+const GOOGLE_API_KEY =
+  (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ||
+  "YOUR_GOOGLE_MAPS_API_KEY";
+
+let _placesService: any = null;
+let _scriptPromise: Promise<void> | null = null;
+
+const loadGooglePlacesScript = (): Promise<void> => {
+  if (_scriptPromise) return _scriptPromise;
+
+  _scriptPromise = new Promise((resolve, reject) => {
+    if (typeof window === "undefined") return resolve();
+    if ((window as any).google?.maps?.places) return resolve();
+
+    const existing = document.querySelector(
+      'script[src*="maps.googleapis.com/maps/api/js"]'
+    );
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () =>
+        reject(new Error("Google Maps load failed"))
+      );
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Google Maps load failed"));
+    document.head.appendChild(script);
+  });
+
+  return _scriptPromise;
+};
+
+const getPlacesService = (): any => {
+  if (_placesService) return _placesService;
+  const dummy = document.createElement("div");
+  _placesService = new (window as any).google.maps.places.PlacesService(dummy);
+  return _placesService;
+};
+
+// ============= TYPES =============
 interface BackendRestaurant {
   id: number;
   restaurantName?: string | null;
@@ -49,6 +95,9 @@ interface Restaurant {
   featured: boolean;
   lat?: number;
   lng?: number;
+  source?: "cms" | "api" | "google";
+  placeId?: string;
+  googleRating?: number;
 }
 
 declare global {
@@ -58,10 +107,7 @@ declare global {
   }
 }
 
-/**
- * Convert backend restaurant response
- * into frontend Restaurant card format.
- */
+// ============= MAPPER =============
 const mapRestaurant = (restaurant: any): Restaurant => {
   let lat: number | undefined;
   let lng: number | undefined;
@@ -75,39 +121,59 @@ const mapRestaurant = (restaurant: any): Restaurant => {
     }
   }
 
-  const rawPhotos: string[] = Array.isArray(restaurant.photos) && restaurant.photos.length > 0
-    ? restaurant.photos
-    : Array.isArray(restaurant.restaurantPhotos) && restaurant.restaurantPhotos.length > 0
-    ? restaurant.restaurantPhotos
-    : restaurant.imageUrl
-    ? [restaurant.imageUrl]
-    : [];
+  const rawPhotos: string[] =
+    Array.isArray(restaurant.photos) && restaurant.photos.length > 0
+      ? restaurant.photos
+      : Array.isArray(restaurant.restaurantPhotos) &&
+        restaurant.restaurantPhotos.length > 0
+      ? restaurant.restaurantPhotos
+      : restaurant.imageUrl
+      ? [restaurant.imageUrl]
+      : [];
 
-  const mainImage = restaurant.imageUrl?.trim() || rawPhotos[0] || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
+  const mainImage =
+    restaurant.imageUrl?.trim() ||
+    rawPhotos[0] ||
+    "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
 
   return {
     id: String(restaurant.id),
-    name: restaurant.restaurantName?.trim() || restaurant.name?.trim() || "Unnamed Restaurant",
-    description: restaurant.contactDetails?.trim() || restaurant.description?.trim() || "Discover a great dining experience along your journey.",
+    name:
+      restaurant.restaurantName?.trim() ||
+      restaurant.name?.trim() ||
+      "Unnamed Restaurant",
+    description:
+      restaurant.contactDetails?.trim() ||
+      restaurant.description?.trim() ||
+      "Discover a great dining experience along your journey.",
     image: mainImage,
     photos: rawPhotos.length > 0 ? rawPhotos : [mainImage],
     rating: 4.8,
     reviews: 36,
     location: restaurant.location?.trim() || "Location unavailable",
-    cuisine: Array.isArray(restaurant.cuisineTypes) && restaurant.cuisineTypes.length > 0
-      ? restaurant.cuisineTypes
-      : Array.isArray(restaurant.cuisine) && restaurant.cuisine.length > 0
-      ? restaurant.cuisine
-      : ["Thakali", "Nepali"],
-    priceRange: restaurant.priceRange && ["NPR", "NPR NPR", "NPR NPR NPR", "NPR NPR NPR NPR"].includes(restaurant.priceRange)
-      ? restaurant.priceRange
-      : "NPR NPR",
+    cuisine:
+      Array.isArray(restaurant.cuisineTypes) &&
+      restaurant.cuisineTypes.length > 0
+        ? restaurant.cuisineTypes
+        : Array.isArray(restaurant.cuisine) && restaurant.cuisine.length > 0
+        ? restaurant.cuisine
+        : ["Thakali", "Nepali"],
+    priceRange:
+      restaurant.priceRange &&
+      ["NPR", "NPR NPR", "NPR NPR NPR", "NPR NPR NPR NPR"].includes(
+        restaurant.priceRange
+      )
+        ? restaurant.priceRange
+        : "NPR NPR",
     openingHours: restaurant.openingHours?.trim() || "07:00 AM - 09:30 PM",
     distance: "1.5 km",
     dietaryOptions: ["Vegetarian", "Organic"],
-    featured: restaurant.approvalStatus === "Published" || restaurant.approvalStatus === "Approved",
+    featured:
+      restaurant.approvalStatus === "Published" ||
+      restaurant.approvalStatus === "Approved",
     lat,
     lng,
+    source: "api",
   };
 };
 
@@ -116,7 +182,10 @@ const LoadingSkeleton: React.FC = () => {
   return (
     <div className="space-y-3">
       {[1, 2, 3, 4, 5].map((item) => (
-        <div key={item} className="flex gap-3 p-3 bg-white rounded-xl border border-gray-200 animate-pulse">
+        <div
+          key={item}
+          className="flex gap-3 p-3 bg-white rounded-xl border border-gray-200 animate-pulse"
+        >
           <div className="w-24 h-24 bg-gray-200 rounded-lg flex-shrink-0" />
           <div className="flex-1">
             <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
@@ -141,217 +210,10 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => {
   return (
     <div className="flex flex-col items-center justify-center py-16">
       <div className="text-6xl mb-4">🍽️</div>
-      <h3 className="text-xl font-semibold text-gray-700 mb-2">No Restaurants Found</h3>
+      <h3 className="text-xl font-semibold text-gray-700 mb-2">
+        No Restaurants Found
+      </h3>
       <p className="text-gray-500 max-w-md mx-auto text-center">{message}</p>
-    </div>
-  );
-};
-
-// ============= MAP COMPONENT =============
-const MapComponent: React.FC<{
-  restaurants: Restaurant[];
-  selectedRestaurantId?: string | null;
-  onMarkerClick: (restaurantId: string) => void;
-  center?: { lat: number; lng: number };
-}> = ({ restaurants, selectedRestaurantId, onMarkerClick, center = { lat: 27.7172, lng: 85.324 } }) => {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const loadGoogleMaps = () => {
-      if (window.google && window.google.maps) {
-        initializeMap();
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap`;
-      script.async = true;
-      script.defer = true;
-
-      window.initMap = () => {
-        initializeMap();
-      };
-
-      document.head.appendChild(script);
-
-      return () => {
-        const scripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
-        scripts.forEach((s) => s.remove());
-        window.initMap = () => {};
-      };
-    };
-
-    const initializeMap = () => {
-      if (!mapRef.current) {
-        console.error("Map container not found");
-        return;
-      }
-
-      try {
-        console.log("Initializing map with center:", center);
-        
-        const mapOptions = {
-          center: center,
-          zoom: 13,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: true,
-        };
-
-        const map = new window.google.maps.Map(mapRef.current, mapOptions);
-        setIsMapLoaded(true);
-        setMapError(null);
-
-        // Add markers for each restaurant
-        restaurants.forEach((restaurant, index) => {
-          let position;
-          if (restaurant.lat && restaurant.lng) {
-            position = { lat: restaurant.lat, lng: restaurant.lng };
-          } else {
-            const latOffset = (Math.random() - 0.5) * 0.05;
-            const lngOffset = (Math.random() - 0.5) * 0.05;
-            position = {
-              lat: center.lat + latOffset,
-              lng: center.lng + lngOffset,
-            };
-          }
-
-          const marker = new window.google.maps.Marker({
-            position,
-            map: map,
-            title: restaurant.name,
-            animation: window.google.maps.Animation.DROP,
-            icon: {
-              path: window.google.maps.SymbolPath.CIRCLE,
-              fillColor: selectedRestaurantId === restaurant.id ? "#2563EB" : "#F59E0B",
-              fillOpacity: 1,
-              strokeColor: "#FFFFFF",
-              strokeWeight: 2,
-              scale: selectedRestaurantId === restaurant.id ? 14 : 10,
-            },
-            label: {
-              text: `${index + 1}`,
-              color: "#FFFFFF",
-              fontSize: "10px",
-              fontWeight: "bold",
-            },
-          });
-
-          const infoWindow = new window.google.maps.InfoWindow({
-            content: `
-              <div style="padding: 8px; max-width: 200px;">
-                <strong style="font-size: 14px;">${restaurant.name}</strong>
-                <div style="font-size: 12px; color: #666; margin: 4px 0;">📍 ${restaurant.location}</div>
-                <div style="display: flex; align-items: center; gap: 4px; margin: 4px 0;">
-                  <span style="color: #f59e0b;">★</span>
-                  <span style="font-size: 13px; font-weight: 600;">${restaurant.rating}</span>
-                  <span style="font-size: 12px; color: #666;">(${restaurant.reviews})</span>
-                </div>
-                <div style="font-size: 12px; color: #666; margin: 4px 0;">
-                  🕐 ${restaurant.openingHours}
-                </div>
-                <div style="display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0;">
-                  ${restaurant.cuisine.slice(0, 2).map(c => `<span style="background: #dbeafe; color: #1d4ed8; padding: 2px 8px; border-radius: 4px; font-size: 10px;">${c}</span>`).join('')}
-                </div>
-                <button 
-                  onclick="window.handleRestaurantView('${restaurant.id}')"
-                  style="
-                    background: #2563eb;
-                    color: white;
-                    border: none;
-                    padding: 4px 16px;
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    margin-top: 4px;
-                    width: 100%;
-                  "
-                >
-                  View Restaurant
-                </button>
-              </div>
-            `,
-          });
-
-          marker.addListener("click", () => {
-            onMarkerClick(restaurant.id);
-            infoWindow.open(map, marker);
-          });
-
-          if (selectedRestaurantId === restaurant.id) {
-            setTimeout(() => {
-              infoWindow.open(map, marker);
-              map.panTo(position);
-              map.setZoom(15);
-            }, 500);
-          }
-        });
-
-        if (restaurants.length > 1) {
-          const bounds = new window.google.maps.LatLngBounds();
-          restaurants.forEach((restaurant) => {
-            let pos;
-            if (restaurant.lat && restaurant.lng) {
-              pos = { lat: restaurant.lat, lng: restaurant.lng };
-            } else {
-              const latOffset = (Math.random() - 0.5) * 0.05;
-              const lngOffset = (Math.random() - 0.5) * 0.05;
-              pos = {
-                lat: center.lat + latOffset,
-                lng: center.lng + lngOffset,
-              };
-            }
-            bounds.extend(pos);
-          });
-          map.fitBounds(bounds);
-        }
-
-        (window as any).handleRestaurantView = (restaurantId: string) => {
-          onMarkerClick(restaurantId);
-        };
-
-      } catch (error) {
-        console.error("Error initializing map:", error);
-        setMapError("Failed to load map. Please check your API key.");
-      }
-    };
-
-    loadGoogleMaps();
-
-    return () => {
-      delete (window as any).handleRestaurantView;
-    };
-  }, [center, restaurants, selectedRestaurantId, onMarkerClick]);
-
-  if (mapError) {
-    return (
-      <div className="h-full w-full bg-gray-100 rounded-2xl flex flex-col items-center justify-center p-8">
-        <div className="text-5xl mb-4">🗺️</div>
-        <p className="text-gray-700 font-medium text-center">Map unavailable</p>
-        <p className="text-gray-500 text-sm text-center mt-1">{mapError}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full w-full rounded-2xl overflow-hidden bg-gray-200 relative">
-      <div ref={mapRef} className="w-full h-full" style={{ minHeight: "500px" }} />
-      {!isMapLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-gray-600 text-sm">Loading map...</p>
-          </div>
-        </div>
-      )}
-      {isMapLoaded && restaurants.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg text-xs text-gray-600">
-          📍 {restaurants.length} restaurant{restaurants.length > 1 ? 's' : ''} displayed
-        </div>
-      )}
     </div>
   );
 };
@@ -363,14 +225,25 @@ const CompactRestaurantCard: React.FC<{
   onClick: () => void;
   onViewDetails?: () => void;
 }> = ({ restaurant, isSelected, onClick, onViewDetails }) => {
-  const dietaryList = Array.isArray(restaurant.dietaryOptions) && restaurant.dietaryOptions.length > 0
-    ? restaurant.dietaryOptions
-    : ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking"];
+  const dietaryList =
+    Array.isArray(restaurant.dietaryOptions) &&
+    restaurant.dietaryOptions.length > 0
+      ? restaurant.dietaryOptions
+      : [
+          "Organic Ingredients",
+          "Outdoor Seating",
+          "Free Wi-Fi",
+          "Highway Parking",
+        ];
+
+  const isGoogle = restaurant.source === "google";
 
   return (
     <div
       className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md group ${
-        isSelected ? "border-red-500 ring-2 ring-red-500/30 shadow-md" : "border-gray-200 hover:border-red-300"
+        isSelected
+          ? "border-red-500 ring-2 ring-red-500/30 shadow-md"
+          : "border-gray-200 hover:border-red-300"
       }`}
       onClick={() => {
         onClick();
@@ -392,6 +265,11 @@ const CompactRestaurantCard: React.FC<{
               {restaurant.cuisine[0]}
             </span>
           )}
+          {isGoogle && (
+            <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-green-500 backdrop-blur-md rounded-md text-[10px] font-bold text-white flex items-center gap-0.5">
+              <Globe className="w-2.5 h-2.5" />G
+            </span>
+          )}
         </div>
 
         <div className="flex-1 min-w-0 flex flex-col justify-between space-y-2">
@@ -402,15 +280,21 @@ const CompactRestaurantCard: React.FC<{
               </h3>
               <div className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full flex-shrink-0">
                 <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
-                <span className="text-xs font-extrabold text-amber-900">{restaurant.rating || 4.7}</span>
-                <span className="text-[10px] text-slate-500">({restaurant.reviews || 36})</span>
+                <span className="text-xs font-extrabold text-amber-900">
+                  {restaurant.rating || 4.7}
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  ({restaurant.reviews || 36})
+                </span>
               </div>
             </div>
 
             <div className="flex items-center gap-3 text-slate-600 text-xs mb-2 flex-wrap">
               <div className="flex items-center gap-1">
                 <MapPin className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
-                <span className="truncate font-medium">{restaurant.location}</span>
+                <span className="truncate font-medium">
+                  {restaurant.location}
+                </span>
               </div>
               {restaurant.openingHours && (
                 <div className="flex items-center gap-1 text-slate-500">
@@ -420,15 +304,20 @@ const CompactRestaurantCard: React.FC<{
               )}
             </div>
 
-            {/* Dietary & Cuisine Options */}
             <div className="flex gap-1.5 flex-wrap">
               {restaurant.cuisine.map((c) => (
-                <span key={c} className="px-2 py-0.5 bg-red-50 text-red-700 rounded-md text-[10px] font-bold border border-red-200/60">
+                <span
+                  key={c}
+                  className="px-2 py-0.5 bg-red-50 text-red-700 rounded-md text-[10px] font-bold border border-red-200/60"
+                >
                   {c}
                 </span>
               ))}
               {dietaryList.slice(0, 2).map((diet, idx) => (
-                <span key={idx} className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-medium border border-slate-200/60">
+                <span
+                  key={idx}
+                  className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-medium border border-slate-200/60"
+                >
                   {diet}
                 </span>
               ))}
@@ -442,8 +331,8 @@ const CompactRestaurantCard: React.FC<{
               </span>
               <span className="text-emerald-700 font-extrabold text-sm">
                 {restaurant.averageMealPrice
-                  ? `${restaurant.currency || 'NRs'} ${restaurant.averageMealPrice.toLocaleString()} / meal`
-                  : `${restaurant.currency || 'NRs'} 450 - 1,200 / meal`}
+                  ? `${restaurant.currency || "NRs"} ${restaurant.averageMealPrice.toLocaleString()} / meal`
+                  : `${restaurant.currency || "NRs"} 450 - 1,200 / meal`}
               </span>
             </div>
 
@@ -470,30 +359,50 @@ const RestaurantsPage: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const locParam = params.get("location") || params.get("search") || params.get("q") || params.get("routeStop");
+    const locParam =
+      params.get("location") ||
+      params.get("search") ||
+      params.get("q") ||
+      params.get("routeStop");
     if (locParam && locParam.trim()) {
       setSearchQuery(locParam.trim());
     }
   }, []);
+
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [googleRestaurants, setGoogleRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [useGoogleSearch, setUseGoogleSearch] = useState(true);
   const [error, setError] = useState("");
   const [selectedCuisine, setSelectedCuisine] = useState<string[]>([]);
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | null>(null);
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<
+    string | null
+  >(null);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
-  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(null);
+  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(
+    null
+  );
   const [showYelpModal, setShowYelpModal] = useState(false);
   const restaurantListRef = useRef<HTMLDivElement>(null);
 
+  // ============= YELP DETAIL =============
   const handleOpenYelpDetail = (r: Restaurant) => {
-    const galleryImages = (Array.isArray(r.photos) && r.photos.length > 0)
-      ? r.photos
-      : (r.image ? [r.image] : []);
+    const galleryImages =
+      Array.isArray(r.photos) && r.photos.length > 0
+        ? r.photos
+        : r.image
+        ? [r.image]
+        : [];
+
+    const isGoogle = r.source === "google";
 
     setYelpDetailData({
       id: r.id,
       name: r.name,
-      category: r.cuisine.join(" • ") || "Traditional Nepalese & Thakali Cuisine",
+      category:
+        r.cuisine.join(" • ") ||
+        (isGoogle ? "Restaurant (via Google)" : "Traditional Nepalese & Thakali Cuisine"),
       rating: r.rating || 4.7,
       reviewCount: r.reviews || 36,
       priceLevel: r.priceRange || "$$",
@@ -503,53 +412,104 @@ const RestaurantsPage: React.FC = () => {
       whatsapp: (r as any).whatsappNumber || "+9779801112233",
       image: r.image || galleryImages[0],
       galleryImages: galleryImages,
-      description: (r as any).description || `${r.name} is a renowned dining spot along the Nepal highway corridor, serving authentic organic Thakali thali, Himalayan coffee, and local delicacies.`,
-      amenities: (r as any).dietaryOptions || r.dietaryOptions || ["Organic Ingredients", "Outdoor Seating", "Free Wi-Fi", "Highway Parking", "Vegetarian Friendly"],
-      hours: r.openingHours ? [{ day: "Daily Operating Hours", time: r.openingHours }] : undefined,
+      description:
+        (r as any).description ||
+        `${r.name} is a renowned dining spot along the Nepal highway corridor, serving authentic organic Thakali thali, Himalayan coffee, and local delicacies.`,
+      amenities:
+        (r as any).dietaryOptions ||
+        r.dietaryOptions ||
+        [
+          "Organic Ingredients",
+          "Outdoor Seating",
+          "Free Wi-Fi",
+          "Highway Parking",
+          "Vegetarian Friendly",
+        ],
+      hours: r.openingHours
+        ? [{ day: "Daily Operating Hours", time: r.openingHours }]
+        : undefined,
       priceTag: r.averageMealPrice
-        ? `${r.currency || 'NRs'} ${r.averageMealPrice.toLocaleString()} / meal`
-        : `${r.currency || 'NRs'} 450 - 1,200 / meal`,
+        ? `${r.currency || "NRs"} ${r.averageMealPrice.toLocaleString()} / meal`
+        : `${r.currency || "NRs"} 450 - 1,200 / meal`,
       entityType: "restaurant",
-      offerings: (r as any).recommendedDishes && (r as any).recommendedDishes.length > 0 ? (r as any).recommendedDishes.map((dish: string) => ({
-        title: dish,
-        price: `${r.currency || 'NRs'} ${r.averageMealPrice || 450}`,
-        desc: `Handcrafted signature preparation using fresh local ingredients.`,
-      })) : [
-        { title: "Organic Thakali Khana Set", price: `${r.currency || 'NRs'} ${r.averageMealPrice || 650}`, desc: "Authentic buckwheat dhido/rice, black lentil soup, mutton curry, ghee & fermented pickles." },
-        { title: "Special Himalayan Chicken Momos", price: `${r.currency || 'NRs'} 350`, desc: "Steamed handmade dumplings served with spicy tomato and sesame chutney." },
-        { title: "Fresh Himalayan Arabica Coffee", price: `${r.currency || 'NRs'} 220`, desc: "Locally roasted Organic Nepalese coffee beans." },
-      ],
+      offerings:
+        (r as any).recommendedDishes &&
+        (r as any).recommendedDishes.length > 0
+          ? (r as any).recommendedDishes.map((dish: string) => ({
+              title: dish,
+              price: `${r.currency || "NRs"} ${r.averageMealPrice || 450}`,
+              desc: `Handcrafted signature preparation using fresh local ingredients.`,
+            }))
+          : [
+              {
+                title: "Organic Thakali Khana Set",
+                price: `${r.currency || "NRs"} ${r.averageMealPrice || 650}`,
+                desc: "Authentic buckwheat dhido/rice, black lentil soup, mutton curry, ghee & fermented pickles.",
+              },
+              {
+                title: "Special Himalayan Chicken Momos",
+                price: `${r.currency || "NRs"} 350`,
+                desc: "Steamed handmade dumplings served with spicy tomato and sesame chutney.",
+              },
+              {
+                title: "Fresh Himalayan Arabica Coffee",
+                price: `${r.currency || "NRs"} 220`,
+                desc: "Locally roasted Organic Nepalese coffee beans.",
+              },
+            ],
     });
     setShowYelpModal(true);
   };
 
+  // ============= CMS + API FETCH =============
   const fetchRestaurants = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
 
       const storeItems = cmsStore.getRestaurants();
-      const response = await apiRequest<BackendRestaurant[]>("/restaurants").catch(() => null);
+      const response = await apiRequest<BackendRestaurant[]>(
+        "/restaurants"
+      ).catch(() => null);
       const backendRestaurants = Array.isArray(response) ? response : [];
 
       let mappedRestaurants: Restaurant[] = [];
 
       if (backendRestaurants.length > 0) {
         mappedRestaurants = backendRestaurants.map((bItem: any) => {
-          const storeMatch = storeItems.find((s) => String(s.id) === String(bItem.id));
-          const photos = (Array.isArray(storeMatch?.photos) && storeMatch.photos.length > 0)
-            ? storeMatch.photos
-            : (Array.isArray(bItem.photos) && bItem.photos.length > 0)
-            ? bItem.photos
-            : (bItem.imageUrl ? [bItem.imageUrl] : (storeMatch?.imageUrl ? [storeMatch.imageUrl] : []));
+          const storeMatch = storeItems.find(
+            (s) => String(s.id) === String(bItem.id)
+          );
+          const photos =
+            Array.isArray(storeMatch?.photos) && storeMatch.photos.length > 0
+              ? storeMatch.photos
+              : Array.isArray(bItem.photos) && bItem.photos.length > 0
+              ? bItem.photos
+              : bItem.imageUrl
+              ? [bItem.imageUrl]
+              : storeMatch?.imageUrl
+              ? [storeMatch.imageUrl]
+              : [];
 
-          const imageUrl = bItem.imageUrl || photos[0] || storeMatch?.imageUrl || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
+          const imageUrl =
+            bItem.imageUrl ||
+            photos[0] ||
+            storeMatch?.imageUrl ||
+            "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
 
           const currency = storeMatch?.currency || bItem.currency || "NRs";
-          const averageMealPrice = storeMatch?.averageMealPrice !== undefined ? storeMatch.averageMealPrice : (Number(bItem.averageMealPrice) || 650);
+          const averageMealPrice =
+            storeMatch?.averageMealPrice !== undefined
+              ? storeMatch.averageMealPrice
+              : Number(bItem.averageMealPrice) || 650;
 
           const base = mapRestaurant(bItem);
-          const location = (storeMatch?.location && storeMatch.location.trim() !== '' && storeMatch.location !== 'N/A') ? storeMatch.location : base.location;
+          const location =
+            storeMatch?.location &&
+            storeMatch.location.trim() !== "" &&
+            storeMatch.location !== "N/A"
+              ? storeMatch.location
+              : base.location;
           return {
             ...base,
             location,
@@ -565,21 +525,31 @@ const RestaurantsPage: React.FC = () => {
 
       storeItems.forEach((r) => {
         if (!mappedRestaurants.some((m) => String(m.id) === String(r.id))) {
-          const photos = (Array.isArray(r.photos) && r.photos.length > 0)
-            ? r.photos
-            : (r.imageUrl ? [r.imageUrl] : []);
-          const imageUrl = r.imageUrl || photos[0] || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
+          const photos =
+            Array.isArray(r.photos) && r.photos.length > 0
+              ? r.photos
+              : r.imageUrl
+              ? [r.imageUrl]
+              : [];
+          const imageUrl =
+            r.imageUrl ||
+            photos[0] ||
+            "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
 
           mappedRestaurants.unshift({
             id: String(r.id),
             name: r.restaurantName || "Unnamed Restaurant",
-            description: r.contactDetails || "Delicious local food and dining experience.",
+            description:
+              r.contactDetails || "Delicious local food and dining experience.",
             image: imageUrl,
             photos: photos.length > 0 ? photos : [imageUrl],
             rating: 4.8,
             reviews: 42,
             location: r.location || "Location unavailable",
-            cuisine: r.cuisineTypes && r.cuisineTypes.length > 0 ? r.cuisineTypes : ["Thakali", "Nepali"],
+            cuisine:
+              r.cuisineTypes && r.cuisineTypes.length > 0
+                ? r.cuisineTypes
+                : ["Thakali", "Nepali"],
             priceRange: r.priceRange || "NPR NPR",
             currency: r.currency || "NRs",
             averageMealPrice: Number(r.averageMealPrice) || 650,
@@ -589,37 +559,52 @@ const RestaurantsPage: React.FC = () => {
             featured: true,
             lat: (r as any).latitude,
             lng: (r as any).longitude,
+            source: "cms",
           });
         }
       });
 
       setRestaurants(mappedRestaurants);
     } catch (err) {
-      console.error("Failed to fetch restaurants, loading store fallback:", err);
+      console.error(
+        "Failed to fetch restaurants, loading store fallback:",
+        err
+      );
       const storeItems = cmsStore.getRestaurants();
       const mappedRestaurants = storeItems.map((r) => {
-        const photos = (Array.isArray(r.photos) && r.photos.length > 0)
-          ? r.photos
-          : (r.imageUrl ? [r.imageUrl] : []);
-        const imageUrl = r.imageUrl || photos[0] || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
+        const photos =
+          Array.isArray(r.photos) && r.photos.length > 0
+            ? r.photos
+            : r.imageUrl
+            ? [r.imageUrl]
+            : [];
+        const imageUrl =
+          r.imageUrl ||
+          photos[0] ||
+          "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80";
 
         return {
           id: String(r.id),
           name: r.restaurantName || "Unnamed Restaurant",
-          description: r.contactDetails || "Delicious local food and dining experience.",
+          description:
+            r.contactDetails || "Delicious local food and dining experience.",
           image: imageUrl,
           photos: photos.length > 0 ? photos : [imageUrl],
           rating: 4.8,
           reviews: 42,
           location: r.location || "Location unavailable",
-          cuisine: r.cuisineTypes && r.cuisineTypes.length > 0 ? r.cuisineTypes : ["Thakali", "Nepali"],
-          priceRange: r.priceRange || "NPR NPR",
+          cuisine:
+            r.cuisineTypes && r.cuisineTypes.length > 0
+              ? r.cuisineTypes
+              : ["Thakali", "Nepali"],
+          priceRange: (r.priceRange || "NPR NPR") as any,
           openingHours: r.openingHours || "07:00 AM - 09:30 PM",
           distance: "2.5 km",
           dietaryOptions: ["Vegetarian", "Organic"],
           featured: true,
           lat: undefined,
           lng: undefined,
+          source: "cms" as const,
         };
       });
       setRestaurants(mappedRestaurants);
@@ -629,41 +614,243 @@ const RestaurantsPage: React.FC = () => {
     }
   }, []);
 
+  // ============= GOOGLE PLACES FETCH =============
+  const fetchGoogleRestaurants = useCallback(async (query: string) => {
+    if (!query.trim() || query.length < 3) {
+      setGoogleRestaurants([]);
+      return;
+    }
+
+    setGoogleLoading(true);
+    try {
+      await loadGooglePlacesScript();
+      const google = (window as any).google;
+
+      if (!google?.maps?.places) {
+        console.warn("Google Places not available");
+        setGoogleRestaurants([]);
+        setGoogleLoading(false);
+        return;
+      }
+
+      const service = getPlacesService();
+
+      // Step 1: Geocode
+      const geocodeQuery = (): Promise<{ lat: number; lng: number } | null> =>
+        new Promise((resolve) => {
+          const geocoder = new google.maps.Geocoder();
+          geocoder.geocode(
+            { address: query },
+            (results: any, status: any) => {
+              if (status === "OK" && results?.[0]) {
+                const loc = results[0].geometry.location;
+                resolve({ lat: loc.lat(), lng: loc.lng() });
+              } else {
+                resolve(null);
+              }
+            }
+          );
+        });
+
+      const center = await geocodeQuery();
+      const searchCenter = center
+        ? new google.maps.LatLng(center.lat, center.lng)
+        : new google.maps.LatLng(28.3949, 84.124);
+
+      // Step 2: Text Search
+      const textSearch = (): Promise<any[]> =>
+        new Promise((resolve) => {
+          service.textSearch(
+            {
+              query: `restaurants in ${query}`,
+              location: searchCenter,
+              radius: 15000,
+            },
+            (results: any, status: any) => {
+              if (
+                status === google.maps.places.PlacesServiceStatus.OK &&
+                results
+              ) {
+                resolve(results);
+              } else {
+                console.warn("Places textSearch status:", status);
+                resolve([]);
+              }
+            }
+          );
+        });
+
+      const results = await textSearch();
+      console.log("Google Places restaurants:", results);
+
+      const converted: Restaurant[] = results
+        .slice(0, 20)
+        .map((place: any, index: number) => {
+          const lat = place.geometry?.location?.lat() ?? 0;
+          const lng = place.geometry?.location?.lng() ?? 0;
+          const photoUrl = place.photos?.[0]?.getUrl({
+            maxWidth: 800,
+            maxHeight: 600,
+          });
+
+          const priceLevelMap: Record<number, Restaurant["priceRange"]> = {
+            1: "NPR",
+            2: "NPR NPR",
+            3: "NPR NPR NPR",
+            4: "NPR NPR NPR NPR",
+          };
+          const priceRange =
+            priceLevelMap[place.price_level as number] || "NPR NPR";
+
+          const avgPrice =
+            place.price_level === 4
+              ? 2000
+              : place.price_level === 3
+              ? 1200
+              : place.price_level === 2
+              ? 700
+              : 450;
+
+          const types: string[] = place.types || [];
+          const cuisineGuess = types
+            .filter((t: string) =>
+              [
+                "restaurant",
+                "cafe",
+                "bar",
+                "meal_takeaway",
+                "meal_delivery",
+                "bakery",
+              ].includes(t)
+            )
+            .map((t: string) =>
+              t
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (c) => c.toUpperCase())
+            );
+          const cuisine = cuisineGuess.length > 0 ? cuisineGuess : ["Restaurant"];
+
+          return {
+            id: `google-${place.place_id || index}`,
+            placeId: place.place_id,
+            name: place.name || "Unnamed Restaurant",
+            description: place.formatted_address || "Restaurant via Google",
+            image:
+              photoUrl ||
+              "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=800&q=80",
+            photos: place.photos
+              ? place.photos
+                  .slice(0, 6)
+                  .map((p: any) => p.getUrl({ maxWidth: 1200 }))
+              : [],
+            rating: place.rating ?? 4.5,
+            reviews: place.user_ratings_total ?? 0,
+            location: place.formatted_address || place.vicinity || "Nepal",
+            cuisine,
+            priceRange,
+            currency: "NRs",
+            averageMealPrice: avgPrice,
+            openingHours: place.opening_hours?.open_now
+              ? "Open Now"
+              : "07:00 AM - 10:00 PM",
+            distance: "1.0 km",
+            dietaryOptions: ["Vegetarian", "Organic"],
+            featured: false,
+            lat,
+            lng,
+            source: "google",
+            googleRating: place.rating,
+          };
+        });
+
+      setGoogleRestaurants(converted);
+    } catch (err) {
+      console.error("Google Places error:", err);
+      setGoogleRestaurants([]);
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, []);
+
+  // ============= GOOGLE SEARCH DEBOUNCE =============
+  useEffect(() => {
+    if (!useGoogleSearch) {
+      setGoogleRestaurants([]);
+      return;
+    }
+    if (!searchQuery.trim() || searchQuery.length < 3) {
+      setGoogleRestaurants([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      fetchGoogleRestaurants(searchQuery);
+    }, 900);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, useGoogleSearch, fetchGoogleRestaurants]);
+
   useEffect(() => {
     void fetchRestaurants();
   }, [fetchRestaurants]);
 
+  // ============= MERGE + FILTER =============
+  const mergedRestaurants = React.useMemo(() => {
+    let combined: Restaurant[] = [...restaurants, ...googleRestaurants];
+
+    // Duplicate removal (name + location)
+    const seen = new Set<string>();
+    combined = combined.filter((r) => {
+      const key = `${(r.name || "").toLowerCase().trim()}-${(r.location || "")
+        .toLowerCase()
+        .trim()
+        .slice(0, 40)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return combined;
+  }, [restaurants, googleRestaurants]);
+
   const availableCuisines = React.useMemo(() => {
-    const cuisines = restaurants.flatMap((restaurant) => restaurant.cuisine);
+    const cuisines = mergedRestaurants.flatMap((restaurant) => restaurant.cuisine);
     return Array.from(new Set(cuisines)).filter(Boolean).sort();
-  }, [restaurants]);
+  }, [mergedRestaurants]);
 
   const filteredRestaurants = React.useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+    const googleIds = new Set(googleRestaurants.map((g) => g.id));
 
-    return restaurants.filter((restaurant) => {
+    return mergedRestaurants.filter((restaurant) => {
+      // Google results already matched by search
+      const isFromGoogle = googleIds.has(restaurant.id);
+
       const matchesSearch =
         !query ||
+        isFromGoogle ||
         restaurant.name.toLowerCase().includes(query) ||
         restaurant.location.toLowerCase().includes(query) ||
         restaurant.description.toLowerCase().includes(query) ||
         restaurant.cuisine.some((cuisine) =>
-          cuisine.toLowerCase().includes(query),
+          cuisine.toLowerCase().includes(query)
         );
 
       const matchesCuisine =
         selectedCuisine.length === 0 ||
-        restaurant.cuisine.some((cuisine) => selectedCuisine.includes(cuisine));
+        restaurant.cuisine.some((cuisine) =>
+          selectedCuisine.includes(cuisine)
+        );
 
       return matchesSearch && matchesCuisine;
     });
-  }, [restaurants, searchQuery, selectedCuisine]);
+  }, [mergedRestaurants, searchQuery, selectedCuisine, googleRestaurants]);
 
   const toggleCuisine = (cuisine: string) => {
     setSelectedCuisine((previous) =>
       previous.includes(cuisine)
         ? previous.filter((item) => item !== cuisine)
-        : [...previous, cuisine],
+        : [...previous, cuisine]
     );
   };
 
@@ -675,7 +862,8 @@ const RestaurantsPage: React.FC = () => {
   const handleMarkerClick = (restaurantId: string) => {
     setSelectedRestaurantId(restaurantId);
     if (restaurantListRef.current) {
-      const cards = restaurantListRef.current.querySelectorAll("[data-restaurant-id]");
+      const cards =
+        restaurantListRef.current.querySelectorAll("[data-restaurant-id]");
       cards.forEach((card) => {
         if (card.getAttribute("data-restaurant-id") === restaurantId) {
           card.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -687,6 +875,8 @@ const RestaurantsPage: React.FC = () => {
       });
     }
   };
+
+  const isLoading = loading || googleLoading;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -707,28 +897,54 @@ const RestaurantsPage: React.FC = () => {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <input
                   type="text"
-                  placeholder="Search restaurants by cuisine, name, or location..."
+                  placeholder="Search city, restaurant name... (e.g. Pokhara, Kathmandu)"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-white/95 text-gray-900 placeholder-gray-500 border-0 rounded-xl focus:ring-2 focus:ring-white/50 outline-none transition-all shadow-sm text-sm"
+                  className="w-full pl-9 pr-10 py-2 bg-white/95 text-gray-900 placeholder-gray-500 border-0 rounded-xl focus:ring-2 focus:ring-white/50 outline-none transition-all shadow-sm text-sm"
                 />
+                {googleLoading && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
+                onClick={() => setUseGoogleSearch(!useGoogleSearch)}
+                className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  useGoogleSearch
+                    ? "bg-green-500 text-white shadow-md"
+                    : "bg-white/20 backdrop-blur-sm text-white border border-white/30"
+                }`}
+                title="Toggle Google Places search"
+              >
+                <Globe className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">
+                  {useGoogleSearch ? "Google ON" : "Google OFF"}
+                </span>
+              </button>
+
+              <button
                 onClick={() => setIsMapExpanded(!isMapExpanded)}
                 className="flex items-center gap-2 px-3 py-2 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl hover:bg-white/30 transition-all text-white flex-shrink-0"
               >
-                {isMapExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                <span className="hidden lg:inline text-sm">{isMapExpanded ? "Collapse" : "Expand"}</span>
+                {isMapExpanded ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+                <span className="hidden lg:inline text-sm">
+                  {isMapExpanded ? "Collapse" : "Expand"}
+                </span>
               </button>
             </div>
           </div>
 
           {/* Cuisine filters */}
           {availableCuisines.length > 0 && (
-            <div className="pb-3 flex gap-2 flex-wrap">
+            <div className="pb-3 flex gap-2 flex-wrap items-center">
               {availableCuisines.slice(0, 8).map((cuisine) => (
                 <button
                   key={cuisine}
@@ -742,6 +958,12 @@ const RestaurantsPage: React.FC = () => {
                   {cuisine}
                 </button>
               ))}
+              {googleRestaurants.length > 0 && (
+                <span className="text-xs text-green-200 bg-green-500/30 px-2 py-1 rounded-full flex items-center gap-1">
+                  <Globe className="w-3 h-3" />
+                  {googleRestaurants.length} from Google
+                </span>
+              )}
               {(searchQuery || selectedCuisine.length > 0) && (
                 <button
                   onClick={clearFilters}
@@ -756,38 +978,64 @@ const RestaurantsPage: React.FC = () => {
       </div>
 
       {/* Main Content - Split Layout */}
-      <div className={`flex-1 flex transition-all duration-300 ${isMapExpanded ? "flex-col-reverse" : "flex-row"}`}>
+      <div
+        className={`flex-1 flex transition-all duration-300 ${
+          isMapExpanded ? "flex-col-reverse" : "flex-row"
+        }`}
+      >
         {/* Restaurant List - Left */}
         <div
-          className={`${isMapExpanded ? "h-1/2" : "w-1/2"} overflow-y-auto bg-gray-50 border-r border-gray-200`}
+          className={`${
+            isMapExpanded ? "h-1/2" : "w-1/2"
+          } overflow-y-auto bg-gray-50 border-r border-gray-200`}
           style={{ height: isMapExpanded ? "50%" : "calc(100vh - 120px)" }}
           ref={restaurantListRef}
         >
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <p className="text-gray-700 font-medium text-sm">
-                {loading ? "Loading..." : `${filteredRestaurants.length} restaurants found`}
+                {isLoading && filteredRestaurants.length === 0
+                  ? "Loading..."
+                  : `${filteredRestaurants.length} restaurant${
+                      filteredRestaurants.length === 1 ? "" : "s"
+                    } found`}
               </p>
+              {searchQuery.length >= 3 && googleLoading && (
+                <span className="text-xs text-blue-600 flex items-center gap-1">
+                  <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  Searching Google...
+                </span>
+              )}
             </div>
 
-            {loading ? (
+            {isLoading && filteredRestaurants.length === 0 ? (
               <LoadingSkeleton />
             ) : filteredRestaurants.length === 0 ? (
-              <EmptyState message="No restaurants match your search or selected cuisine filters." />
+              <EmptyState
+                message={
+                  searchQuery.length >= 3
+                    ? `No restaurants found for "${searchQuery}". Try another city name.`
+                    : "No restaurants match your search or selected cuisine filters."
+                }
+              />
             ) : (
               <div className="space-y-3">
                 {filteredRestaurants.map((restaurant) => (
-                  <CompactRestaurantCard
+                  <div
                     key={restaurant.id}
-                    restaurant={restaurant}
-                    isSelected={selectedRestaurantId === restaurant.id}
-                    onClick={() => {
-                      setSelectedRestaurantId(restaurant.id);
-                      handleMarkerClick(restaurant.id);
-                      handleOpenYelpDetail(restaurant);
-                    }}
-                    onViewDetails={() => handleOpenYelpDetail(restaurant)}
-                  />
+                    data-restaurant-id={restaurant.id}
+                  >
+                    <CompactRestaurantCard
+                      restaurant={restaurant}
+                      isSelected={selectedRestaurantId === restaurant.id}
+                      onClick={() => {
+                        setSelectedRestaurantId(restaurant.id);
+                        handleMarkerClick(restaurant.id);
+                        handleOpenYelpDetail(restaurant);
+                      }}
+                      onViewDetails={() => handleOpenYelpDetail(restaurant)}
+                    />
+                  </div>
                 ))}
               </div>
             )}
@@ -804,7 +1052,9 @@ const RestaurantsPage: React.FC = () => {
               id: r.id,
               name: r.name,
               location: r.location,
-              priceTag: r.averageMealPrice ? `${r.currency || 'NRs'} ${r.averageMealPrice}` : (r.priceRange || "$$"),
+              priceTag: r.averageMealPrice
+                ? `${r.currency || "NRs"} ${r.averageMealPrice}`
+                : r.priceRange || "$$",
               rating: r.rating || 4.7,
               image: r.image,
               lat: (r as any).latitude || r.lat,

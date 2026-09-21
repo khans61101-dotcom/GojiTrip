@@ -1,5 +1,5 @@
 "use client";
-
+ 
 import React, { useRef, useState } from "react";
 import { UploadCloud, Image as ImageIcon, X, FileImage, Check } from "lucide-react";
 import { cmsStore } from "@/lib/cms-store";
@@ -32,6 +32,80 @@ export function validateImagePayloads(images: (string | null | undefined)[]): { 
   return { valid: true };
 }
 
+/**
+ * Re-compresses an existing Base64 Data URL to stay well under database limits.
+ */
+export function compressDataUrl(dataUrl: string, maxDimension = 800, quality = 0.65): Promise<string> {
+  if (!dataUrl || !dataUrl.startsWith("data:image")) {
+    return Promise.resolve(dataUrl);
+  }
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      const limit = Math.min(maxDimension, 800);
+      if (width > limit || height > limit) {
+        if (width > height) {
+          height = Math.round((height * limit) / width);
+          width = limit;
+        } else {
+          width = Math.round((width * limit) / height);
+          height = limit;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      let compressed = canvas.toDataURL("image/jpeg", Math.min(quality, 0.65));
+      const MAX_B64 = 800 * 1024;
+      if (compressed.length > MAX_B64) {
+        compressed = canvas.toDataURL("image/jpeg", 0.40);
+      }
+      if (compressed.length > MAX_B64) {
+        const canvas2 = document.createElement("canvas");
+        canvas2.width = Math.round(width * 0.6);
+        canvas2.height = Math.round(height * 0.6);
+        const ctx2 = canvas2.getContext("2d");
+        if (ctx2) {
+          ctx2.drawImage(img, 0, 0, canvas2.width, canvas2.height);
+          compressed = canvas2.toDataURL("image/jpeg", 0.40);
+        }
+      }
+      resolve(compressed);
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+/**
+ * Ensures all images in a list (whether data URLs or URLs) are sanitized and compressed.
+ */
+export async function sanitizeAndCompressImages(images: (string | null | undefined)[]): Promise<string[]> {
+  const result: string[] = [];
+  for (const img of images) {
+    if (!img) continue;
+    if (typeof img === "string" && img.startsWith("data:image")) {
+      try {
+        const compressed = await compressDataUrl(img, 800, 0.65);
+        result.push(compressed);
+      } catch {
+        result.push(img);
+      }
+    } else if (typeof img === "string" && img.trim()) {
+      result.push(img.trim());
+    }
+  }
+  return result;
+}
+
 export function compressImageFile(file: File, maxDimension = 800, quality = 0.65): Promise<string> {
   return new Promise((resolve, reject) => {
     const maxSize = 5 * 1024 * 1024; // 5MB limit
@@ -47,13 +121,15 @@ export function compressImageFile(file: File, maxDimension = 800, quality = 0.65
         let width = img.width;
         let height = img.height;
 
-        if (width > maxDimension || height > maxDimension) {
+        // Limit max dimension to 800px for DB-safe output
+        const limit = Math.min(maxDimension, 800);
+        if (width > limit || height > limit) {
           if (width > height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
+            height = Math.round((height * limit) / width);
+            width = limit;
           } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
+            width = Math.round((width * limit) / height);
+            height = limit;
           }
         }
 
@@ -67,7 +143,29 @@ export function compressImageFile(file: File, maxDimension = 800, quality = 0.65
         }
 
         ctx.drawImage(img, 0, 0, width, height);
-        const compressedDataUrl = canvas.toDataURL(file.type === "image/png" ? "image/png" : "image/jpeg", quality);
+
+        // Always output JPEG for best compression (PNG → JPEG gives huge savings)
+        const q = Math.min(quality, 0.65);
+        let compressedDataUrl = canvas.toDataURL("image/jpeg", q);
+
+        // Second pass: if still > ~600KB base64 string, compress harder
+        const MAX_B64 = 800 * 1024; // ~600KB binary = ~800K base64 chars
+        if (compressedDataUrl.length > MAX_B64) {
+          compressedDataUrl = canvas.toDataURL("image/jpeg", 0.40);
+        }
+
+        // Third pass: reduce resolution 60% and re-compress
+        if (compressedDataUrl.length > MAX_B64) {
+          const canvas2 = document.createElement("canvas");
+          canvas2.width = Math.round(width * 0.6);
+          canvas2.height = Math.round(height * 0.6);
+          const ctx2 = canvas2.getContext("2d");
+          if (ctx2) {
+            ctx2.drawImage(img, 0, 0, canvas2.width, canvas2.height);
+            compressedDataUrl = canvas2.toDataURL("image/jpeg", 0.40);
+          }
+        }
+
         resolve(compressedDataUrl);
       };
 
@@ -116,7 +214,7 @@ export const ImageFileInput: React.FC<ImageFileInputProps> = ({
     setIsUploading(true);
 
     try {
-      const dataUrl = await compressImageFile(file, 1200, 0.82);
+      const dataUrl = await compressImageFile(file, 800, 0.65);
 
       // Auto-save to CMS Media Store
       try {

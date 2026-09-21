@@ -66,7 +66,7 @@ export const MultiImageFileInput: React.FC<MultiImageFileInputProps> = ({
     try {
       const base64Results = await Promise.all(
         filesToProcess.map(async (file) => {
-          const dataUrl = await compressImageFile(file, 1200, 0.82);
+          const dataUrl = await compressImageFile(file, 800, 0.65);
           try {
             cmsStore.addMedia({
               id: `media_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,

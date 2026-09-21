@@ -49,6 +49,7 @@ import MediaLibraryPage from "@/app/(dashboard)/media/page";
 import TransportPage from "@/app/(dashboard)/transport/page";
 import WorkflowPage from "@/app/(dashboard)/workflow/page";
 import EssentialServicesPage from "@/app/(dashboard)/essential-services/page";
+import BookingsPage from "@/app/(dashboard)/bookings/page";
 
 // ============================================================
 // APP
@@ -357,6 +358,24 @@ export function App() {
           element={
             <DashboardLayout>
               <EssentialServicesPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/bookings"
+          element={
+            <DashboardLayout>
+              <BookingsPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
+          path="/enquiries"
+          element={
+            <DashboardLayout>
+              <BookingsPage />
             </DashboardLayout>
           }
         />

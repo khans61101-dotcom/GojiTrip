@@ -100,9 +100,14 @@ export default function TransportPage() {
         }
       });
 
-      setItems(mapped.length > 0 ? mapped : (storeItems as any));
+      const finalItems = mapped.length > 0 ? mapped : (storeItems as any);
+      setItems(finalItems);
+      if (finalItems.length > 0) {
+        cmsStore.syncTransports(finalItems as any);
+      }
     } catch (err) {
-      setItems(cmsStore.getTransports() as any);
+      const fallback = cmsStore.getTransports() as any;
+      setItems(fallback);
     } finally {
       setLoading(false);
     }
@@ -197,7 +202,7 @@ export default function TransportPage() {
     setDeletingId(String(id));
     setError(null);
     try {
-      await deleteTransport(id);
+      await cmsStore.deleteTransport(String(id));
       setSuccess('Transport record deleted.');
       await load();
     } catch (err) {
@@ -286,7 +291,12 @@ export default function TransportPage() {
             <Bus className="w-4 h-4" />
             <span>Vehicle & Operator Database</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">Transport Module</h1>
+          <div className="flex items-center space-x-3 mt-1">
+            <h1 className="text-2xl font-extrabold text-white tracking-tight">Transport Module</h1>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              {items.length} {items.length === 1 ? 'Operator' : 'Operators'}
+            </span>
+          </div>
           <p className="text-slate-400 text-xs mt-1">Manage vehicles, transport operators, routes, fare pricing, and onboard services.</p>
         </div>
         <button onClick={openCreate} className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-bold text-xs flex items-center space-x-1.5 shadow-lg shadow-emerald-500/20 transition-all">
@@ -307,11 +317,23 @@ export default function TransportPage() {
           <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search by operator, route, plate no..." className="w-full bg-[#182238] border border-slate-700/80 rounded-xl pl-9 pr-4 py-2 text-xs text-white" />
         </div>
         <div className="flex items-center space-x-1 bg-[#182238] border border-slate-700/80 p-1 rounded-xl w-full md:w-auto overflow-x-auto">
-          {['ALL', 'Draft', 'Under Review', 'Approved', 'Published'].map(st => (
-            <button key={st} onClick={() => setStatusFilter(st)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap ${statusFilter === st ? 'bg-emerald-500 text-white' : 'text-slate-400'}`}>
-              {st}
-            </button>
-          ))}
+          {['ALL', 'Draft', 'Under Review', 'Approved', 'Published'].map(st => {
+            const count = st === 'ALL' ? items.length : items.filter((it: any) => (it.approvalStatus || 'Draft') === st).length;
+            return (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap flex items-center space-x-1.5 transition-all ${
+                  statusFilter === st ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>{st}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${statusFilter === st ? 'bg-emerald-700 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

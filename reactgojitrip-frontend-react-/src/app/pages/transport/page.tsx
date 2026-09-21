@@ -1,14 +1,14 @@
-// TransportPage.tsx - With Split Layout (Left List + Right Map)
+// TransportPage.tsx - Enhanced Local Search + Google Pickup Point Geocoding
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { SafeImage } from "@/components/common/SafeImage";
 import { apiRequest } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
 import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
 import { InteractiveMap, MapMarkerItem } from "@/components/common/InteractiveMap";
 import {
-  Search,
+  Search, 
   Filter,
   Clock,
   Car,
@@ -23,8 +23,98 @@ import {
   Maximize2,
   Minimize2,
   Star,
+  Globe,
+  X,
+  ChevronDown,
+  SlidersHorizontal,
+  Calendar,
+  ArrowRight,
+  CheckCircle2,
 } from "lucide-react";
 
+// ============= GOOGLE GEOCODING HELPERS =============
+const GOOGLE_API_KEY =
+  (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ||
+  "YOUR_GOOGLE_MAPS_API_KEY";
+
+let _geocoder: any = null;
+let _geocodeScriptPromise: Promise<void> | null = null;
+
+const loadGoogleMapsScript = (): Promise<void> => {
+  if (_geocodeScriptPromise) return _geocodeScriptPromise;
+
+  _geocodeScriptPromise = new Promise((resolve, reject) => {
+    if (typeof window === "undefined") return resolve();
+    if ((window as any).google?.maps?.Geocoder) return resolve();
+
+    const existing = document.querySelector(
+      'script[src*="maps.googleapis.com/maps/api/js"]'
+    );
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () =>
+        reject(new Error("Google Maps load failed"))
+      );
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Google Maps load failed"));
+    document.head.appendChild(script);
+  });
+
+  return _geocodeScriptPromise;
+};
+
+const getGeocoder = (): any => {
+  if (_geocoder) return _geocoder;
+  _geocoder = new (window as any).google.maps.Geocoder();
+  return _geocoder;
+};
+
+interface GeocodeResult {
+  lat: number;
+  lng: number;
+  formattedAddress: string;
+}
+
+const geocodeLocation = async (
+  query: string
+): Promise<GeocodeResult | null> => {
+  if (!query.trim() || query.length < 3) return null;
+
+  try {
+    await loadGoogleMapsScript();
+    const google = (window as any).google;
+    if (!google?.maps?.Geocoder) return null;
+
+    const geocoder = getGeocoder();
+
+    return new Promise((resolve) => {
+      geocoder.geocode({ address: query }, (results: any, status: any) => {
+        if (status === "OK" && results?.[0]) {
+          const loc = results[0].geometry.location;
+          resolve({
+            lat: loc.lat(),
+            lng: loc.lng(),
+            formattedAddress: results[0].formatted_address,
+          });
+        } else {
+          resolve(null);
+        }
+      });
+    });
+  } catch (err) {
+    console.warn("Geocode failed:", err);
+    return null;
+  }
+};
+
+// ============= TYPES =============
 interface BackendTransport {
   id: number | string;
   operatorName?: string;
@@ -95,11 +185,19 @@ interface TransportOption {
   amenities: string[];
   lat?: number;
   lng?: number;
+  /** Derived: departure hour (0-23) for time filter */
+  departureHour?: number;
+  /** Derived: searchable haystack */
+  _searchText?: string;
 }
 
 interface FilterState {
   transportType: string[];
   sortBy: string;
+  priceMin: number;
+  priceMax: number;
+  departureTimeSlot: "any" | "morning" | "afternoon" | "evening" | "night";
+  operatorVerifiedOnly: boolean;
 }
 
 declare global {
@@ -110,28 +208,54 @@ declare global {
 }
 
 /* -------------------------------------------------------
+   Helper: Parse "HH:MM AM/PM" → hour (0-23)
+------------------------------------------------------- */
+function parseDepartureHour(timeStr?: string): number | undefined {
+  if (!timeStr) return undefined;
+  const match = timeStr.match(/(\d{1,2}):?(\d{2})?\s*(AM|PM)?/i);
+  if (!match) return undefined;
+  let hour = parseInt(match[1], 10);
+  const ampm = (match[3] || "").toUpperCase();
+  if (ampm === "PM" && hour < 12) hour += 12;
+  if (ampm === "AM" && hour === 12) hour = 0;
+  return hour;
+}
+
+/* -------------------------------------------------------
    Helper: Convert Admin vehicle type to Public UI type
 ------------------------------------------------------- */
-function getTransportType(
-  vehicleType?: string,
-): TransportType {
+function getTransportType(vehicleType?: string): TransportType {
   const type = (vehicleType || "").toLowerCase();
-
-  if (type.includes("plane") || type.includes("flight") || type.includes("air") || type.includes("helicopter")) {
+  if (
+    type.includes("plane") ||
+    type.includes("flight") ||
+    type.includes("air") ||
+    type.includes("helicopter")
+  )
     return "plane";
-  }
-  if (type.includes("ship") || type.includes("boat") || type.includes("ferry") || type.includes("cruise") || type.includes("water")) {
+  if (
+    type.includes("ship") ||
+    type.includes("boat") ||
+    type.includes("ferry") ||
+    type.includes("cruise") ||
+    type.includes("water")
+  )
     return "ship";
-  }
-  if (type.includes("bus") || type.includes("hiace") || type.includes("van") || type.includes("coach")) {
+  if (
+    type.includes("bus") ||
+    type.includes("hiace") ||
+    type.includes("van") ||
+    type.includes("coach")
+  )
     return "bus";
-  }
-  if (type.includes("bike") || type.includes("motorcycle") || type.includes("ev") || type.includes("scooter")) {
+  if (
+    type.includes("bike") ||
+    type.includes("motorcycle") ||
+    type.includes("ev") ||
+    type.includes("scooter")
+  )
     return "bike";
-  }
-  if (type.includes("train") || type.includes("metro")) {
-    return "train";
-  }
+  if (type.includes("train") || type.includes("metro")) return "train";
   return "car";
 }
 
@@ -141,7 +265,8 @@ function getTransportType(
 function mapTransport(item: BackendTransport): TransportOption {
   const vehicleType = item.vehicleType ?? item.vehicle_type ?? "Other";
   const vehicleNumber = item.vehicleNumber ?? item.vehicle_number ?? "";
-  const operatorName = item.operatorName ?? item.operator_name ?? "Transport Operator";
+  const operatorName =
+    item.operatorName ?? item.operator_name ?? "Transport Operator";
   const route = item.route ?? "";
   const pickupPoint = item.pickupPoint ?? item.pickup_point ?? "";
   const departureTime = item.departureTime ?? item.departure_time ?? "";
@@ -150,9 +275,13 @@ function mapTransport(item: BackendTransport): TransportOption {
   const seatCapacity = Number(item.seatCapacity ?? item.seat_capacity ?? 0);
   const driverPhoto = item.driverPhotoUrl ?? item.driver_photo_url ?? "";
   const vehiclePhotos = item.vehiclePhotos ?? item.vehicle_photos ?? [];
-  const image = vehiclePhotos.length > 0 ? vehiclePhotos[0] : driverPhoto || "/logo/gojitriplogo.jpg";
+  const image =
+    vehiclePhotos.length > 0
+      ? vehiclePhotos[0]
+      : driverPhoto || "/logo/gojitriplogo.jpg";
   const activeStatus = item.activeStatus ?? item.active_status ?? "Active";
-  const approvalStatus = item.approvalStatus ?? item.approval_status ?? "Published";
+  const approvalStatus =
+    item.approvalStatus ?? item.approval_status ?? "Published";
   const type = getTransportType(vehicleType);
 
   let lat: number | undefined;
@@ -171,7 +300,10 @@ function mapTransport(item: BackendTransport): TransportOption {
   let to = route || "Destination";
 
   if (route) {
-    const routeParts = route.split(/→|->|\s+to\s+|-/i).map((part) => part.trim()).filter(Boolean);
+    const routeParts = route
+      .split(/→|->|\s+to\s+|-/i)
+      .map((part) => part.trim())
+      .filter(Boolean);
     if (routeParts.length >= 2) {
       from = pickupPoint || routeParts[0];
       to = routeParts[routeParts.length - 1];
@@ -180,11 +312,20 @@ function mapTransport(item: BackendTransport): TransportOption {
     }
   }
 
+  const departureHour = parseDepartureHour(departureTime);
+
   return {
     id: String(item.id),
     type,
-    name: operatorName !== "Transport Operator" ? operatorName : `${vehicleType} Transport`,
-    description: [vehicleType, vehicleNumber ? `Vehicle No: ${vehicleNumber}` : "", route ? `Route: ${route}` : ""]
+    name:
+      operatorName !== "Transport Operator"
+        ? operatorName
+        : `${vehicleType} Transport`,
+    description: [
+      vehicleType,
+      vehicleNumber ? `Vehicle No: ${vehicleNumber}` : "",
+      route ? `Route: ${route}` : "",
+    ]
       .filter(Boolean)
       .join(" • "),
     image,
@@ -197,12 +338,31 @@ function mapTransport(item: BackendTransport): TransportOption {
     currency,
     capacity: seatCapacity,
     available: seatCapacity,
-    rating: 0,
+    rating: 4.5,
     provider: operatorName,
-    amenities: [vehicleType, (item.licenceVerified ?? item.licence_verified) ? "Licence Verified" : "", activeStatus, approvalStatus]
-      .filter(Boolean),
+    amenities: [
+      vehicleType,
+      (item.licenceVerified ?? item.licence_verified)
+        ? "Licence Verified"
+        : "",
+      activeStatus,
+      approvalStatus,
+    ].filter(Boolean),
     lat,
     lng,
+    departureHour,
+    _searchText: [
+      operatorName,
+      vehicleType,
+      vehicleNumber,
+      route,
+      pickupPoint,
+      departureTime,
+      activeStatus,
+      approvalStatus,
+    ]
+      .join(" ")
+      .toLowerCase(),
   };
 }
 
@@ -210,7 +370,10 @@ function mapTransport(item: BackendTransport): TransportOption {
 const LoadingSkeleton: React.FC = () => (
   <div className="space-y-3">
     {[1, 2, 3, 4, 5].map((item) => (
-      <div key={item} className="flex gap-3 p-3 bg-white rounded-xl border border-gray-200 animate-pulse">
+      <div
+        key={item}
+        className="flex gap-3 p-3 bg-white rounded-xl border border-gray-200 animate-pulse"
+      >
         <div className="w-24 h-24 bg-gray-200 rounded-lg flex-shrink-0" />
         <div className="flex-1">
           <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
@@ -233,235 +396,12 @@ const LoadingSkeleton: React.FC = () => (
 const EmptyState: React.FC<{ message: string }> = ({ message }) => (
   <div className="flex flex-col items-center justify-center py-16">
     <div className="text-6xl mb-4">🚌</div>
-    <h3 className="text-xl font-semibold text-gray-700 mb-2">No Transport Found</h3>
+    <h3 className="text-xl font-semibold text-gray-700 mb-2">
+      No Transport Found
+    </h3>
     <p className="text-gray-500 max-w-md mx-auto text-center">{message}</p>
   </div>
 );
-
-// ============= MAP COMPONENT =============
-const MapComponent: React.FC<{
-  transports: TransportOption[];
-  selectedTransportId?: string | null;
-  onMarkerClick: (transportId: string) => void;
-  center?: { lat: number; lng: number };
-}> = ({ transports, selectedTransportId, onMarkerClick, center = { lat: 27.7172, lng: 85.324 } }) => {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const loadGoogleMaps = () => {
-      if (window.google && window.google.maps) {
-        initializeMap();
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap`;
-      script.async = true;
-      script.defer = true;
-
-      window.initMap = () => {
-        initializeMap();
-      };
-
-      document.head.appendChild(script);
-
-      return () => {
-        const scripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
-        scripts.forEach((s) => s.remove());
-        window.initMap = () => {};
-      };
-    };
-
-    const initializeMap = () => {
-      if (!mapRef.current) {
-        console.error("Map container not found");
-        return;
-      }
-
-      try {
-        console.log("Initializing map with center:", center);
-        
-        const mapOptions = {
-          center: center,
-          zoom: 13,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: true,
-        };
-
-        const map = new window.google.maps.Map(mapRef.current, mapOptions);
-        setIsMapLoaded(true);
-        setMapError(null);
-
-        const typeColors: Record<string, string> = {
-          car: "#3B82F6",
-          bus: "#10B981",
-          train: "#8B5CF6",
-          bike: "#F59E0B",
-        };
-
-        const typeIcons: Record<string, string> = {
-          car: "🚗",
-          bus: "🚌",
-          train: "🚆",
-          bike: "🏍️",
-        };
-
-        transports.forEach((transport, index) => {
-          let position;
-          if (transport.lat && transport.lng) {
-            position = { lat: transport.lat, lng: transport.lng };
-          } else {
-            const latOffset = (Math.random() - 0.5) * 0.05;
-            const lngOffset = (Math.random() - 0.5) * 0.05;
-            position = {
-              lat: center.lat + latOffset,
-              lng: center.lng + lngOffset,
-            };
-          }
-
-          const marker = new window.google.maps.Marker({
-            position,
-            map: map,
-            title: transport.name,
-            animation: window.google.maps.Animation.DROP,
-            icon: {
-              path: window.google.maps.SymbolPath.CIRCLE,
-              fillColor: selectedTransportId === transport.id ? "#2563EB" : typeColors[transport.type] || "#3B82F6",
-              fillOpacity: 1,
-              strokeColor: "#FFFFFF",
-              strokeWeight: 2,
-              scale: selectedTransportId === transport.id ? 14 : 10,
-            },
-            label: {
-              text: `${index + 1}`,
-              color: "#FFFFFF",
-              fontSize: "10px",
-              fontWeight: "bold",
-            },
-          });
-
-          const infoWindow = new window.google.maps.InfoWindow({
-            content: `
-              <div style="padding: 8px; max-width: 200px;">
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span style="font-size: 18px;">${typeIcons[transport.type] || "🚗"}</span>
-                  <strong style="font-size: 14px;">${transport.name}</strong>
-                </div>
-                <div style="font-size: 12px; color: #666; margin: 4px 0;">
-                  📍 ${transport.from} → ${transport.to}
-                </div>
-                <div style="font-size: 12px; color: #666; margin: 4px 0;">
-                  🕐 ${transport.departureTime}
-                </div>
-                <div style="font-size: 12px; color: #666; margin: 4px 0;">
-                  👤 Capacity: ${transport.capacity}
-                </div>
-                <div style="font-size: 14px; font-weight: bold; color: #1f2937; margin: 4px 0;">
-                  ${transport.currency} ${transport.price.toLocaleString()}
-                </div>
-                <button 
-                  onclick="window.handleTransportBook('${transport.id}')"
-                  style="
-                    background: #2563eb;
-                    color: white;
-                    border: none;
-                    padding: 4px 16px;
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    margin-top: 4px;
-                    width: 100%;
-                  "
-                >
-                  Book Now
-                </button>
-              </div>
-            `,
-          });
-
-          marker.addListener("click", () => {
-            onMarkerClick(transport.id);
-            infoWindow.open(map, marker);
-          });
-
-          if (selectedTransportId === transport.id) {
-            setTimeout(() => {
-              infoWindow.open(map, marker);
-              map.panTo(position);
-              map.setZoom(15);
-            }, 500);
-          }
-        });
-
-        if (transports.length > 1) {
-          const bounds = new window.google.maps.LatLngBounds();
-          transports.forEach((transport) => {
-            let pos;
-            if (transport.lat && transport.lng) {
-              pos = { lat: transport.lat, lng: transport.lng };
-            } else {
-              const latOffset = (Math.random() - 0.5) * 0.05;
-              const lngOffset = (Math.random() - 0.5) * 0.05;
-              pos = {
-                lat: center.lat + latOffset,
-                lng: center.lng + lngOffset,
-              };
-            }
-            bounds.extend(pos);
-          });
-          map.fitBounds(bounds);
-        }
-
-        (window as any).handleTransportBook = (transportId: string) => {
-          onMarkerClick(transportId);
-        };
-
-      } catch (error) {
-        console.error("Error initializing map:", error);
-        setMapError("Failed to load map. Please check your API key.");
-      }
-    };
-
-    loadGoogleMaps();
-
-    return () => {
-      delete (window as any).handleTransportBook;
-    };
-  }, [center, transports, selectedTransportId, onMarkerClick]);
-
-  if (mapError) {
-    return (
-      <div className="h-full w-full bg-gray-100 rounded-2xl flex flex-col items-center justify-center p-8">
-        <div className="text-5xl mb-4">🗺️</div>
-        <p className="text-gray-700 font-medium text-center">Map unavailable</p>
-        <p className="text-gray-500 text-sm text-center mt-1">{mapError}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full w-full rounded-2xl overflow-hidden bg-gray-200 relative">
-      <div ref={mapRef} className="w-full h-full" style={{ minHeight: "500px" }} />
-      {!isMapLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-gray-600 text-sm">Loading map...</p>
-          </div>
-        </div>
-      )}
-      {isMapLoaded && transports.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg text-xs text-gray-600">
-          📍 {transports.length} transport{transports.length > 1 ? 's' : ''} displayed
-        </div>
-      )}
-    </div>
-  );
-};
 
 // ============= COMPACT TRANSPORT CARD =============
 const CompactTransportCard: React.FC<{
@@ -483,7 +423,9 @@ const CompactTransportCard: React.FC<{
   return (
     <div
       className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md group ${
-        isSelected ? "border-emerald-500 ring-2 ring-emerald-500/30 shadow-md" : "border-gray-200 hover:border-emerald-300"
+        isSelected
+          ? "border-emerald-500 ring-2 ring-emerald-500/30 shadow-md"
+          : "border-gray-200 hover:border-emerald-300"
       }`}
       onClick={() => {
         onClick();
@@ -515,14 +457,18 @@ const CompactTransportCard: React.FC<{
               </h3>
               <div className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full flex-shrink-0">
                 <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
-                <span className="text-xs font-extrabold text-amber-900">{transport.rating || 4.8}</span>
+                <span className="text-xs font-extrabold text-amber-900">
+                  {transport.rating || 4.8}
+                </span>
               </div>
             </div>
 
             <div className="flex items-center gap-3 text-slate-600 text-xs mb-2 flex-wrap">
               <div className="flex items-center gap-1 font-bold text-slate-800">
                 <MapPin className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
-                <span>{transport.from} ➔ {transport.to}</span>
+                <span>
+                  {transport.from} ➔ {transport.to}
+                </span>
               </div>
               <div className="flex items-center gap-1 text-slate-500">
                 <Clock className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
@@ -530,10 +476,12 @@ const CompactTransportCard: React.FC<{
               </div>
             </div>
 
-            {/* Amenities pills */}
             <div className="flex gap-1.5 flex-wrap">
               {transport.amenities.slice(0, 3).map((amenity, index) => (
-                <span key={index} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md text-[10px] font-bold border border-emerald-200/60">
+                <span
+                  key={index}
+                  className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md text-[10px] font-bold border border-emerald-200/60"
+                >
                   {amenity}
                 </span>
               ))}
@@ -555,7 +503,7 @@ const CompactTransportCard: React.FC<{
                   e.stopPropagation();
                   if (onViewDetails) onViewDetails();
                 }}
-                className="px-3 py-1 rounded-lg text-xs font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white"
+                className="ml-2 px-3 py-1 rounded-lg text-xs font-medium transition-colors bg-blue-600 hover:bg-blue-700 text-white"
               >
                 Book
               </button>
@@ -573,24 +521,66 @@ const TransportPage: React.FC = () => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const locParam = params.get("location") || params.get("search") || params.get("q") || params.get("routeStop");
+    const locParam =
+      params.get("location") ||
+      params.get("search") ||
+      params.get("q") ||
+      params.get("routeStop");
     if (locParam && locParam.trim()) {
       setSearchQuery(locParam.trim());
     }
   }, []);
+
   const [transports, setTransports] = useState<TransportOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState<FilterState>({
     transportType: [],
     sortBy: "recommended",
+    priceMin: 0,
+    priceMax: 100000,
+    departureTimeSlot: "any",
+    operatorVerifiedOnly: false,
   });
-  const [selectedTransportId, setSelectedTransportId] = useState<string | null>(null);
+  const [selectedTransportId, setSelectedTransportId] = useState<string | null>(
+    null
+  );
   const [isMapExpanded, setIsMapExpanded] = useState(false);
-  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(null);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(
+    null
+  );
   const [showYelpModal, setShowYelpModal] = useState(false);
   const transportListRef = useRef<HTMLDivElement>(null);
 
+  // ============= GOOGLE GEOCODING (Pickup Point Search) =============
+  const [geocodeResult, setGeocodeResult] = useState<GeocodeResult | null>(
+    null
+  );
+  const [geocoding, setGeocoding] = useState(false);
+
+  // Debounced geocode — sirf search query 3+ chars aur local me results kam hon
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 3) {
+      setGeocodeResult(null);
+      return;
+    }
+
+    // Local search me results mil gaye? To geocode skip
+    // (Ye check filteredTransports me karenge — but for debounce, just fire)
+
+    const timer = setTimeout(async () => {
+      setGeocoding(true);
+      const result = await geocodeLocation(query);
+      setGeocodeResult(result);
+      setGeocoding(false);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // ============= YELP DETAIL =============
   const handleOpenYelpDetail = (t: TransportOption) => {
     setYelpDetailData({
       id: t.id,
@@ -604,34 +594,62 @@ const TransportPage: React.FC = () => {
       phone: (t as any).mobileNumber || t.provider || "+977 1 4567890",
       whatsapp: (t as any).whatsAppNumber || "+9779801234567",
       image: t.image,
-      galleryImages: (t as any).vehiclePhotos || (t as any).photos || (t.image ? [t.image] : []),
-      description: (t as any).description || `${t.name} (${t.provider}) provides reliable, safe ${t.type} passenger transport service along the ${t.from} to ${t.to} corridor. Driver photo and vehicle licences are fully verified.`,
-      amenities: (t as any).amenities || t.amenities || ["AC Vehicle", "Reclining Seats", "Luggage Storage", "GPS Tracking", "Verified Driver"],
-      hours: t.departureTime ? [{ day: "Daily Schedule", time: `Departure: ${t.departureTime}` }] : undefined,
+      galleryImages:
+        (t as any).vehiclePhotos || (t as any).photos || (t.image ? [t.image] : []),
+      description:
+        (t as any).description ||
+        `${t.name} (${t.provider}) provides reliable, safe ${t.type} passenger transport service along the ${t.from} to ${t.to} corridor. Driver photo and vehicle licences are fully verified.`,
+      amenities:
+        (t as any).amenities ||
+        t.amenities || [
+          "AC Vehicle",
+          "Reclining Seats",
+          "Luggage Storage",
+          "GPS Tracking",
+          "Verified Driver",
+        ],
+      hours: t.departureTime
+        ? [{ day: "Daily Schedule", time: `Departure: ${t.departureTime}` }]
+        : undefined,
       priceTag: `${t.currency} ${t.price} / seat`,
       entityType: "transport",
       offerings: [
-        { title: `Regular Seat Ticket (${t.from} → ${t.to})`, price: `${t.currency} ${t.price}`, desc: `Departure: ${t.departureTime} • Vehicle Type: ${t.type.toUpperCase()}` },
-        { title: "Full Vehicle Private Charter", price: `${t.currency} ${(t.price * 6).toLocaleString()}`, desc: "Private booking for families & groups with custom pickup location." },
+        {
+          title: `Regular Seat Ticket (${t.from} → ${t.to})`,
+          price: `${t.currency} ${t.price}`,
+          desc: `Departure: ${t.departureTime} • Vehicle Type: ${t.type.toUpperCase()}`,
+        },
+        {
+          title: "Full Vehicle Private Charter",
+          price: `${t.currency} ${(t.price * 6).toLocaleString()}`,
+          desc: "Private booking for families & groups with custom pickup location.",
+        },
       ],
     });
     setShowYelpModal(true);
   };
 
+  // ============= FETCH CMS + API =============
   const fetchTransports = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
 
       const storeTransports = cmsStore.getTransports();
-      const userStoreTransports = storeTransports.filter((s) => !String(s.id).startsWith("tr-"));
-      const response = await apiRequest<BackendTransport[]>("/transport").catch(() => null);
+      const userStoreTransports = storeTransports.filter(
+        (s) => !String(s.id).startsWith("tr-")
+      );
+      const response = await apiRequest<BackendTransport[]>("/transport").catch(
+        () => null
+      );
       console.log("Transport API response:", response);
 
       const backendData = Array.isArray(response) ? response : [];
       const mappedData = backendData.map((bItem) => {
         const base = mapTransport(bItem);
-        const storeMatch = storeTransports.find((s) => String(s.id) === String(bItem.id));
+        const storeMatch = storeTransports.find(
+          (s) => String(s.id) === String(bItem.id)
+        );
         const routeStr = storeMatch?.route || storeMatch?.pickupPoint;
         let from = base.from;
         let to = base.to;
@@ -650,9 +668,11 @@ const TransportPage: React.FC = () => {
           ...base,
           from: from || base.from,
           to: to || base.to,
-          amenities: (Array.isArray((storeMatch as any)?.vehicleAmenities) && (storeMatch as any).vehicleAmenities.length > 0)
-            ? (storeMatch as any).vehicleAmenities
-            : base.amenities,
+          amenities:
+            Array.isArray((storeMatch as any)?.vehicleAmenities) &&
+            (storeMatch as any).vehicleAmenities.length > 0
+              ? (storeMatch as any).vehicleAmenities
+              : base.amenities,
         };
       });
 
@@ -673,6 +693,8 @@ const TransportPage: React.FC = () => {
             from = st.pickupPoint;
           }
 
+          const departureTime = st.departureTime || "07:30 AM";
+
           mappedData.unshift({
             id: String(st.id),
             name: st.operatorName || st.driverName || "Express Transport",
@@ -680,22 +702,46 @@ const TransportPage: React.FC = () => {
             from,
             to,
             duration: "4.5h",
-            departureTime: st.departureTime || "07:30 AM",
+            departureTime,
             arrivalTime: "12:00 PM",
             price: Number(st.fare || st.ticketPrice) || 1200,
             currency: st.currency || "NRs",
             capacity: st.seatCapacity || 35,
             rating: 4.8,
-            image: st.vehiclePhotos && st.vehiclePhotos[0] ? st.vehiclePhotos[0] : "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80",
-            amenities: st.vehicleAmenities && st.vehicleAmenities.length > 0 ? st.vehicleAmenities : ["AC", "Reclining Seats"],
+            image:
+              st.vehiclePhotos && st.vehiclePhotos[0]
+                ? st.vehiclePhotos[0]
+                : "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80",
+            amenities:
+              st.vehicleAmenities && st.vehicleAmenities.length > 0
+                ? st.vehicleAmenities
+                : ["AC", "Reclining Seats"],
             provider: st.operatorName || "Verified Operator",
             available: st.seatCapacity || 15,
-            description: st.driverName ? `Driver: ${st.driverName}` : "Comfortable Highway Passenger Service",
+            description: st.driverName
+              ? `Driver: ${st.driverName}`
+              : "Comfortable Highway Passenger Service",
+            departureHour: parseDepartureHour(departureTime),
+            _searchText: [
+              st.operatorName,
+              st.vehicleType,
+              routeStr,
+              departureTime,
+            ]
+              .join(" ")
+              .toLowerCase(),
           });
         }
       });
 
       setTransports(mappedData);
+
+      // Compute max price for slider
+      const maxPrice = Math.max(
+        100000,
+        ...mappedData.map((m) => m.price || 0)
+      );
+      setFilters((prev) => ({ ...prev, priceMax: maxPrice }));
     } catch (err) {
       console.error("Failed to fetch transports:", err);
       setTransports([]);
@@ -709,46 +755,138 @@ const TransportPage: React.FC = () => {
     void fetchTransports();
   }, [fetchTransports]);
 
-  const filteredTransports = transports.filter((transport) => {
+  // ============= FUZZY SEARCH HELPER =============
+  // Simple fuzzy: check if all query words are present in haystack
+  const fuzzyMatch = (haystack: string, query: string): boolean => {
+    if (!query) return true;
+    const words = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 0);
+    const hay = haystack.toLowerCase();
+    return words.every((word) => {
+      // Direct match
+      if (hay.includes(word)) return true;
+      // Typo tolerance: allow 1 char difference for words 4+ chars
+      if (word.length >= 4) {
+        // Check if any word in haystack is within edit distance 1
+        const hayWords = hay.split(/\s+/);
+        return hayWords.some((hw) => {
+          if (Math.abs(hw.length - word.length) > 1) return false;
+          let diff = 0;
+          const len = Math.min(hw.length, word.length);
+          for (let i = 0; i < len; i++) {
+            if (hw[i] !== word[i]) diff++;
+            if (diff > 1) return false;
+          }
+          return diff <= 1;
+        });
+      }
+      return false;
+    });
+  };
+
+  // ============= FILTER + SORT (A) =============
+  const filteredTransports = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
-    if (query) {
-      const searchableText = [
-        transport.name,
-        transport.description,
-        transport.from,
-        transport.to,
-        transport.provider,
-        transport.type,
-        transport.currency,
-      ]
-        .join(" ")
-        .toLowerCase();
+    let result = transports.filter((transport) => {
+      // Fuzzy search
+      if (query) {
+        const haystack =
+          transport._searchText ||
+          [
+            transport.name,
+            transport.description,
+            transport.from,
+            transport.to,
+            transport.provider,
+            transport.type,
+          ]
+            .join(" ")
+            .toLowerCase();
+        if (!fuzzyMatch(haystack, query)) return false;
+      }
 
-      if (!searchableText.includes(query)) {
+      // Transport type filter
+      if (
+        filters.transportType.length > 0 &&
+        !filters.transportType.includes(transport.type)
+      ) {
         return false;
       }
+
+      // Price range filter
+      if (
+        transport.price < filters.priceMin ||
+        transport.price > filters.priceMax
+      ) {
+        return false;
+      }
+
+      // Departure time slot filter
+      if (filters.departureTimeSlot !== "any" && transport.departureHour !== undefined) {
+        const h = transport.departureHour;
+        if (filters.departureTimeSlot === "morning" && (h < 5 || h >= 12))
+          return false;
+        if (filters.departureTimeSlot === "afternoon" && (h < 12 || h >= 17))
+          return false;
+        if (filters.departureTimeSlot === "evening" && (h < 17 || h >= 21))
+          return false;
+        if (filters.departureTimeSlot === "night" && (h < 21 && h >= 5))
+          return false;
+      }
+
+      // Verified operator filter
+      if (filters.operatorVerifiedOnly) {
+        const hasVerified = transport.amenities.some((a) =>
+          a.toLowerCase().includes("verified")
+        );
+        if (!hasVerified) return false;
+      }
+
+      return true;
+    });
+
+    // Sort
+    switch (filters.sortBy) {
+      case "price-low":
+        result = [...result].sort((a, b) => a.price - b.price);
+        break;
+      case "price-high":
+        result = [...result].sort((a, b) => b.price - a.price);
+        break;
+      case "capacity":
+        result = [...result].sort((a, b) => b.capacity - a.capacity);
+        break;
+      case "departure":
+        result = [...result].sort((a, b) => {
+          const ha = a.departureHour ?? 99;
+          const hb = b.departureHour ?? 99;
+          return ha - hb;
+        });
+        break;
+      default:
+        // Recommended: verified first, then rating
+        result = [...result].sort((a, b) => {
+          const aV = a.amenities.some((x) =>
+            x.toLowerCase().includes("verified")
+          )
+            ? 1
+            : 0;
+          const bV = b.amenities.some((x) =>
+            x.toLowerCase().includes("verified")
+          )
+            ? 1
+            : 0;
+          if (aV !== bV) return bV - aV;
+          return (b.rating || 0) - (a.rating || 0);
+        });
+        break;
     }
 
-    if (filters.transportType.length > 0 && !filters.transportType.includes(transport.type)) {
-      return false;
-    }
-
-    return true;
-  });
-
-  const sortedTransports = [...filteredTransports].sort((a, b) => {
-    if (filters.sortBy === "price-low") {
-      return a.price - b.price;
-    }
-    if (filters.sortBy === "price-high") {
-      return b.price - a.price;
-    }
-    if (filters.sortBy === "capacity") {
-      return b.capacity - a.capacity;
-    }
-    return 0;
-  });
+    return result;
+  }, [transports, searchQuery, filters]);
 
   const toggleTransportType = (type: string) => {
     setFilters((previous) => {
@@ -764,16 +902,28 @@ const TransportPage: React.FC = () => {
 
   const clearFilters = () => {
     setSearchQuery("");
+    setGeocodeResult(null);
     setFilters({
       transportType: [],
       sortBy: "recommended",
+      priceMin: 0,
+      priceMax: 100000,
+      departureTimeSlot: "any",
+      operatorVerifiedOnly: false,
     });
   };
+
+  const activeFilterCount =
+    filters.transportType.length +
+    (filters.departureTimeSlot !== "any" ? 1 : 0) +
+    (filters.operatorVerifiedOnly ? 1 : 0) +
+    (filters.priceMin > 0 || filters.priceMax < 100000 ? 1 : 0);
 
   const handleMarkerClick = (transportId: string) => {
     setSelectedTransportId(transportId);
     if (transportListRef.current) {
-      const cards = transportListRef.current.querySelectorAll("[data-transport-id]");
+      const cards =
+        transportListRef.current.querySelectorAll("[data-transport-id]");
       cards.forEach((card) => {
         if (card.getAttribute("data-transport-id") === transportId) {
           card.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -785,6 +935,30 @@ const TransportPage: React.FC = () => {
       });
     }
   };
+
+  // ============= MAP CENTER (Google Geocode ya default) =============
+  const mapCenter = useMemo(() => {
+    if (geocodeResult) {
+      return { lat: geocodeResult.lat, lng: geocodeResult.lng };
+    }
+    // Agar koi transport ka lat/lng hai to uska average
+    const withCoords = filteredTransports.filter((t) => t.lat && t.lng);
+    if (withCoords.length > 0) {
+      const avgLat =
+        withCoords.reduce((s, t) => s + (t.lat || 0), 0) / withCoords.length;
+      const avgLng =
+        withCoords.reduce((s, t) => s + (t.lng || 0), 0) / withCoords.length;
+      return { lat: avgLat, lng: avgLng };
+    }
+    return { lat: 28.2096, lng: 83.9856 };
+  }, [geocodeResult, filteredTransports]);
+
+  // Detect: search query Google me match hua lekin local me 0 results
+  const showGoogleFallbackHint =
+    searchQuery.trim().length >= 3 &&
+    filteredTransports.length === 0 &&
+    geocodeResult !== null &&
+    !geocoding;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -805,34 +979,71 @@ const TransportPage: React.FC = () => {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <input
                   type="text"
-                  placeholder="Search routes, operators, or transport types..."
+                  placeholder="Search routes (e.g. Kathmandu to Pokhara), operators..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-white/95 text-gray-900 placeholder-gray-500 border-0 rounded-xl focus:ring-2 focus:ring-white/50 outline-none transition-all shadow-sm text-sm"
+                  className="w-full pl-9 pr-10 py-2 bg-white/95 text-gray-900 placeholder-gray-500 border-0 rounded-xl focus:ring-2 focus:ring-white/50 outline-none transition-all shadow-sm text-sm"
                 />
+                {geocoding && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
+                    <Globe className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+                    <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
+                {searchQuery && !geocoding && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 p-1 hover:bg-gray-100 rounded-full transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5 text-gray-500" />
+                  </button>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
+                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all text-xs font-bold ${
+                  showAdvancedFilters || activeFilterCount > 0
+                    ? "bg-white text-blue-600 shadow-md"
+                    : "bg-white/20 backdrop-blur-sm text-white border border-white/30 hover:bg-white/30"
+                }`}
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Filters</span>
+                {activeFilterCount > 0 && (
+                  <span className="bg-blue-600 text-white rounded-full w-4 h-4 text-[10px] flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+
+              <button
                 onClick={() => setIsMapExpanded(!isMapExpanded)}
                 className="flex items-center gap-2 px-3 py-2 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl hover:bg-white/30 transition-all text-white flex-shrink-0"
               >
-                {isMapExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                <span className="hidden lg:inline text-sm">{isMapExpanded ? "Collapse" : "Expand"}</span>
+                {isMapExpanded ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+                <span className="hidden lg:inline text-sm">
+                  {isMapExpanded ? "Collapse" : "Expand"}
+                </span>
               </button>
             </div>
           </div>
 
-          {/* Transport Type Filters */}
-          <div className="pb-3 flex gap-2 flex-wrap">
+          {/* Transport Type Quick Filters */}
+          <div className="pb-3 flex gap-2 flex-wrap items-center">
             {["plane", "ship", "car", "bus", "train", "bike"].map((type) => {
               const selected = filters.transportType.includes(type);
               const labels: Record<string, string> = {
                 plane: "✈️ Plane",
-                ship: "🚢 Ship / Ferry",
-                car: "🚗 Car / SUV",
-                bus: "🚌 Bus / Van",
+                ship: "🚢 Ship",
+                car: "🚗 Car",
+                bus: "🚌 Bus",
                 train: "🚆 Train",
                 bike: "🏍️ Bike",
               };
@@ -850,64 +1061,223 @@ const TransportPage: React.FC = () => {
                 </button>
               );
             })}
-            {(searchQuery || filters.transportType.length > 0) && (
+            {(searchQuery ||
+              filters.transportType.length > 0 ||
+              activeFilterCount > 0) && (
               <button
                 onClick={clearFilters}
-                className="px-3 py-1 rounded-full text-xs font-medium bg-red-500/80 text-white hover:bg-red-500 transition-all"
+                className="px-3 py-1 rounded-full text-xs font-medium bg-red-500/80 text-white hover:bg-red-500 transition-all flex items-center gap-1"
               >
-                Clear Filters
+                <X className="w-3 h-3" />
+                Clear
               </button>
             )}
           </div>
         </div>
+
+        {/* Advanced Filters Panel */}
+        {showAdvancedFilters && (
+          <div className="bg-white/10 backdrop-blur-sm border-t border-white/20">
+            <div className="px-4 sm:px-6 lg:px-8 py-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Price Range */}
+                <div>
+                  <label className="block text-xs font-medium text-white/90 mb-2 flex items-center justify-between">
+                    <span>Price Range ({filters.priceMin} - {filters.priceMax})</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(100000, ...transports.map((t) => t.price))}
+                      step="100"
+                      value={filters.priceMin}
+                      onChange={(e) =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          priceMin: Math.min(
+                            Number(e.target.value),
+                            prev.priceMax - 100
+                          ),
+                        }))
+                      }
+                      className="w-full accent-white"
+                    />
+                    <input
+                      type="range"
+                      min="0"
+                      max={Math.max(100000, ...transports.map((t) => t.price))}
+                      step="100"
+                      value={filters.priceMax}
+                      onChange={(e) =>
+                        setFilters((prev) => ({
+                          ...prev,
+                          priceMax: Math.max(
+                            Number(e.target.value),
+                            prev.priceMin + 100
+                          ),
+                        }))
+                      }
+                      className="w-full accent-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Departure Time */}
+                <div>
+                  <label className="block text-xs font-medium text-white/90 mb-2">
+                    Departure Time
+                  </label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {[
+                      { key: "any", label: "Any" },
+                      { key: "morning", label: "🌅 Morning (5-12)" },
+                      { key: "afternoon", label: "☀️ Afternoon (12-17)" },
+                      { key: "evening", label: "🌆 Evening (17-21)" },
+                      { key: "night", label: "🌙 Night (21-5)" },
+                    ].map((slot) => (
+                      <button
+                        key={slot.key}
+                        onClick={() =>
+                          setFilters((prev) => ({
+                            ...prev,
+                            departureTimeSlot: slot.key as any,
+                          }))
+                        }
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium transition-all ${
+                          filters.departureTimeSlot === slot.key
+                            ? "bg-white text-blue-600 shadow-md"
+                            : "bg-white/20 text-white hover:bg-white/30"
+                        }`}
+                      >
+                        {slot.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Verified Only */}
+                <div>
+                  <label className="block text-xs font-medium text-white/90 mb-2">
+                    Trust
+                  </label>
+                  <button
+                    onClick={() =>
+                      setFilters((prev) => ({
+                        ...prev,
+                        operatorVerifiedOnly: !prev.operatorVerifiedOnly,
+                      }))
+                    }
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      filters.operatorVerifiedOnly
+                        ? "bg-green-500 text-white shadow-md"
+                        : "bg-white/20 text-white hover:bg-white/30"
+                    }`}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Verified Operators Only
+                  </button>
+                </div>
+              </div>
+
+              {/* Geocode result badge */}
+              {geocodeResult && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-green-100 bg-green-500/20 rounded-lg px-3 py-1.5">
+                  <Globe className="h-3.5 w-3.5" />
+                  <span>
+                    📍 Google Location: <strong>{geocodeResult.formattedAddress}</strong>
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content - Split Layout */}
-      <div className={`flex-1 flex transition-all duration-300 ${isMapExpanded ? "flex-col-reverse" : "flex-row"}`}>
+      <div
+        className={`flex-1 flex transition-all duration-300 ${
+          isMapExpanded ? "flex-col-reverse" : "flex-row"
+        }`}
+      >
         {/* Transport List - Left */}
         <div
-          className={`${isMapExpanded ? "h-1/2" : "w-1/2"} overflow-y-auto bg-gray-50 border-r border-gray-200`}
+          className={`${
+            isMapExpanded ? "h-1/2" : "w-1/2"
+          } overflow-y-auto bg-gray-50 border-r border-gray-200`}
           style={{ height: isMapExpanded ? "50%" : "calc(100vh - 120px)" }}
           ref={transportListRef}
         >
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <p className="text-gray-700 font-medium text-sm">
-                {loading ? "Loading..." : `${sortedTransports.length} transport options found`}
+                {loading
+                  ? "Loading..."
+                  : `${filteredTransports.length} transport option${
+                      filteredTransports.length === 1 ? "" : "s"
+                    } found`}
               </p>
               <div className="flex items-center gap-2">
                 <label className="text-xs text-gray-600">Sort:</label>
                 <select
                   value={filters.sortBy}
-                  onChange={(e) => setFilters((prev) => ({ ...prev, sortBy: e.target.value }))}
+                  onChange={(e) =>
+                    setFilters((prev) => ({ ...prev, sortBy: e.target.value }))
+                  }
                   className="text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                 >
                   <option value="recommended">Recommended</option>
                   <option value="price-low">Price: Low to High</option>
                   <option value="price-high">Price: High to Low</option>
                   <option value="capacity">Capacity</option>
+                  <option value="departure">Departure Time</option>
                 </select>
               </div>
             </div>
 
+            {/* Google fallback hint */}
+            {showGoogleFallbackHint && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-2">
+                <Globe className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-blue-800">
+                  <p className="font-semibold mb-1">
+                    No transport operators listed for "{searchQuery}"
+                  </p>
+                  <p className="text-blue-700">
+                    Google Maps me ye location mil gayi:{" "}
+                    <strong>{geocodeResult?.formattedAddress}</strong>. Abhi
+                    koi operator is route pe registered nahi hai.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <LoadingSkeleton />
-            ) : sortedTransports.length === 0 ? (
-              <EmptyState message={error || "No transport options found. Add transport from the Admin Dashboard first."} />
+            ) : filteredTransports.length === 0 ? (
+              <EmptyState
+                message={
+                  error ||
+                  (searchQuery.length >= 3
+                    ? `No transport found for "${searchQuery}". Try a different route or clear filters.`
+                    : "No transport options found. Add transport from the Admin Dashboard first.")
+                }
+              />
             ) : (
               <div className="space-y-3">
-                {sortedTransports.map((transport) => (
-                  <CompactTransportCard
-                    key={transport.id}
-                    transport={transport}
-                    isSelected={selectedTransportId === transport.id}
-                    onClick={() => {
-                      setSelectedTransportId(transport.id);
-                      handleMarkerClick(transport.id);
-                      handleOpenYelpDetail(transport);
-                    }}
-                    onViewDetails={() => handleOpenYelpDetail(transport)}
-                  />
+                {filteredTransports.map((transport) => (
+                  <div key={transport.id} data-transport-id={transport.id}>
+                    <CompactTransportCard
+                      transport={transport}
+                      isSelected={selectedTransportId === transport.id}
+                      onClick={() => {
+                        setSelectedTransportId(transport.id);
+                        handleMarkerClick(transport.id);
+                        handleOpenYelpDetail(transport);
+                      }}
+                      onViewDetails={() => handleOpenYelpDetail(transport)}
+                    />
+                  </div>
                 ))}
               </div>
             )}
@@ -920,7 +1290,7 @@ const TransportPage: React.FC = () => {
           style={{ height: isMapExpanded ? "50%" : "calc(100vh - 120px)" }}
         >
           <InteractiveMap
-            items={sortedTransports.map((t) => ({
+            items={filteredTransports.map((t) => ({
               id: t.id,
               name: t.name,
               location: `${t.from} → ${t.to}`,
@@ -936,7 +1306,7 @@ const TransportPage: React.FC = () => {
               setSelectedTransportId(id);
               handleMarkerClick(id);
             }}
-            center={{ lat: 28.2096, lng: 83.9856 }}
+            center={mapCenter}
           />
         </div>
       </div>
@@ -951,4 +1321,4 @@ const TransportPage: React.FC = () => {
   );
 };
 
-export default TransportPage;   
+export default TransportPage;        

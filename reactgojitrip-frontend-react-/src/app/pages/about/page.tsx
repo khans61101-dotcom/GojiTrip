@@ -1,7 +1,5 @@
-"use client";
-
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Sparkles,
   ShieldCheck,
@@ -18,11 +16,31 @@ import {
   Phone,
   Mail,
   Building,
+  ArrowLeft,
 } from "lucide-react";
 
 export default function PublicAboutPage() {
+  // ✅ Hook component ke andar
+  const navigate = useNavigate();
+
+  const handleGoBack = () => {
+    navigate(-1);
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 text-white selection:bg-emerald-500 selection:text-white">
+
+      {/* Back Button */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <button
+          onClick={handleGoBack}
+          className="flex items-center gap-2 px-3 py-2 bg-white/20 backdrop-blur-sm hover:bg-white/30 border border-white/30 rounded-xl text-white font-medium transition-all hover:scale-105 active:scale-95 group"
+        >
+          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+          <span className="hidden sm:inline text-sm">Back</span>
+        </button>
+      </div>
+
       {/* ============================================================
           1. HERO HEADER SECTION
           ============================================================ */}
@@ -248,4 +266,4 @@ export default function PublicAboutPage() {
       </section>
     </div>
   );
-}
+}  

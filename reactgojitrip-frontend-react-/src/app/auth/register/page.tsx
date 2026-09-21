@@ -95,7 +95,7 @@ export default function RegisterPage() {
           className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white text-xs font-bold transition-all shadow-xl backdrop-blur-md group"
         >
           <Home className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-          <span>← Back to Home</span>
+          <span> Back to Home</span>
         </Link>
       </div>
       {/* Animated background glows */}

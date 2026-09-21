@@ -5,7 +5,7 @@ import "@/styles/pages/route/route.css";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { SafeImage } from "@/components/common/SafeImage";
-import { InteractiveMap, lookupSingleCoordinate, type MapMarkerItem } from "@/components/common/InteractiveMap";
+import { InteractiveMap, lookupSingleCoordinate, LOCATION_COORDINATES_MAP, type MapMarkerItem } from "@/components/common/InteractiveMap";
 import { apiRequest, planRoute, type RouteSearchData, type RouteStop } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
 import type { RouteEntry, RoutePOI, EmergencyContact } from "@/types/cms";
@@ -75,6 +75,7 @@ type TimelineStop = RouteStop & {
   color?: string;
   distanceKm?: string;
   travelTime?: string;
+  extraInfo?: string;
 };
 
 interface PlaceSuggestion {
@@ -86,6 +87,73 @@ interface PlaceSuggestion {
 const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80";
 
 /* ==========================================================
+   CITY & EXTRA INFO PARSER FOR CLEAN DISPLAY
+   Extracts pure city name for heading, and moves extra details
+   (e.g., Highway Junction, State names, Hub info) below.
+========================================================== */
+export function extractCityAndExtraInfo(
+  rawName: string,
+  explicitExtra?: string
+): { cityName: string; extraInfo: string } {
+  if (explicitExtra && explicitExtra.trim()) {
+    return {
+      cityName: (rawName || "").trim(),
+      extraInfo: explicitExtra.trim(),
+    };
+  }
+
+  if (!rawName) return { cityName: "", extraInfo: "" };
+  const str = rawName.trim();
+
+  // Pattern 1: "City Name (State / Extra Info)" or "City Suffix (State)"
+  const parenRegex = /^([^(]+?)\s*(\([^)]+\))$/;
+  const parenMatch = str.match(parenRegex);
+
+  if (parenMatch) {
+    const beforeParen = parenMatch[1].trim();
+    const parenContent = parenMatch[2].trim();
+
+    const keywordsRegex = /\s+(highway junction|service hub|fuel station|hilltop bypass|expressway|transit hub|heritage waypoint|lake corridor|express hub|gateway|food stop|rest stop|riverside|bridge hub|town|fort|valley|viewpoint|bypass|junction|food court|checkpost|mountain hub|village|border stop|checkpost|service stop|highway hub|express corridor|corridor)$/i;
+    const kwMatch = beforeParen.match(keywordsRegex);
+
+    if (kwMatch && kwMatch.index && kwMatch.index > 1) {
+      const cityOnly = beforeParen.slice(0, kwMatch.index).trim();
+      const kw = kwMatch[0].trim();
+      return {
+        cityName: cityOnly || beforeParen,
+        extraInfo: `${kw} ${parenContent}`.trim(),
+      };
+    }
+
+    return {
+      cityName: beforeParen,
+      extraInfo: parenContent.replace(/^\(|\)$/g, "").trim(),
+    };
+  }
+
+  // Pattern 2: "City - Extra Info"
+  if (str.includes(" - ")) {
+    const [c, ...rest] = str.split(" - ");
+    return {
+      cityName: c.trim(),
+      extraInfo: rest.join(" - ").trim(),
+    };
+  }
+
+  // Pattern 3: Common keywords at the end without parentheses
+  const trailingKwRegex = /\s+(highway junction|service hub|fuel station|expressway|transit hub|food court|rest stop)$/i;
+  const tMatch = str.match(trailingKwRegex);
+  if (tMatch && tMatch.index && tMatch.index > 2) {
+    return {
+      cityName: str.slice(0, tMatch.index).trim(),
+      extraInfo: tMatch[0].trim(),
+    };
+  }
+
+  return { cityName: str, extraInfo: "" };
+}
+
+/* ==========================================================
    ROUTE CORRIDOR INTERMEDIATE LOCATIONS RESOLVER
 ========================================================== */
 function resolveCorridorStops(
@@ -93,7 +161,7 @@ function resolveCorridorStops(
   dst: string,
   routeName?: string,
   cmsPois?: any[]
-): Array<{ name: string; type: string; details: string; distPct: number }> {
+): Array<{ name: string; extraInfo?: string; type: string; details: string; distPct: number }> {
   const norm = (s: string) =>
     (s || "")
       .toLowerCase()
@@ -111,12 +179,12 @@ function resolveCorridorStops(
     (dstNorm.includes("goa") || nameNorm.includes("goa"))
   ) {
     return [
-      { name: "Ludhiana & Ambala (Punjab & Haryana)", type: "rest", details: "Punjab & Haryana Central Highway & Transport Hub", distPct: 0.12 },
-      { name: "Delhi NCR Expressway (Delhi State)", type: "rest", details: "Capital Transit & Highway Bypass Corridor", distPct: 0.25 },
-      { name: "Jaipur Heritage Waypoint (Rajasthan)", type: "place", details: "Rajasthan Heritage Waypoint & Tourist Stop", distPct: 0.4 },
-      { name: "Udaipur Lake Corridor (Rajasthan)", type: "place", details: "Scenic Lake City Travel & Rest Stop", distPct: 0.55 },
-      { name: "Ahmedabad Express Hub (Gujarat)", type: "fuel", details: "Gujarat Expressway Fuel, EV & Rest Stop", distPct: 0.7 },
-      { name: "Mumbai-Pune Coastal Expressway (Maharashtra)", type: "rest", details: "Coastal Highway Transit Stop & Food Court", distPct: 0.85 },
+      { name: "Ludhiana & Ambala", extraInfo: "Punjab & Haryana Transit Hub", type: "rest", details: "Punjab & Haryana Central Highway & Transport Hub", distPct: 0.12 },
+      { name: "Delhi NCR", extraInfo: "Expressway Bypass (Delhi State)", type: "rest", details: "Capital Transit & Highway Bypass Corridor", distPct: 0.25 },
+      { name: "Jaipur", extraInfo: "Heritage Waypoint (Rajasthan)", type: "place", details: "Rajasthan Heritage Waypoint & Tourist Stop", distPct: 0.4 },
+      { name: "Udaipur", extraInfo: "Lake Corridor (Rajasthan)", type: "place", details: "Scenic Lake City Travel & Rest Stop", distPct: 0.55 },
+      { name: "Ahmedabad", extraInfo: "Express Hub (Gujarat)", type: "fuel", details: "Gujarat Expressway Fuel, EV & Rest Stop", distPct: 0.7 },
+      { name: "Mumbai-Pune", extraInfo: "Coastal Expressway (Maharashtra)", type: "rest", details: "Coastal Highway Transit Stop & Food Court", distPct: 0.85 },
     ];
   }
 
@@ -126,10 +194,10 @@ function resolveCorridorStops(
     (dstNorm.includes("indor") || nameNorm.includes("indore"))
   ) {
     return [
-      { name: "Sehore Highway Junction (Madhya Pradesh)", type: "rest", details: "Sehore Bypass & Refreshment Rest Stop", distPct: 0.2 },
-      { name: "Ashta Service Hub (Madhya Pradesh)", type: "food", details: "Ashta Highway Service Hub & Food Restaurants", distPct: 0.4 },
-      { name: "Sonkatch Fuel Station (Madhya Pradesh)", type: "fuel", details: "Sonkatch Fuel & Travel Service Point", distPct: 0.65 },
-      { name: "Dewas Hilltop Bypass (Madhya Pradesh)", type: "place", details: "Dewas Hilltop Temple & Highway Bypass Hub", distPct: 0.8 },
+      { name: "Sehore", extraInfo: "Highway Junction (Madhya Pradesh)", type: "rest", details: "Sehore Bypass & Refreshment Rest Stop", distPct: 0.2 },
+      { name: "Ashta", extraInfo: "Service Hub (Madhya Pradesh)", type: "food", details: "Ashta Highway Service Hub & Food Restaurants", distPct: 0.4 },
+      { name: "Sonkatch", extraInfo: "Fuel Station (Madhya Pradesh)", type: "fuel", details: "Sonkatch Fuel & Travel Service Point", distPct: 0.65 },
+      { name: "Dewas", extraInfo: "Hilltop Bypass (Madhya Pradesh)", type: "place", details: "Dewas Hilltop Temple & Highway Bypass Hub", distPct: 0.8 },
     ];
   }
 
@@ -139,11 +207,11 @@ function resolveCorridorStops(
     (dstNorm.includes("jaipur") || nameNorm.includes("jaipur"))
   ) {
     return [
-      { name: "Gurgaon / Manesar (Haryana)", type: "rest", details: "Millennium City Highway Corridor in Haryana", distPct: 0.15 },
-      { name: "Dharuhera Express Hub (Haryana)", type: "fuel", details: "Highway Fuel & Fast Charger Station in Haryana", distPct: 0.3 },
-      { name: "Neemrana Heritage Fort (Rajasthan)", type: "place", details: "Neemrana Fort Heritage & Culture Stop in Rajasthan", distPct: 0.5 },
-      { name: "Kotputli Bypass (Rajasthan)", type: "rest", details: "Kotputli Highway Junction & Rest Area in Rajasthan", distPct: 0.7 },
-      { name: "Shahpura Food Court (Rajasthan)", type: "food", details: "Shahpura Food Court & Refreshment Stop in Rajasthan", distPct: 0.85 },
+      { name: "Gurgaon", extraInfo: "Manesar Corridor (Haryana)", type: "rest", details: "Millennium City Highway Corridor in Haryana", distPct: 0.15 },
+      { name: "Dharuhera", extraInfo: "Express Hub (Haryana)", type: "fuel", details: "Highway Fuel & Fast Charger Station in Haryana", distPct: 0.3 },
+      { name: "Neemrana", extraInfo: "Heritage Fort (Rajasthan)", type: "place", details: "Neemrana Fort Heritage & Culture Stop in Rajasthan", distPct: 0.5 },
+      { name: "Kotputli", extraInfo: "Bypass Junction (Rajasthan)", type: "rest", details: "Kotputli Highway Junction & Rest Area in Rajasthan", distPct: 0.7 },
+      { name: "Shahpura", extraInfo: "Food Court (Rajasthan)", type: "food", details: "Shahpura Food Court & Refreshment Stop in Rajasthan", distPct: 0.85 },
     ];
   }
 
@@ -153,11 +221,11 @@ function resolveCorridorStops(
     (dstNorm.includes("pkh") || dstNorm.includes("pokhara") || nameNorm.includes("pokhara"))
   ) {
     return [
-      { name: "Naubise Junction (Bagmati Province, Nepal)", type: "rest", details: "Kathmandu Valley Exit & Highway Hub", distPct: 0.15 },
-      { name: "Malekhu Riverside (Bagmati Province, Nepal)", type: "food", details: "Malekhu Riverside Fish & Refreshment Stop", distPct: 0.35 },
-      { name: "Mugling Bridge Hub (Gandaki Province, Nepal)", type: "rest", details: "Trishuli River Bridge Highway Hub", distPct: 0.55 },
-      { name: "Dumre / Bandipur (Gandaki Province, Nepal)", type: "place", details: "Bandipur Hillside Heritage & Viewpoint Stop", distPct: 0.7 },
-      { name: "Damauli Town (Gandaki Province, Nepal)", type: "fuel", details: "Tanahun Service & Fuel Station Stop", distPct: 0.85 },
+      { name: "Naubise", extraInfo: "Highway Junction (Bagmati Province, Nepal)", type: "rest", details: "Kathmandu Valley Exit & Highway Hub", distPct: 0.15 },
+      { name: "Malekhu", extraInfo: "Riverside Food Stop (Bagmati Province, Nepal)", type: "food", details: "Malekhu Riverside Fish & Refreshment Stop", distPct: 0.35 },
+      { name: "Mugling", extraInfo: "Bridge Hub (Gandaki Province, Nepal)", type: "rest", details: "Trishuli River Bridge Highway Hub", distPct: 0.55 },
+      { name: "Dumre & Bandipur", extraInfo: "Hillside Heritage (Gandaki Province, Nepal)", type: "place", details: "Bandipur Hillside Heritage & Viewpoint Stop", distPct: 0.7 },
+      { name: "Damauli", extraInfo: "Town Service Hub (Gandaki Province, Nepal)", type: "fuel", details: "Tanahun Service & Fuel Station Stop", distPct: 0.85 },
     ];
   }
 
@@ -167,11 +235,11 @@ function resolveCorridorStops(
     (dstNorm.includes("chitwan") || dstNorm.includes("sauraha") || nameNorm.includes("chitwan"))
   ) {
     return [
-      { name: "Naubise Junction (Bagmati Province, Nepal)", type: "rest", details: "Highway Transit Point", distPct: 0.15 },
-      { name: "Malekhu Food Stop (Bagmati Province, Nepal)", type: "food", details: "Refreshment & Local Food Stop", distPct: 0.35 },
-      { name: "Mugling Junction (Gandaki Province, Nepal)", type: "rest", details: "Trishuli Confluence Junction", distPct: 0.55 },
-      { name: "Kurintar / Cable Car (Bagmati Province, Nepal)", type: "place", details: "Manakamana Cable Car & Pilgrimage Hub", distPct: 0.7 },
-      { name: "Bharatpur Gateway (Chitwan, Nepal)", type: "fuel", details: "Chitwan Entrance Fuel & Service Hub", distPct: 0.88 },
+      { name: "Naubise", extraInfo: "Highway Junction (Bagmati Province, Nepal)", type: "rest", details: "Highway Transit Point", distPct: 0.15 },
+      { name: "Malekhu", extraInfo: "Food Stop (Bagmati Province, Nepal)", type: "food", details: "Refreshment & Local Food Stop", distPct: 0.35 },
+      { name: "Mugling", extraInfo: "Trishuli Junction (Gandaki Province, Nepal)", type: "rest", details: "Trishuli Confluence Junction", distPct: 0.55 },
+      { name: "Kurintar", extraInfo: "Cable Car Station (Bagmati Province, Nepal)", type: "place", details: "Manakamana Cable Car & Pilgrimage Hub", distPct: 0.7 },
+      { name: "Bharatpur", extraInfo: "Chitwan Gateway (Bagmati Province, Nepal)", type: "fuel", details: "Chitwan Entrance Fuel & Service Hub", distPct: 0.88 },
     ];
   }
 
@@ -181,12 +249,12 @@ function resolveCorridorStops(
     (dstNorm.includes("muktinath") || dstNorm.includes("jomsom") || nameNorm.includes("muktinath"))
   ) {
     return [
-      { name: "Kusma Adventure Bridge (Parbat, Nepal)", type: "place", details: "Suspension Bridge & Adventure Hub", distPct: 0.3 },
-      { name: "Beni Mustang Gateway (Myagdi, Nepal)", type: "rest", details: "Myagdi River Junction & Mustang Gateway", distPct: 0.45 },
-      { name: "Tatopani Hot Springs (Myagdi, Nepal)", type: "place", details: "Natural Hot Springs Rest Stop", distPct: 0.6 },
-      { name: "Ghasa Pine Forest Checkpost (Mustang, Nepal)", type: "rest", details: "Mustang Checkpost & Pine Forest Corridor", distPct: 0.75 },
-      { name: "Jomsom Mountain Hub (Mustang, Nepal)", type: "place", details: "Apple Orchards & Mountain Airport Hub", distPct: 0.88 },
-      { name: "Kagbeni Sacred Village (Mustang, Nepal)", type: "place", details: "Sacred River Confluence & Ancient Village", distPct: 0.95 },
+      { name: "Kusma", extraInfo: "Adventure Bridge (Parbat, Nepal)", type: "place", details: "Suspension Bridge & Adventure Hub", distPct: 0.3 },
+      { name: "Beni", extraInfo: "Mustang Gateway (Myagdi, Nepal)", type: "rest", details: "Myagdi River Junction & Mustang Gateway", distPct: 0.45 },
+      { name: "Tatopani", extraInfo: "Hot Springs (Myagdi, Nepal)", type: "place", details: "Natural Hot Springs Rest Stop", distPct: 0.6 },
+      { name: "Ghasa", extraInfo: "Pine Forest Checkpost (Mustang, Nepal)", type: "rest", details: "Mustang Checkpost & Pine Forest Corridor", distPct: 0.75 },
+      { name: "Jomsom", extraInfo: "Mountain Hub (Mustang, Nepal)", type: "place", details: "Apple Orchards & Mountain Airport Hub", distPct: 0.88 },
+      { name: "Kagbeni", extraInfo: "Sacred Village (Mustang, Nepal)", type: "place", details: "Sacred River Confluence & Ancient Village", distPct: 0.95 },
     ];
   }
 
@@ -196,12 +264,12 @@ function resolveCorridorStops(
     (dstNorm.includes("pune") || nameNorm.includes("pune"))
   ) {
     return [
-      { name: "Sendhwa (MP ➔ MH State Border)", type: "rest", details: "State Border Checkpost, Fuel Stations & Highway Amenities", distPct: 0.2 },
-      { name: "Dhule Transit Hub (Maharashtra State)", type: "fuel", details: "NH52 Major Highway Junction & EV Fast Chargers in MH", distPct: 0.38 },
-      { name: "Malegaon Food & Service Stop (Maharashtra State)", type: "food", details: "Highway Food Court & 24/7 Traveller Refreshment Stop in MH", distPct: 0.52 },
-      { name: "Nashik Travel & Wine Capital (Maharashtra State)", type: "place", details: "Panchavati Temple Heritage, Wine Capital & Highway Service Hub in MH", distPct: 0.68 },
-      { name: "Sangamner / Shirdi Junction (Maharashtra State)", type: "rest", details: "Shirdi Pilgrimage Corridor & Rest Hub in MH", distPct: 0.82 },
-      { name: "Narayangaon / Khed Bypass (Maharashtra State)", type: "fuel", details: "Fuel & Refreshment Station Before Entering Pune Valley in MH", distPct: 0.92 },
+      { name: "Sendhwa", extraInfo: "MP ➔ MH State Border", type: "rest", details: "State Border Checkpost, Fuel Stations & Highway Amenities", distPct: 0.2 },
+      { name: "Dhule", extraInfo: "Transit Hub (Maharashtra State)", type: "fuel", details: "NH52 Major Highway Junction & EV Fast Chargers in MH", distPct: 0.38 },
+      { name: "Malegaon", extraInfo: "Food & Service Stop (Maharashtra State)", type: "food", details: "Highway Food Court & 24/7 Traveller Refreshment Stop in MH", distPct: 0.52 },
+      { name: "Nashik", extraInfo: "Travel & Wine Capital (Maharashtra State)", type: "place", details: "Panchavati Temple Heritage, Wine Capital & Highway Service Hub in MH", distPct: 0.68 },
+      { name: "Sangamner", extraInfo: "Shirdi Junction (Maharashtra State)", type: "rest", details: "Shirdi Pilgrimage Corridor & Rest Hub in MH", distPct: 0.82 },
+      { name: "Narayangaon", extraInfo: "Khed Bypass (Maharashtra State)", type: "fuel", details: "Fuel & Refreshment Station Before Entering Pune Valley in MH", distPct: 0.92 },
     ];
   }
 
@@ -211,12 +279,12 @@ function resolveCorridorStops(
     (dstNorm.includes("mumbai") || nameNorm.includes("mumbai"))
   ) {
     return [
-      { name: "Sendhwa Border Rest Stop (MP ➔ MH Border)", type: "rest", details: "MP-Maharashtra Border Transit & Rest Point", distPct: 0.22 },
-      { name: "Dhule Highway Junction (Maharashtra State)", type: "fuel", details: "NH52 Transit Hub & High Speed EV Charger Point in MH", distPct: 0.42 },
-      { name: "Malegaon Food Hub (Maharashtra State)", type: "food", details: "Highway Restaurant & Traveller Food Stop in MH", distPct: 0.56 },
-      { name: "Nashik Panchavati Heritage (Maharashtra State)", type: "place", details: "Godavari River Heritage & Travel Stop in MH", distPct: 0.72 },
-      { name: "Igatpuri Hill Station Stop (Maharashtra State)", type: "place", details: "Scenic Ghat Viewpoint & Cool Mountain Rest Area in MH", distPct: 0.84 },
-      { name: "Thane Expressway Gateway (Maharashtra State)", type: "fuel", details: "Mumbai Entry Toll Plaza & Fuel Station in MH", distPct: 0.94 },
+      { name: "Sendhwa", extraInfo: "Border Rest Stop (MP ➔ MH Border)", type: "rest", details: "MP-Maharashtra Border Transit & Rest Point", distPct: 0.22 },
+      { name: "Dhule", extraInfo: "Highway Junction (Maharashtra State)", type: "fuel", details: "NH52 Transit Hub & High Speed EV Charger Point in MH", distPct: 0.42 },
+      { name: "Malegaon", extraInfo: "Food Hub (Maharashtra State)", type: "food", details: "Highway Restaurant & Traveller Food Stop in MH", distPct: 0.56 },
+      { name: "Nashik", extraInfo: "Panchavati Heritage (Maharashtra State)", type: "place", details: "Godavari River Heritage & Travel Stop in MH", distPct: 0.72 },
+      { name: "Igatpuri", extraInfo: "Hill Station Stop (Maharashtra State)", type: "place", details: "Scenic Ghat Viewpoint & Cool Mountain Rest Area in MH", distPct: 0.84 },
+      { name: "Thane", extraInfo: "Expressway Gateway (Maharashtra State)", type: "fuel", details: "Mumbai Entry Toll Plaza & Fuel Station in MH", distPct: 0.94 },
     ];
   }
 
@@ -226,11 +294,11 @@ function resolveCorridorStops(
     (dstNorm.includes("surat") || nameNorm.includes("surat"))
   ) {
     return [
-      { name: "Dhar / Mandav Fort Gateway (Madhya Pradesh)", type: "place", details: "Historic Mandu Fort Gateway & Scenic Point in MP", distPct: 0.2 },
-      { name: "Jhabua / Dahod Junction (MP ➔ Gujarat Border)", type: "rest", details: "MP-Gujarat Highway Checkpost & Rest Stop", distPct: 0.4 },
-      { name: "Godhra Expressway Hub (Gujarat State)", type: "fuel", details: "Expressway Fuel Station & EV Charger in Gujarat", distPct: 0.58 },
-      { name: "Vadodara Express Corridor (Gujarat State)", type: "rest", details: "NE1 Expressway Transit Hub & Dining in Gujarat", distPct: 0.75 },
-      { name: "Bharuch Narmada Bridge (Gujarat State)", type: "place", details: "Narmada Cable Bridge Viewpoint & Rest Area in Gujarat", distPct: 0.88 },
+      { name: "Dhar", extraInfo: "Mandav Fort Gateway (Madhya Pradesh)", type: "place", details: "Historic Mandu Fort Gateway & Scenic Point in MP", distPct: 0.2 },
+      { name: "Jhabua", extraInfo: "Dahod Junction (MP ➔ Gujarat Border)", type: "rest", details: "MP-Gujarat Highway Checkpost & Rest Stop", distPct: 0.4 },
+      { name: "Godhra", extraInfo: "Expressway Hub (Gujarat State)", type: "fuel", details: "Expressway Fuel Station & EV Charger in Gujarat", distPct: 0.58 },
+      { name: "Vadodara", extraInfo: "Express Corridor (Gujarat State)", type: "rest", details: "NE1 Expressway Transit Hub & Dining in Gujarat", distPct: 0.75 },
+      { name: "Bharuch", extraInfo: "Narmada Bridge (Gujarat State)", type: "place", details: "Narmada Cable Bridge Viewpoint & Rest Area in Gujarat", distPct: 0.88 },
     ];
   }
 
@@ -240,12 +308,12 @@ function resolveCorridorStops(
     (dstNorm.includes("delhi") || nameNorm.includes("delhi"))
   ) {
     return [
-      { name: "Vidisha / Sanchi Stupa (Madhya Pradesh)", type: "place", details: "UNESCO Heritage Sanchi Stupa Gateway in MP", distPct: 0.1 },
-      { name: "Bina Highway Junction (Madhya Pradesh)", type: "rest", details: "Central MP Transit & Refreshment Stop", distPct: 0.25 },
-      { name: "Jhansi Fort Corridor (Uttar Pradesh)", type: "place", details: "Historic Jhansi Fort & Highway Service Point in UP", distPct: 0.42 },
-      { name: "Gwalior Fort Waypoint (Madhya Pradesh)", type: "place", details: "Gwalior Royal Heritage & Highway Rest Area in MP", distPct: 0.58 },
-      { name: "Agra Taj Expressway Corridor (Uttar Pradesh)", type: "fuel", details: "Yamuna Expressway Entrance, Fuel & EV Fast Chargers in UP", distPct: 0.78 },
-      { name: "Mathura / Vrindavan Gateway (Uttar Pradesh)", type: "rest", details: "Sacred Mathura Corridor & Refreshment Stop in UP", distPct: 0.88 },
+      { name: "Vidisha", extraInfo: "Sanchi Stupa Gateway (Madhya Pradesh)", type: "place", details: "UNESCO Heritage Sanchi Stupa Gateway in MP", distPct: 0.1 },
+      { name: "Bina", extraInfo: "Highway Junction (Madhya Pradesh)", type: "rest", details: "Central MP Transit & Refreshment Stop", distPct: 0.25 },
+      { name: "Jhansi", extraInfo: "Fort Corridor (Uttar Pradesh)", type: "place", details: "Historic Jhansi Fort & Highway Service Point in UP", distPct: 0.42 },
+      { name: "Gwalior", extraInfo: "Fort Waypoint (Madhya Pradesh)", type: "place", details: "Gwalior Royal Heritage & Highway Rest Area in MP", distPct: 0.58 },
+      { name: "Agra", extraInfo: "Taj Expressway Corridor (Uttar Pradesh)", type: "fuel", details: "Yamuna Expressway Entrance, Fuel & EV Fast Chargers in UP", distPct: 0.78 },
+      { name: "Mathura", extraInfo: "Vrindavan Gateway (Uttar Pradesh)", type: "rest", details: "Sacred Mathura Corridor & Refreshment Stop in UP", distPct: 0.88 },
     ];
   }
 
@@ -255,12 +323,12 @@ function resolveCorridorStops(
     (dstNorm.includes("manali") || nameNorm.includes("manali"))
   ) {
     return [
-      { name: "Panipat Service Hub (Haryana State)", type: "fuel", details: "Grand Trunk Road Fuel & Dining Stop in Haryana", distPct: 0.18 },
-      { name: "Ambala Transport Junction (Punjab / Haryana)", type: "rest", details: "Punjab-Haryana Border Transit Hub", distPct: 0.36 },
-      { name: "Chandigarh Express Hub (Chandigarh UT)", type: "place", details: "Beautiful City Bypass & Highway Rest Area", distPct: 0.46 },
-      { name: "Bilaspur / Swarghat Viewpoint (Himachal Pradesh)", type: "place", details: "Gobind Sagar Lake & Mountain Viewpoint in Himachal", distPct: 0.65 },
-      { name: "Mandi Tunnel & Beas River (Himachal Pradesh)", type: "rest", details: "Beas River Valley & Tunnel Highway Stop in Himachal", distPct: 0.82 },
-      { name: "Kullu Valley Rest Stop (Himachal Pradesh)", type: "food", details: "Kullu Apple Orchards & River Rafting Stop in Himachal", distPct: 0.92 },
+      { name: "Panipat", extraInfo: "Service Hub (Haryana State)", type: "fuel", details: "Grand Trunk Road Fuel & Dining Stop in Haryana", distPct: 0.18 },
+      { name: "Ambala", extraInfo: "Transport Junction (Punjab / Haryana)", type: "rest", details: "Punjab-Haryana Border Transit Hub", distPct: 0.36 },
+      { name: "Chandigarh", extraInfo: "Express Hub (Chandigarh UT)", type: "place", details: "Beautiful City Bypass & Highway Rest Area", distPct: 0.46 },
+      { name: "Bilaspur", extraInfo: "Swarghat Viewpoint (Himachal Pradesh)", type: "place", details: "Gobind Sagar Lake & Mountain Viewpoint in Himachal", distPct: 0.65 },
+      { name: "Mandi", extraInfo: "Tunnel & Beas River (Himachal Pradesh)", type: "rest", details: "Beas River Valley & Tunnel Highway Stop in Himachal", distPct: 0.82 },
+      { name: "Kullu", extraInfo: "Valley Rest Stop (Himachal Pradesh)", type: "food", details: "Kullu Apple Orchards & River Rafting Stop in Himachal", distPct: 0.92 },
     ];
   }
 
@@ -270,12 +338,12 @@ function resolveCorridorStops(
     (dstNorm.includes("gwlr") || dstNorm.includes("gwalior") || nameNorm.includes("gwalior"))
   ) {
     return [
-      { name: "Dewas Highway Junction (Madhya Pradesh)", type: "rest", details: "Highway Bypass & Refreshment Stop in MP", distPct: 0.15 },
-      { name: "Sarangpur & Shajapur (Madhya Pradesh)", type: "food", details: "NH46 Highway Food Court & Restaurants in MP", distPct: 0.32 },
-      { name: "Biaora Service Hub (Madhya Pradesh)", type: "fuel", details: "Central Highway Fuel & EV Service Hub in MP", distPct: 0.48 },
-      { name: "Guna Transit Hub (Madhya Pradesh)", type: "fuel", details: "Major Highway Junction & Fueling Station in MP", distPct: 0.65 },
-      { name: "Shivpuri Fort & Heritage (Madhya Pradesh)", type: "place", details: "Madhav National Park & Historic Fort Gateway in MP", distPct: 0.82 },
-      { name: "Mohana / Gwalior Gateway (Madhya Pradesh)", type: "rest", details: "Highway Rest Area Before Entering Gwalior Fort Valley in MP", distPct: 0.93 },
+      { name: "Dewas", extraInfo: "Highway Junction (Madhya Pradesh)", type: "rest", details: "Highway Bypass & Refreshment Stop in MP", distPct: 0.15 },
+      { name: "Sarangpur", extraInfo: "Shajapur Corridor (Madhya Pradesh)", type: "food", details: "NH46 Highway Food Court & Restaurants in MP", distPct: 0.32 },
+      { name: "Biaora", extraInfo: "Service Hub (Madhya Pradesh)", type: "fuel", details: "Central Highway Fuel & EV Service Hub in MP", distPct: 0.48 },
+      { name: "Guna", extraInfo: "Transit Hub (Madhya Pradesh)", type: "fuel", details: "Major Highway Junction & Fueling Station in MP", distPct: 0.65 },
+      { name: "Shivpuri", extraInfo: "Fort & Heritage (Madhya Pradesh)", type: "place", details: "Madhav National Park & Historic Fort Gateway in MP", distPct: 0.82 },
+      { name: "Mohana", extraInfo: "Gwalior Gateway (Madhya Pradesh)", type: "rest", details: "Highway Rest Area Before Entering Gwalior Fort Valley in MP", distPct: 0.93 },
     ];
   }
 
@@ -285,13 +353,13 @@ function resolveCorridorStops(
     (dstNorm.includes("pune") || nameNorm.includes("pune"))
   ) {
     return [
-      { name: "Shivpuri Fort Waypoint (Madhya Pradesh)", type: "place", details: "Historic Fort Waypoint & Highway Hub in MP", distPct: 0.15 },
-      { name: "Guna Highway Rest Area (Madhya Pradesh)", type: "rest", details: "Central Highway Transit Point in MP", distPct: 0.28 },
-      { name: "Dewas / Indore Express Hub (Madhya Pradesh)", type: "fuel", details: "MP Highway Fuel, EV Charger & Food Court", distPct: 0.45 },
-      { name: "Sendhwa Border Checkpost (MP ➔ MH Border)", type: "rest", details: "MP-MH State Border Checkpost & Amenities", distPct: 0.6 },
-      { name: "Dhule Transit Hub (Maharashtra State)", type: "fuel", details: "NH52 Highway Junction & Fast Charger Point in MH", distPct: 0.72 },
-      { name: "Nashik Wine & Heritage Stop (Maharashtra State)", type: "place", details: "Godavari Temple Heritage & Refreshments in MH", distPct: 0.84 },
-      { name: "Sangamner / Khed Bypass (Maharashtra State)", type: "fuel", details: "Fuel & Service Stop Approaching Pune Entry in MH", distPct: 0.94 },
+      { name: "Shivpuri", extraInfo: "Fort Waypoint (Madhya Pradesh)", type: "place", details: "Historic Fort Waypoint & Highway Hub in MP", distPct: 0.15 },
+      { name: "Guna", extraInfo: "Highway Rest Area (Madhya Pradesh)", type: "rest", details: "Central Highway Transit Point in MP", distPct: 0.28 },
+      { name: "Dewas", extraInfo: "Indore Express Hub (Madhya Pradesh)", type: "fuel", details: "MP Highway Fuel, EV Charger & Food Court", distPct: 0.45 },
+      { name: "Sendhwa", extraInfo: "Border Checkpost (MP ➔ MH Border)", type: "rest", details: "MP-MH State Border Checkpost & Amenities", distPct: 0.6 },
+      { name: "Dhule", extraInfo: "Transit Hub (Maharashtra State)", type: "fuel", details: "NH52 Highway Junction & Fast Charger Point in MH", distPct: 0.72 },
+      { name: "Nashik", extraInfo: "Wine & Heritage Stop (Maharashtra State)", type: "place", details: "Godavari Temple Heritage & Refreshments in MH", distPct: 0.84 },
+      { name: "Sangamner", extraInfo: "Khed Bypass (Maharashtra State)", type: "fuel", details: "Fuel & Service Stop Approaching Pune Entry in MH", distPct: 0.94 },
     ];
   }
 
@@ -301,12 +369,12 @@ function resolveCorridorStops(
     (dstNorm.includes("pune") || nameNorm.includes("pune"))
   ) {
     return [
-      { name: "Sehore / Ashta Service Stop (Madhya Pradesh)", type: "rest", details: "Bhopal Exit Expressway Refreshment Hub in MP", distPct: 0.18 },
-      { name: "Dewas / Indore Highway Hub (Madhya Pradesh)", type: "fuel", details: "MP Highway Service Station & Fast Charger", distPct: 0.35 },
-      { name: "Sendhwa Border Checkpost (MP ➔ MH Border)", type: "rest", details: "MP-MH State Border Checkpost & Amenities", distPct: 0.48 },
-      { name: "Dhule Transit Hub (Maharashtra State)", type: "fuel", details: "NH52 Highway Junction & EV Fast Chargers in MH", distPct: 0.62 },
-      { name: "Nashik Wine & Heritage Stop (Maharashtra State)", type: "place", details: "Godavari Temple Heritage & Refreshments in MH", distPct: 0.78 },
-      { name: "Narayangaon / Khed Bypass (Maharashtra State)", type: "rest", details: "Highway Rest Area Before Entering Pune in MH", distPct: 0.9 },
+      { name: "Sehore", extraInfo: "Ashta Service Stop (Madhya Pradesh)", type: "rest", details: "Bhopal Exit Expressway Refreshment Hub in MP", distPct: 0.18 },
+      { name: "Dewas", extraInfo: "Indore Highway Hub (Madhya Pradesh)", type: "fuel", details: "MP Highway Service Station & Fast Charger", distPct: 0.35 },
+      { name: "Sendhwa", extraInfo: "Border Checkpost (MP ➔ MH Border)", type: "rest", details: "MP-MH State Border Checkpost & Amenities", distPct: 0.48 },
+      { name: "Dhule", extraInfo: "Transit Hub (Maharashtra State)", type: "fuel", details: "NH52 Highway Junction & EV Fast Chargers in MH", distPct: 0.62 },
+      { name: "Nashik", extraInfo: "Wine & Heritage Stop (Maharashtra State)", type: "place", details: "Godavari Temple Heritage & Refreshments in MH", distPct: 0.78 },
+      { name: "Narayangaon", extraInfo: "Khed Bypass (Maharashtra State)", type: "rest", details: "Highway Rest Area Before Entering Pune in MH", distPct: 0.9 },
     ];
   }
 
@@ -316,10 +384,10 @@ function resolveCorridorStops(
     (dstNorm.includes("gwlr") || dstNorm.includes("gwalior") || nameNorm.includes("gwalior"))
   ) {
     return [
-      { name: "Vidisha / Sanchi Stupa (Madhya Pradesh)", type: "place", details: "UNESCO Heritage Site & Gateway in MP", distPct: 0.15 },
-      { name: "Bina Highway Junction (Madhya Pradesh)", type: "rest", details: "Central MP Transit & Refreshment Stop", distPct: 0.38 },
-      { name: "Guna Service Hub (Madhya Pradesh)", type: "fuel", details: "Highway Fuel & EV Charger Station in MP", distPct: 0.62 },
-      { name: "Shivpuri Fort Viewpoint (Madhya Pradesh)", type: "place", details: "Madhav National Park & Viewpoint in MP", distPct: 0.82 },
+      { name: "Vidisha", extraInfo: "Sanchi Stupa (Madhya Pradesh)", type: "place", details: "UNESCO Heritage Site & Gateway in MP", distPct: 0.15 },
+      { name: "Bina", extraInfo: "Highway Junction (Madhya Pradesh)", type: "rest", details: "Central MP Transit & Refreshment Stop", distPct: 0.38 },
+      { name: "Guna", extraInfo: "Service Hub (Madhya Pradesh)", type: "fuel", details: "Highway Fuel & EV Charger Station in MP", distPct: 0.62 },
+      { name: "Shivpuri", extraInfo: "Fort Viewpoint (Madhya Pradesh)", type: "place", details: "Madhav National Park & Viewpoint in MP", distPct: 0.82 },
     ];
   }
 
@@ -329,10 +397,10 @@ function resolveCorridorStops(
     (dstNorm.includes("delhi") || nameNorm.includes("delhi"))
   ) {
     return [
-      { name: "Morena / Dholpur Border Stop (MP ➔ Rajasthan)", type: "rest", details: "MP-Rajasthan State Border Transit Hub", distPct: 0.2 },
-      { name: "Agra Taj Expressway Hub (Uttar Pradesh)", type: "fuel", details: "Taj Expressway Entrance & Fast Charger in UP", distPct: 0.5 },
-      { name: "Mathura / Vrindavan Gateway (Uttar Pradesh)", type: "place", details: "Sacred Pilgrim Heritage Stop in UP", distPct: 0.72 },
-      { name: "Palwal / Gurgaon Express Stop (Haryana / Delhi)", type: "rest", details: "Delhi NCR Entry Expressway Stop", distPct: 0.9 },
+      { name: "Morena", extraInfo: "Dholpur Border Stop (MP ➔ Rajasthan)", type: "rest", details: "MP-Rajasthan State Border Transit Hub", distPct: 0.2 },
+      { name: "Agra", extraInfo: "Taj Expressway Hub (Uttar Pradesh)", type: "fuel", details: "Taj Expressway Entrance & Fast Charger in UP", distPct: 0.5 },
+      { name: "Mathura", extraInfo: "Vrindavan Gateway (Uttar Pradesh)", type: "place", details: "Sacred Pilgrim Heritage Stop in UP", distPct: 0.72 },
+      { name: "Palwal", extraInfo: "Gurgaon Express Stop (Haryana / Delhi)", type: "rest", details: "Delhi NCR Entry Expressway Stop", distPct: 0.9 },
     ];
   }
 
@@ -340,47 +408,234 @@ function resolveCorridorStops(
   if (Array.isArray(cmsPois) && cmsPois.length > 0) {
     const validPois = cmsPois.filter((p) => p && (p.name || p.title || p.location));
     if (validPois.length > 0) {
-      return validPois.map((poi, idx) => ({
-        name: poi.name || poi.title || poi.location || `Waypoint ${idx + 1}`,
-        type:
-          poi.category === "Restaurant" || poi.type === "food"
-            ? "food"
-            : poi.category === "Fuel Station" || poi.type === "fuel"
-            ? "fuel"
-            : poi.category === "Viewpoint" || poi.type === "place"
-            ? "place"
-            : "rest",
-        details: poi.details || poi.location || `Key waypoint along corridor.`,
-        distPct: (idx + 1) / (validPois.length + 1),
-      }));
+      return validPois.map((poi, idx) => {
+        const rawTitle = poi.name || poi.title || poi.location || `Waypoint ${idx + 1}`;
+        const { cityName, extraInfo } = extractCityAndExtraInfo(rawTitle);
+        return {
+          name: cityName,
+          extraInfo: extraInfo || poi.location,
+          type:
+            poi.category === "Restaurant" || poi.type === "food"
+              ? "food"
+              : poi.category === "Fuel Station" || poi.type === "fuel"
+              ? "fuel"
+              : poi.category === "Viewpoint" || poi.type === "place"
+              ? "place"
+              : "rest",
+          details: poi.details || poi.location || `Key waypoint along corridor.`,
+          distPct: (idx + 1) / (validPois.length + 1),
+        };
+      });
     }
   }
 
-  // 3. Dynamic Multi-Stop Fallback for ANY Other Route (Generates 4 Complete Intermediate Stops)
+  // 3. Smart Geographic Fallback — picks REAL city names from coordinate map that lie
+  //    between source and destination. Works for ANY route pair, not just predefined ones.
+  return resolveSmartGeographicFallback(src, dst);
+}
+
+/**
+ * Finds real cities from the LOCATION_COORDINATES_MAP that lie geographically between
+ * two named cities. Returns them as properly-typed corridor stop objects.
+ * This ensures NO placeholder names like "Transit Service Station #1" ever appear.
+ */
+function resolveSmartGeographicFallback(
+  src: string,
+  dst: string
+): Array<{ name: string; extraInfo?: string; type: string; details: string; distPct: number }> {
+  // Normalize helper
+  const clean = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  // Lookup source & destination coordinates
+  const srcCoord = lookupSingleCoordinate(src);
+  const dstCoord = lookupSingleCoordinate(dst);
+
+  // SKIP_KEYS: generic region names, countries, & states that aren't real highway cities
+  const SKIP_KEYS = new Set([
+    "india", "nepal", "bhutan", "maharashtra", "madhya pradesh", "m.p", "m. p",
+    "karnataka", "haryana", "gujarat", "rajasthan", "uttar pradesh",
+    "himachal pradesh", "punjab", "panjab", "goa",
+  ]);
+
+  if (!srcCoord || !dstCoord) {
+    // Cannot geo-resolve — return simple named stops using source/destination
+    return [
+      { name: src, extraInfo: "Journey Start", type: "rest", details: `Departure point on ${src} ➔ ${dst} corridor.`, distPct: 0.2 },
+      { name: dst, extraInfo: "Journey End", type: "place", details: `Arrival point on ${src} ➔ ${dst} corridor.`, distPct: 0.8 },
+    ];
+  }
+
+  // Haversine distance helper (km)
+  const haversine = (a: { lat: number; lng: number }, b: { lat: number; lng: number }): number => {
+    const R = 6371;
+    const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+    const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+    const sinA = Math.sin(dLat / 2);
+    const sinB = Math.sin(dLng / 2);
+    const c =
+      sinA * sinA +
+      Math.cos((a.lat * Math.PI) / 180) *
+        Math.cos((b.lat * Math.PI) / 180) *
+        sinB * sinB;
+    return R * 2 * Math.atan2(Math.sqrt(c), Math.sqrt(1 - c));
+  };
+
+  const totalDist = haversine(srcCoord, dstCoord);
+
+  // Helper: project a point onto the line segment src→dst, return fraction [0,1]
+  //         and perpendicular deviation (km)
+  const projectOntoRoute = (
+    p: { lat: number; lng: number }
+  ): { fraction: number; devKm: number } => {
+    const ax = srcCoord.lng, ay = srcCoord.lat;
+    const bx = dstCoord.lng, by = dstCoord.lat;
+    const px = p.lng, py = p.lat;
+
+    const abx = bx - ax, aby = by - ay;
+    const apx = px - ax, apy = py - ay;
+    const ab2 = abx * abx + aby * aby;
+    const t = ab2 === 0 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
+
+    // Closest point on segment
+    const closestX = ax + t * abx;
+    const closestY = ay + t * aby;
+
+    // Convert perpendicular deviation to km (approximate: 1 degree ≈ 111 km)
+    const devLat = (py - closestY) * 111;
+    const devLng = (px - closestX) * 111 * Math.cos((py * Math.PI) / 180);
+    const devKm = Math.sqrt(devLat * devLat + devLng * devLng);
+
+    return { fraction: t, devKm };
+  };
+
+  // Max allowed perpendicular deviation from route line (scale with distance)
+  const maxDevKm = Math.max(60, totalDist * 0.25);
+
+  // Score every city in our coordinate map
+  type CityCandidate = {
+    cityName: string;
+    fraction: number;
+    devKm: number;
+    coord: { lat: number; lng: number };
+  };
+
+  const candidates: CityCandidate[] = [];
+  const srcClean = clean(src);
+  const dstClean = clean(dst);
+
+  for (const [key, coord] of Object.entries(LOCATION_COORDINATES_MAP)) {
+    if (SKIP_KEYS.has(key)) continue;
+    // Exclude keys that ARE the source or destination
+    if (clean(key).includes(srcClean) || srcClean.includes(clean(key))) continue;
+    if (clean(key).includes(dstClean) || dstClean.includes(clean(key))) continue;
+
+    const { fraction, devKm } = projectOntoRoute(coord);
+
+    // Only keep intermediate points (not near start or end) within corridor width
+    if (fraction < 0.08 || fraction > 0.95) continue;
+    if (devKm > maxDevKm) continue;
+
+    candidates.push({ cityName: key, fraction, devKm, coord });
+  }
+
+  // Divide the route into segments (e.g. 4-5 evenly spaced buckets from 0.10 to 0.90)
+  // and pick the best (lowest devKm) city candidate in each segment.
+  const NUM_BUCKETS = 5;
+  const selected: CityCandidate[] = [];
+
+  for (let b = 0; b < NUM_BUCKETS; b++) {
+    const minFrac = 0.08 + (b / NUM_BUCKETS) * 0.84;
+    const maxFrac = 0.08 + ((b + 1) / NUM_BUCKETS) * 0.84;
+
+    const bucketCandidates = candidates
+      .filter((c) => c.fraction >= minFrac && c.fraction < maxFrac)
+      .sort((a, b) => a.devKm - b.devKm);
+
+    if (bucketCandidates.length > 0) {
+      // Pick the candidate with lowest deviation from the route line
+      const best = bucketCandidates[0];
+      // Ensure it's not too close to previous selected stop
+      const isDuplicate = selected.some(
+        (s) => Math.abs(s.fraction - best.fraction) < 0.08 || s.cityName === best.cityName
+      );
+      if (!isDuplicate) {
+        selected.push(best);
+      }
+    }
+  }
+
+  // If buckets didn't yield enough stops, greedily fill from remaining candidates
+  if (selected.length < 3) {
+    for (const c of candidates) {
+      if (selected.length >= 4) break;
+      const isTooClose = selected.some(
+        (s) => Math.abs(s.fraction - c.fraction) < 0.12 || s.cityName === c.cityName
+      );
+      if (!isTooClose) {
+        selected.push(c);
+      }
+    }
+  }
+
+  // Sort selected stops strictly by fraction (origin to destination order)
+  selected.sort((a, b) => a.fraction - b.fraction);
+
+  // Stop type assignment based on position
+  const stopTypes = ["rest", "food", "fuel", "place", "rest"] as const;
+  const stopTypeLabels = ["Highway Hub", "Food Stop", "Fuel Station", "Scenic Point", "Rest Stop"];
+
+  if (selected.length > 0) {
+    return selected.map((c, idx) => {
+      // Capitalize city name nicely
+      const displayName = c.cityName
+        .split(" ")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+
+      const typeIdx = idx % stopTypes.length;
+      const stopType = stopTypes[typeIdx];
+      const typeLabel = stopTypeLabels[typeIdx];
+
+      return {
+        name: displayName,
+        extraInfo: `${typeLabel} – ${src} ➔ ${dst} Corridor`,
+        type: stopType,
+        details: `${displayName} — key waypoint along ${src} to ${dst} highway corridor. Services available: Hotels, Restaurants, Fuel & EV Stations, Attractions.`,
+        distPct: c.fraction,
+      };
+    });
+  }
+
+  // Ultimate fallback: if still no geo matches, use the src → dst midpoint city approach
+  // Give meaningful named stops derived from source / destination names
+  const srcTitle = src.split(",")[0].trim();
+  const dstTitle = dst.split(",")[0].trim();
   return [
     {
-      name: `Highway Service Station #1`,
+      name: `${srcTitle} Outskirts`,
+      extraInfo: `${srcTitle} ➔ ${dstTitle} Highway Start`,
       type: "rest",
-      details: `First major highway service hub featuring fuel stations and repair facilities between ${src} and ${dst}.`,
+      details: `First highway rest area departing ${srcTitle} towards ${dstTitle}. Fuel & food available.`,
       distPct: 0.2,
     },
     {
-      name: `Midpoint Refreshment & Food Stop #2`,
-      type: "food",
-      details: `Highway food court, family restaurants & local snacks stop between ${src} and ${dst}.`,
-      distPct: 0.42,
-    },
-    {
-      name: `Highway Fuel & EV Station #3`,
+      name: `Midway Junction`,
+      extraInfo: `Midpoint – ${srcTitle} ➔ ${dstTitle}`,
       type: "fuel",
-      details: `Midpoint fuel station, EV fast chargers & 24/7 rest area between ${src} and ${dst}.`,
-      distPct: 0.65,
+      details: `Central highway junction between ${srcTitle} and ${dstTitle}. EV charging, fuel & restaurants available.`,
+      distPct: 0.5,
     },
     {
-      name: `Scenic Highway Viewpoint #4`,
+      name: `${dstTitle} Approach`,
+      extraInfo: `Last stop before ${dstTitle}`,
       type: "place",
-      details: `Scenic mountain/landscape viewpoint & tourist rest stop before approaching ${dst}.`,
-      distPct: 0.86,
+      details: `Final scenic rest stop before entering ${dstTitle}. Good viewpoints & refreshments.`,
+      distPct: 0.82,
     },
   ];
 }
@@ -732,6 +987,7 @@ export default function RoutePage() {
           result.push({
             id: `ext-${extIdx}-mid-${midIdx}`,
             name: mid.name,
+            extraInfo: mid.extraInfo,
             type: mid.type as any,
             subtitle: `Intermediate Extension Stop`,
             address: `${mid.name} (${prevCity} ➔ ${newCity})`,
@@ -826,6 +1082,7 @@ export default function RoutePage() {
           return {
             id: `searched-mid-${idx}`,
             name: item.name,
+            extraInfo: item.extraInfo,
             type: item.type as any,
             subtitle: `Intermediate Corridor Stop`,
             address: `${item.name} Highway Station`,
@@ -902,6 +1159,7 @@ export default function RoutePage() {
         stopsList.push({
           id: `db-mid-${index}-${activeDbRoute.id}`,
           name: item.name,
+          extraInfo: item.extraInfo,
           type: item.type as any,
           subtitle: `Intermediate Waypoint on ${activeDbRoute.routeName}`,
           address: `${item.name} Highway Corridor`,
@@ -945,15 +1203,18 @@ export default function RoutePage() {
      MAP MARKER ITEMS FROM TIMELINE STOPS
   ========================================================== */
   const mapItems = useMemo<MapMarkerItem[]>(() => {
-    return timelineStops.map((stop, idx) => ({
-      id: String(stop.id || `stop-${idx}`),
-      name: stop.name,
-      location: stop.address || stop.subtitle || stop.name,
-      priceTag: stop.badgeLabel || `#${stop.sequence}`,
-      category: stop.isSource ? "transport" : stop.isDestination ? "hotel" : "place",
-      lat: (stop as any).lat || (stop as any).latitude,
-      lng: (stop as any).lng || (stop as any).longitude,
-    }));
+    return timelineStops.map((stop, idx) => {
+      const { cityName: displayCity } = extractCityAndExtraInfo(stop.name, stop.extraInfo);
+      return {
+        id: String(stop.id || `stop-${idx}`),
+        name: displayCity || stop.name,
+        location: stop.address || stop.subtitle || stop.name,
+        priceTag: stop.badgeLabel || `#${stop.sequence}`,
+        category: stop.isSource ? "transport" : stop.isDestination ? "hotel" : "place",
+        lat: (stop as any).lat || (stop as any).latitude,
+        lng: (stop as any).lng || (stop as any).longitude,
+      };
+    });
   }, [timelineStops]);
 
   /* ==========================================================
@@ -1122,7 +1383,7 @@ export default function RoutePage() {
             className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/20 transition-all shadow-md backdrop-blur-md hover:scale-105 active:scale-95"
           >
             <ArrowLeft className="w-4 h-4 text-blue-400" />
-            <span>← Back</span>
+            <span>Back</span> 
           </button>
         </div>
 
@@ -1410,64 +1671,78 @@ export default function RoutePage() {
                 </div>
 
                 <div className="space-y-6">
-                  {timelineStops.map((stop) => (
-                    <div key={stop.id} className="flex gap-4 items-start group">
-                      {/* Sequence Marker Circle */}
-                      <div className={`w-9 h-9 rounded-full ${stop.color} text-white font-extrabold text-xs flex items-center justify-center shadow-md shrink-0 mt-1 ring-4 ring-white`}>
-                        {stop.sequence < 10 ? `0${stop.sequence}` : stop.sequence}
-                      </div>
+                  {timelineStops.map((stop) => {
+                    const { cityName: displayCity, extraInfo: displayExtra } = extractCityAndExtraInfo(stop.name, stop.extraInfo);
+                    return (
+                      <div key={stop.id} className="flex gap-4 items-start group">
+                        {/* Sequence Marker Circle */}
+                        <div className={`w-9 h-9 rounded-full ${stop.color} text-white font-extrabold text-xs flex items-center justify-center shadow-md shrink-0 mt-1 ring-4 ring-white`}>
+                          {stop.sequence < 10 ? `0${stop.sequence}` : stop.sequence}
+                        </div>
 
-                      {/* Card Content */}
-                      <div className="flex-1 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 hover:border-emerald-400 transition-colors space-y-3">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <h4 className="font-extrabold text-base sm:text-lg text-slate-900">
-                            {stop.name}
-                          </h4>
-                          <div className="flex items-center space-x-2">
-                            {(stop as any).isExtension && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveExtension(stop.id)}
-                                className="px-2 py-0.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[10px] flex items-center space-x-1 border border-red-200 transition-colors mr-1 shadow-sm"
-                                title="Remove custom extension stop"
-                              >
-                                <X className="w-3 h-3" />
-                                <span>Remove</span>
-                              </button>
-                            )}
-                            <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${stop.badgeBg}`}>
-                              {stop.badgeLabel}
-                            </span>
-                            <span className="text-xs font-bold text-slate-500">
-                              {stop.distanceKm} ({stop.travelTime})
-                            </span>
+                        {/* Card Content */}
+                        <div className="flex-1 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 hover:border-emerald-400 transition-colors space-y-2.5">
+                          <div className="flex items-start justify-between flex-wrap gap-2">
+                            <div className="space-y-1">
+                              <h4 className="font-extrabold text-base sm:text-lg text-slate-900 leading-tight">
+                                {displayCity}
+                              </h4>
+                              {displayExtra && (
+                                <div className="flex items-center gap-1.5 pt-0.5">
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/70 font-semibold text-xs">
+                                    <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                                    <span>{displayExtra}</span>
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex items-center space-x-2 shrink-0 pt-0.5">
+                              {(stop as any).isExtension && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveExtension(stop.id)}
+                                  className="px-2 py-0.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[10px] flex items-center space-x-1 border border-red-200 transition-colors mr-1 shadow-sm"
+                                  title="Remove custom extension stop"
+                                >
+                                  <X className="w-3 h-3" />
+                                  <span>Remove</span>
+                                </button>
+                              )}
+                              <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${stop.badgeBg}`}>
+                                {stop.badgeLabel}
+                              </span>
+                              <span className="text-xs font-bold text-slate-500">
+                                {stop.distanceKm} ({stop.travelTime})
+                              </span>
+                            </div>
+                          </div>
+
+                          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                            {stop.details || stop.subtitle || stop.address}
+                          </p>
+
+                          {/* QUICK ACTION CATEGORY BUTTONS FOR EACH STOP */}
+                          <div className="pt-2.5 border-t border-slate-200/60 flex flex-wrap gap-2">
+                            {actionCategories.map((cat) => {
+                              const Icon = cat.icon;
+                              return (
+                                <button
+                                  key={cat.key}
+                                  type="button"
+                                  onClick={() => handleServiceClick(displayCity || stop.name, cat.path, cat.key)}
+                                  className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-all flex items-center space-x-1.5 shadow-sm"
+                                >
+                                  <Icon className="w-3.5 h-3.5 text-emerald-500" />
+                                  <span>{cat.label}</span>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
-
-                        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                          {stop.details || stop.subtitle || stop.address}
-                        </p>
-
-                        {/* QUICK ACTION CATEGORY BUTTONS FOR EACH STOP */}
-                        <div className="pt-3 border-t border-slate-200/60 flex flex-wrap gap-2">
-                          {actionCategories.map((cat) => {
-                            const Icon = cat.icon;
-                            return (
-                              <button
-                                key={cat.key}
-                                type="button"
-                                onClick={() => handleServiceClick(stop.name, cat.path, cat.key)}
-                                className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-all flex items-center space-x-1.5 shadow-sm"
-                              >
-                                <Icon className="w-3.5 h-3.5 text-emerald-500" />
-                                <span>{cat.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* ========================================================

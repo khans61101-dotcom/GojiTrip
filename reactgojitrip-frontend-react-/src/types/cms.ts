@@ -71,6 +71,7 @@ export interface RouteEntry {
   connectedHotelIds: string[];
   imageUrl?: string;
   photos?: string[];
+  routePhotos?: string[];
   approvalStatus: ApprovalStatus;
   createdAt: string;
   updatedAt: string;
@@ -249,3 +250,32 @@ export interface WorkflowHistoryLog {
   comment?: string;
   timestamp: string;
 }
+
+export type BookingStatus = 'Pending' | 'Confirmed' | 'Cancelled' | 'Completed';
+export type BookingItemType = 'Hotel' | 'Homestay' | 'Transport' | 'Restaurant' | 'Activity' | 'Route';
+
+export interface BookingRecord {
+  id: string;
+  itemType: BookingItemType;
+  itemId: string;
+  itemName: string;
+  itemImage?: string;
+  location?: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  userId?: string | number;
+  checkInDate: string;
+  checkOutDate?: string;
+  bookingTime?: string;
+  guests: number;
+  roomOrSeatType?: string;
+  totalPrice: number;
+  currency: string;
+  status: BookingStatus;
+  paymentStatus: 'Pending' | 'Paid' | 'Pay on Arrival';
+  specialRequests?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+

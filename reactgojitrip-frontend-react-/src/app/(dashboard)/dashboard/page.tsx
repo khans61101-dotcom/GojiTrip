@@ -28,6 +28,7 @@ import {
   Fuel,
   ChevronRight,
   Zap,
+  CalendarCheck,
 } from "lucide-react";
 
 export default function DashboardPage() {
@@ -89,6 +90,14 @@ export default function DashboardPage() {
   ];
 
   const modules = [
+    {
+      name: "Enquiries & Bookings Hub",
+      desc: "Manage customer bookings & requests for hotels, transports, dining & tours",
+      count: stats.bookingsCount,
+      icon: CalendarCheck,
+      href: "/bookings",
+      color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10",
+    },
     {
       name: "Transport Vehicles & Operators",
       desc: "Jeeps, 4x4s, buses, flight routes & departure schedules",

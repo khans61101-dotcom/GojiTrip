@@ -217,6 +217,163 @@ const LOCATION_COORDINATES_MAP: Record<string, { lat: number; lng: number }> = {
   "kotputli": { lat: 27.7029, lng: 76.2008 },
   "neemrana": { lat: 27.9880, lng: 76.3820 },
   "dharuhera": { lat: 28.2078, lng: 76.7827 },
+
+  // North India Corridor Cities (for Indore→Punjab, Indore→Delhi, etc.)
+  "palwal": { lat: 28.1440, lng: 77.3336 },
+  "faridabad": { lat: 28.4089, lng: 77.3178 },
+  "panipat": { lat: 29.3909, lng: 76.9635 },
+  "karnal": { lat: 29.6857, lng: 76.9905 },
+  "kurukshetra": { lat: 29.9695, lng: 76.8783 },
+  "ambala": { lat: 30.3752, lng: 76.7821 },
+  "rajpura": { lat: 30.4836, lng: 76.5948 },
+  "sirhind": { lat: 30.6312, lng: 76.3849 },
+  "ropar": { lat: 30.9643, lng: 76.5281 },
+
+  // Rajasthan Highways — used by Indore→Jaipur, Indore→Delhi routes
+  "bundi": { lat: 25.4392, lng: 75.6490 },
+  "tonk": { lat: 26.1685, lng: 75.7900 },
+  "sawai madhopur": { lat: 26.0172, lng: 76.3544 },
+  "bharatpur raj": { lat: 27.2152, lng: 77.4938 },
+  "alwar": { lat: 27.5666, lng: 76.6346 },
+  "tijara": { lat: 27.9381, lng: 76.8241 },
+
+  // Bihar / Eastern Corridor
+  "gaya": { lat: 24.7955, lng: 85.0002 },
+  "sasaram": { lat: 24.9503, lng: 84.0318 },
+  "aurangabad bih": { lat: 24.7530, lng: 84.3714 },
+  "mughal sarai": { lat: 25.2822, lng: 83.1203 },
+  "allahabad": { lat: 25.4358, lng: 81.8463 },
+  "prayagraj": { lat: 25.4358, lng: 81.8463 },
+  "mirzapur": { lat: 25.1462, lng: 82.5695 },
+  "gorakhpur": { lat: 26.7605, lng: 83.3732 },
+  "kanpur": { lat: 26.4499, lng: 80.3319 },
+  "bareilly": { lat: 28.3670, lng: 79.4304 },
+  "moradabad": { lat: 28.8386, lng: 78.7733 },
+  "meerut": { lat: 28.9845, lng: 77.7064 },
+  "ghaziabad": { lat: 28.6692, lng: 77.4538 },
+  "noida": { lat: 28.5355, lng: 77.3910 },
+
+  // Gujarat Full Corridor
+  "mehsana": { lat: 23.5879, lng: 72.3693 },
+  "palanpur": { lat: 24.1726, lng: 72.4376 },
+  "himmatnagar": { lat: 23.5993, lng: 72.9584 },
+
+  // MP Interior (for general MP corridor fallback)
+  "rajgarh": { lat: 23.7577, lng: 76.7257 },
+  "narsinghpur": { lat: 22.9455, lng: 79.1944 },
+  "sihora": { lat: 23.4839, lng: 80.1067 },
+  "pipariya": { lat: 22.7651, lng: 78.3503 },
+  "itarsi": { lat: 22.6157, lng: 77.7647 },
+  "obaidullaganj": { lat: 23.0133, lng: 77.4906 },
+
+  // Uttarakhand Corridor
+  "haridwar": { lat: 29.9457, lng: 78.1642 },
+  "roorkee": { lat: 29.8543, lng: 77.8880 },
+  "muzaffarnagar": { lat: 29.4727, lng: 77.7085 },
+  "saharanpur": { lat: 29.9640, lng: 77.5461 },
+
+  // South India & North-South Corridor (e.g. Bhopal ➔ Rameswaram, Delhi ➔ Kanyakumari)
+  "rameshwaram": { lat: 9.2876, lng: 79.3129 },
+  "rameshawaram": { lat: 9.2876, lng: 79.3129 },
+  "rameswaram": { lat: 9.2876, lng: 79.3129 },
+  "rameswar": { lat: 9.2876, lng: 79.3129 },
+  "rameshwar": { lat: 9.2876, lng: 79.3129 },
+  "kanyakumari": { lat: 8.0883, lng: 77.5385 },
+  "madurai": { lat: 9.9252, lng: 78.1198 },
+  "tiruchirappalli": { lat: 10.7905, lng: 78.7047 },
+  "trichy": { lat: 10.7905, lng: 78.7047 },
+  "dindigul": { lat: 10.3673, lng: 77.9803 },
+  "karur": { lat: 10.9601, lng: 78.0766 },
+  "salem": { lat: 11.6643, lng: 78.1460 },
+  "dharmapuri": { lat: 12.1211, lng: 78.1582 },
+  "hosur": { lat: 12.7409, lng: 77.8253 },
+  "krishnagiri": { lat: 12.5266, lng: 78.2146 },
+  "anantapur": { lat: 14.6819, lng: 77.6006 },
+  "kurnool": { lat: 15.8281, lng: 78.0373 },
+  "mahabubnagar": { lat: 16.7488, lng: 77.9863 },
+  "secunderabad": { lat: 17.4399, lng: 78.4983 },
+  "kamareddy": { lat: 18.3228, lng: 78.3411 },
+  "nizamabad": { lat: 18.6725, lng: 78.0941 },
+  "adilabad": { lat: 19.6641, lng: 78.5320 },
+  "hinganghat": { lat: 20.5539, lng: 78.8358 },
+  "nagpur": { lat: 21.1458, lng: 79.0882 },
+  "coimbatore": { lat: 11.0168, lng: 76.9558 },
+  "tirunelveli": { lat: 8.7139, lng: 77.7567 },
+  "thiruvananthapuram": { lat: 8.5241, lng: 76.9366 },
+  "kochi": { lat: 9.9312, lng: 76.2673 },
+  "cochin": { lat: 9.9312, lng: 76.2673 },
+  "alappuzha": { lat: 9.4981, lng: 76.3388 },
+  "vellore": { lat: 12.9165, lng: 79.1325 },
+  "vijayawada": { lat: 16.5062, lng: 80.6480 },
+  "visakhapatnam": { lat: 17.6868, lng: 83.2185 },
+  "guntur": { lat: 16.3067, lng: 80.4365 },
+  "nellore": { lat: 14.4426, lng: 79.9865 },
+  "tirupati": { lat: 13.6288, lng: 79.4192 },
+
+  // Odisha (Bhubaneswar, Cuttack, Puri, Rourkela, etc.)
+  "odisha": { lat: 20.9517, lng: 85.0985 },
+  "orissa": { lat: 20.9517, lng: 85.0985 },
+  "bhubaneswar": { lat: 20.2961, lng: 85.8245 },
+  "cuttack": { lat: 20.4625, lng: 85.8828 },
+  "puri": { lat: 19.8135, lng: 85.8312 },
+  "rourkela": { lat: 22.2604, lng: 84.8536 },
+  "berhampur": { lat: 19.3150, lng: 84.7941 },
+  "sambalpur": { lat: 21.4669, lng: 83.9812 },
+  "konark": { lat: 19.8876, lng: 86.0945 },
+  "balasore": { lat: 21.4934, lng: 86.9135 },
+  "baripada": { lat: 21.9346, lng: 86.7324 },
+
+  // Chhattisgarh (connecting central India to Odisha: Bhopal ➔ Raipur ➔ Odisha)
+  "chhattisgarh": { lat: 21.2787, lng: 81.8661 },
+  "raipur": { lat: 21.2514, lng: 81.6296 },
+  "bhilai": { lat: 21.2144, lng: 81.4284 },
+  "durg": { lat: 21.1904, lng: 81.2849 },
+  "bilaspur": { lat: 22.0797, lng: 82.1409 },
+  "korba": { lat: 22.3595, lng: 82.7501 },
+  "raigarh": { lat: 21.8974, lng: 83.3950 },
+  "jagdalpur": { lat: 19.0740, lng: 82.0084 },
+  "rajnandgaon": { lat: 21.0974, lng: 81.0345 },
+
+  // Jharkhand & Bihar
+  "jharkhand": { lat: 23.6102, lng: 85.2799 },
+  "ranchi": { lat: 23.3441, lng: 85.3096 },
+  "jamshedpur": { lat: 22.8046, lng: 86.2029 },
+  "dhanbad": { lat: 23.7957, lng: 86.4304 },
+  "bokaro": { lat: 23.6693, lng: 86.1511 },
+  "deoghar": { lat: 24.4826, lng: 86.6997 },
+  "hazaribagh": { lat: 23.9925, lng: 85.3637 },
+
+  // West Bengal
+  "west bengal": { lat: 22.9868, lng: 87.8550 },
+  "howrah": { lat: 22.5958, lng: 88.2636 },
+  "durgapur": { lat: 23.5204, lng: 87.3119 },
+  "asansol": { lat: 23.6739, lng: 86.9524 },
+  "siliguri": { lat: 26.7271, lng: 88.3953 },
+  "darjeeling": { lat: 27.0410, lng: 88.2663 },
+  "kalimpong": { lat: 27.0594, lng: 88.4695 },
+  "kharagpur": { lat: 22.3460, lng: 87.2320 },
+
+  // Assam & Northeast
+  "assam": { lat: 26.2006, lng: 92.9376 },
+  "guwahati": { lat: 26.1445, lng: 91.7362 },
+  "silchar": { lat: 24.8333, lng: 92.7789 },
+  "dibrugarh": { lat: 27.4728, lng: 94.9120 },
+  "jorhat": { lat: 26.7509, lng: 94.2037 },
+  "nagaon": { lat: 26.3468, lng: 92.6840 },
+  "tezpur": { lat: 26.6528, lng: 92.7926 },
+  "kaziranga": { lat: 26.5775, lng: 93.1711 },
+  "shillong": { lat: 25.5788, lng: 91.8933 },
+  "gangtok": { lat: 27.3389, lng: 88.6065 },
+  "sikkim": { lat: 27.5330, lng: 88.5122 },
+
+  // Jammu, Kashmir & Ladakh
+  "srinagar": { lat: 34.0837, lng: 74.7973 },
+  "jammu": { lat: 32.7266, lng: 74.8570 },
+  "katra": { lat: 32.9926, lng: 74.9317 },
+  "vaishnodevi": { lat: 33.0308, lng: 74.9490 },
+  "leh": { lat: 34.1526, lng: 77.5771 },
+  "ladakh": { lat: 34.1526, lng: 77.5771 },
+  "kargil": { lat: 34.5539, lng: 76.1349 },
 };
 
 export { LOCATION_COORDINATES_MAP };
@@ -236,7 +393,20 @@ export function lookupSingleCoordinate(str: string): { lat: number; lng: number 
     }
   }
 
-  // 2. Fallback to generic country centers if no specific city matches
+  // 2. Fuzzy normalized check (strips punctuation and handles vowel variations like rameshawaram -> rameshwaram)
+  const normStr = strLower.replace(/[^a-z0-9]/g, "");
+  for (const key of cityKeysSorted) {
+    const normKey = key.replace(/[^a-z0-9]/g, "");
+    if (
+      normStr.includes(normKey) ||
+      normKey.includes(normStr) ||
+      normStr.replace(/h/g, "").replace(/a/g, "") === normKey.replace(/h/g, "").replace(/a/g, "")
+    ) {
+      return LOCATION_COORDINATES_MAP[key];
+    }
+  }
+
+  // 3. Fallback to generic country centers if no specific city matches
   if (strLower.includes("india")) return LOCATION_COORDINATES_MAP["india"];
   if (strLower.includes("nepal")) return LOCATION_COORDINATES_MAP["nepal"];
 

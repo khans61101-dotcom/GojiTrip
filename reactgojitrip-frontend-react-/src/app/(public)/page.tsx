@@ -2,11 +2,13 @@ import Header from "@/components/landing/Header";
 import { Hero } from "@/components/landing/Hero";
 import AboutSection from "@/components/landing/AboutSection";
 import FamousRoutes from "@/components/landing/FamousRoutes";
+import TopRestaurants from "@/components/landing/TopRestaurants";
 import HowItWorks from "@/components/landing/HowItWorks";
 import AIFeatures from "@/components/landing/AIFeatures";
 import Testimonials from "@/components/landing/Testimonials";
 import FinalCta from "@/components/landing/FinalCta";
 import Footer from "@/components/landing/Footer";
+
 export default function Home() {
   return (
     <>
@@ -14,7 +16,8 @@ export default function Home() {
       <Hero />
       <AboutSection />
       <FamousRoutes />
-      <HowItWorks />
+      <TopRestaurants />
+      {/* <HowItWorks /> */}
       <AIFeatures />
       <Testimonials />
       <FinalCta />

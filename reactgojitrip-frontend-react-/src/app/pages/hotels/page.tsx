@@ -1,7 +1,7 @@
-// HotelsPage.tsx - Fixed Map Rendering
+// HotelsPage.tsx - With Google Places Integration
 import "@/styles/pages/hotels/hotels.css";
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Search,
   Filter,
@@ -19,13 +19,59 @@ import {
   Minimize2,
   Home,
   Hotel as HotelIcon,
+  Globe,
 } from "lucide-react";
 import { listHotels, getHotelRooms, RoomType } from "@/lib/api";
 import { cmsStore } from "@/lib/cms-store";
 import YelpDetailModal, { YelpDetailData } from "@/components/common/YelpDetailModal";
 import { InteractiveMap, MapMarkerItem } from "@/components/common/InteractiveMap";
 
-// Types
+// ============= GOOGLE PLACES HELPERS =============
+const GOOGLE_API_KEY =
+  (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY ||
+  "YOUR_GOOGLE_MAPS_API_KEY";
+
+let _placesService: any = null;
+let _scriptPromise: Promise<void> | null = null;
+
+const loadGooglePlacesScript = (): Promise<void> => {
+  if (_scriptPromise) return _scriptPromise;
+
+  _scriptPromise = new Promise((resolve, reject) => {
+    if (typeof window === "undefined") return resolve();
+    if ((window as any).google?.maps?.places) return resolve();
+
+    const existing = document.querySelector(
+      'script[src*="maps.googleapis.com/maps/api/js"]'
+    );
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () =>
+        reject(new Error("Google Maps load failed"))
+      );
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Google Maps load failed"));
+    document.head.appendChild(script);
+  });
+
+  return _scriptPromise;
+};
+
+const getPlacesService = (): any => {
+  if (_placesService) return _placesService;
+  const dummy = document.createElement("div");
+  _placesService = new (window as any).google.maps.places.PlacesService(dummy);
+  return _placesService;
+};
+
+// ============= TYPES =============
 interface Hotel {
   id: string;
   name: string;
@@ -48,6 +94,16 @@ interface Hotel {
   status?: "draft" | "under-review" | "approved" | "published";
   roomTypes?: RoomType[];
   propertyType?: string;
+  source?: "cms" | "api" | "google";
+  placeId?: string;
+  googleRating?: number;
+  contactPerson?: string;
+  phoneNumber?: string;
+  whatsappNumber?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  availabilityStatus?: string;
+  partnerStatus?: string;
 }
 
 interface FilterState {
@@ -88,11 +144,35 @@ const BookingModal: React.FC<{
   const [checkOut, setCheckOut] = useState("");
   const [guests, setGuests] = useState(1);
   const [nights, setNights] = useState(1);
-  const [selectedRoomType, setSelectedRoomType] = useState<RoomType | null>(
-    hotel.roomTypes && hotel.roomTypes.length > 0 ? hotel.roomTypes[0] : null,
-  );
 
-  const roomTypes = hotel.roomTypes ?? [];
+  // Google hotels ke liye default room type banate hain
+  const defaultRoomTypes: RoomType[] = [
+    {
+      id: "default-standard",
+      name: "Standard Room",
+      type: "Non-AC",
+      pricePerNight: hotel.pricePerNight || 2500,
+      capacity: 2,
+      available: true,
+    } as any,
+    {
+      id: "default-deluxe",
+      name: "Deluxe Room",
+      type: "AC",
+      pricePerNight: Math.round((hotel.pricePerNight || 2500) * 1.4),
+      capacity: 3,
+      available: true,
+    } as any,
+  ];
+
+  const roomTypes =
+    hotel.roomTypes && hotel.roomTypes.length > 0
+      ? hotel.roomTypes
+      : defaultRoomTypes;
+
+  const [selectedRoomType, setSelectedRoomType] = useState<RoomType | null>(
+    roomTypes[0]
+  );
 
   useEffect(() => {
     if (!selectedRoomType && roomTypes.length > 0) {
@@ -138,7 +218,10 @@ const BookingModal: React.FC<{
       <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
           <h2 className="text-xl font-bold text-gray-900">Book Your Stay</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+          >
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -151,13 +234,19 @@ const BookingModal: React.FC<{
             </p>
             <div className="flex items-center gap-2 mt-2">
               <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-              <span className="font-semibold text-gray-900">{hotel.rating}</span>
-              <span className="text-gray-600 text-sm">({hotel.reviews} reviews)</span>
+              <span className="font-semibold text-gray-900">
+                {hotel.rating}
+              </span>
+              <span className="text-gray-600 text-sm">
+                ({hotel.reviews} reviews)
+              </span>
             </div>
           </div>
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Select Room Type</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Room Type
+              </label>
               <div className="grid grid-cols-2 gap-3">
                 {roomTypes.map((room) => (
                   <button
@@ -177,7 +266,9 @@ const BookingModal: React.FC<{
                       ) : (
                         <Wind className="h-4 w-4 text-orange-600" />
                       )}
-                      <span className="font-semibold text-gray-900 text-sm">{room.name}</span>
+                      <span className="font-semibold text-gray-900 text-sm">
+                        {room.name}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-600">
                       <span>{room.type === "AC" ? "❄️ AC" : "🌬️ Non-AC"}</span>
@@ -186,7 +277,7 @@ const BookingModal: React.FC<{
                     </div>
                     <div className="mt-2">
                       <span className="text-lg font-bold text-gray-900">
-                        {hotel.currency || "$"}
+                        {hotel.currency || "NRs "}
                         {room.pricePerNight}
                       </span>
                       <span className="text-xs text-gray-600">/night</span>
@@ -196,7 +287,9 @@ const BookingModal: React.FC<{
               </div>
             </div>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Check-in Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Check-in Date
+              </label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
                 <input
@@ -210,7 +303,9 @@ const BookingModal: React.FC<{
               </div>
             </div>
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Check-out Date</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Check-out Date
+              </label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
                 <input
@@ -224,7 +319,9 @@ const BookingModal: React.FC<{
               </div>
             </div>
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Number of Guests</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Number of Guests
+              </label>
               <div className="relative">
                 <Users className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
                 <select
@@ -252,13 +349,18 @@ const BookingModal: React.FC<{
                 </h4>
                 <div className="space-y-1 text-sm">
                   <p className="text-gray-700">
-                    <span className="font-semibold text-gray-900">Type:</span> {selectedRoomType.name} ({selectedRoomType.type})
+                    <span className="font-semibold text-gray-900">Type:</span>{" "}
+                    {selectedRoomType.name} ({selectedRoomType.type})
                   </p>
                   <p className="text-gray-700">
-                    <span className="font-semibold text-gray-900">Capacity:</span> Up to {selectedRoomType.capacity} guests
+                    <span className="font-semibold text-gray-900">
+                      Capacity:
+                    </span>{" "}
+                    Up to {selectedRoomType.capacity} guests
                   </p>
                   <p className="text-gray-700">
-                    <span className="font-semibold text-gray-900">Price:</span> {hotel.currency || "$"}
+                    <span className="font-semibold text-gray-900">Price:</span>{" "}
+                    {hotel.currency || "NRs "}
                     {selectedRoomType.pricePerNight}/night
                   </p>
                 </div>
@@ -267,21 +369,31 @@ const BookingModal: React.FC<{
             {checkIn && checkOut && selectedRoomType && (
               <div className="mb-6 p-4 bg-gray-50 rounded-xl">
                 <div className="flex justify-between text-sm text-gray-700 mb-2">
-                  <span>{selectedRoomType.pricePerNight} x {nights} nights</span>
+                  <span>
+                    {selectedRoomType.pricePerNight} x {nights} nights
+                  </span>
                   <span className="font-semibold text-gray-900">
-                    {hotel.currency || "$"}{selectedRoomType.pricePerNight * nights}
+                    {hotel.currency || "NRs "}
+                    {selectedRoomType.pricePerNight * nights}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm text-gray-700 mb-2">
                   <span>Taxes & fees</span>
                   <span className="font-semibold text-gray-900">
-                    {hotel.currency || "$"}{(selectedRoomType.pricePerNight * nights * 0.12).toFixed(0)}
+                    {hotel.currency || "NRs "}
+                    {(
+                      selectedRoomType.pricePerNight *
+                      nights *
+                      0.12
+                    ).toFixed(0)}
                   </span>
                 </div>
                 <div className="border-t border-gray-200 pt-2 flex justify-between font-bold text-gray-900">
                   <span>Total</span>
                   <span>
-                    {hotel.currency || "$"}{calculateTotal() + selectedRoomType.pricePerNight * nights * 0.12}
+                    {hotel.currency || "NRs "}
+                    {calculateTotal() +
+                      selectedRoomType.pricePerNight * nights * 0.12}
                   </span>
                 </div>
               </div>
@@ -290,11 +402,15 @@ const BookingModal: React.FC<{
               type="submit"
               disabled={!selectedRoomType}
               className={`w-full font-semibold py-3 px-4 rounded-xl transition-colors shadow-lg hover:shadow-xl flex items-center justify-center gap-2 ${
-                selectedRoomType ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-gray-200 text-gray-600 cursor-not-allowed"
+                selectedRoomType
+                  ? "bg-blue-600 hover:bg-blue-700 text-white"
+                  : "bg-gray-200 text-gray-600 cursor-not-allowed"
               }`}
             >
               <CreditCard className="h-5 w-5" />
-              {selectedRoomType ? `Book ${selectedRoomType.type} Room` : "Select Room Type"}
+              {selectedRoomType
+                ? `Book ${selectedRoomType.type} Room`
+                : "Select Room Type"}
             </button>
           </form>
         </div>
@@ -311,33 +427,59 @@ const SuccessModal: React.FC<{
   <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
     <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl text-center">
       <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-        <svg className="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+        <svg
+          className="h-8 w-8 text-green-600"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            d="M5 13l4 4L19 7"
+          />
         </svg>
       </div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-2">Booking Confirmed! 🎉</h2>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">
+        Booking Confirmed! 🎉
+      </h2>
       <p className="text-gray-700 mb-4">
-        Your stay at <strong className="text-gray-900">{bookingData.hotelName}</strong> has been booked successfully.
+        Your stay at{" "}
+        <strong className="text-gray-900">{bookingData.hotelName}</strong> has
+        been booked successfully.
       </p>
       <div className="bg-gray-50 rounded-xl p-4 text-left mb-6 space-y-1">
         <p className="text-sm text-gray-700">
-          <span className="font-semibold text-gray-900">Room Type:</span> {bookingData.roomType}{" "}
-          {bookingData.isAC ? <span className="text-blue-700 font-semibold">❄️ AC</span> : <span className="text-orange-700 font-semibold">🌬️ Non-AC</span>}
+          <span className="font-semibold text-gray-900">Room Type:</span>{" "}
+          {bookingData.roomType}{" "}
+          {bookingData.isAC ? (
+            <span className="text-blue-700 font-semibold">❄️ AC</span>
+          ) : (
+            <span className="text-orange-700 font-semibold">🌬️ Non-AC</span>
+          )}
         </p>
         <p className="text-sm text-gray-700">
-          <span className="font-semibold text-gray-900">Check-in:</span> {new Date(bookingData.checkIn).toLocaleDateString()}
+          <span className="font-semibold text-gray-900">Check-in:</span>{" "}
+          {new Date(bookingData.checkIn).toLocaleDateString()}
         </p>
         <p className="text-sm text-gray-700">
-          <span className="font-semibold text-gray-900">Check-out:</span> {new Date(bookingData.checkOut).toLocaleDateString()}
+          <span className="font-semibold text-gray-900">Check-out:</span>{" "}
+          {new Date(bookingData.checkOut).toLocaleDateString()}
         </p>
         <p className="text-sm text-gray-700">
-          <span className="font-semibold text-gray-900">Guests:</span> {bookingData.guests}
+          <span className="font-semibold text-gray-900">Guests:</span>{" "}
+          {bookingData.guests}
         </p>
         <p className="text-sm text-gray-700">
-          <span className="font-semibold text-gray-900">Total:</span> ${bookingData.totalPrice}
+          <span className="font-semibold text-gray-900">Total:</span> NRs{" "}
+          {bookingData.totalPrice}
         </p>
       </div>
-      <button onClick={onClose} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors">
+      <button
+        onClick={onClose}
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition-colors"
+      >
         Done
       </button>
     </div>
@@ -348,7 +490,10 @@ const SuccessModal: React.FC<{
 const LoadingSkeleton: React.FC = () => (
   <div className="space-y-3">
     {[1, 2, 3, 4, 5].map((i) => (
-      <div key={i} className="flex gap-3 p-3 bg-white rounded-xl border border-gray-200 animate-pulse">
+      <div
+        key={i}
+        className="flex gap-3 p-3 bg-white rounded-xl border border-gray-200 animate-pulse"
+      >
         <div className="w-24 h-24 bg-gray-200 rounded-lg flex-shrink-0" />
         <div className="flex-1">
           <div className="h-4 bg-gray-200 rounded w-3/4 mb-2" />
@@ -373,235 +518,51 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => (
     <div className="bg-gray-100 rounded-full p-6 mb-4">
       <Search className="h-12 w-12 text-gray-500" />
     </div>
-    <h3 className="text-xl font-semibold text-gray-900 mb-2">No Results Found</h3>
+    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+      No Results Found
+    </h3>
     <p className="text-gray-600 text-center max-w-md">{message}</p>
   </div>
 );
 
-// ============= MAP COMPONENT - Fixed =============
-const MapComponent: React.FC<{
-  hotels: Hotel[];
-  selectedHotelId?: string | null;
-  onMarkerClick: (hotelId: string) => void;
-  center?: { lat: number; lng: number };
-}> = ({ hotels, selectedHotelId, onMarkerClick, center = { lat: 27.7172, lng: 85.324 } }) => {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [mapError, setMapError] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Load Google Maps
-    const loadGoogleMaps = () => {
-      if (window.google && window.google.maps) {
-        initializeMap();
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=YOUR_GOOGLE_MAPS_API_KEY&callback=initMap`;
-      script.async = true;
-      script.defer = true;
-
-      window.initMap = () => {
-        initializeMap();
-      };
-
-      document.head.appendChild(script);
-
-      return () => {
-        const scripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
-        scripts.forEach((s) => s.remove());
-        window.initMap = () => {};
-      };
-    };
-
-    const initializeMap = () => {
-      if (!mapRef.current) {
-        console.error("Map container not found");
-        return;
-      }
-
-      try {
-        console.log("Initializing map with center:", center);
-        
-        const mapOptions = {
-          center: center,
-          zoom: 13,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: true,
-        };
-
-        const map = new window.google.maps.Map(mapRef.current, mapOptions);
-        setIsMapLoaded(true);
-        setMapError(null);
-
-        // Add markers for each hotel
-        hotels.forEach((hotel, index) => {
-          let position;
-          if (hotel.lat && hotel.lng) {
-            position = { lat: hotel.lat, lng: hotel.lng };
-          } else {
-            // Generate random position near center
-            const latOffset = (Math.random() - 0.5) * 0.05;
-            const lngOffset = (Math.random() - 0.5) * 0.05;
-            position = {
-              lat: center.lat + latOffset,
-              lng: center.lng + lngOffset,
-            };
-          }
-
-          const marker = new window.google.maps.Marker({
-            position,
-            map: map,
-            title: hotel.name,
-            animation: window.google.maps.Animation.DROP,
-            label: {
-              text: `${index + 1}`,
-              color: "#FFFFFF",
-              fontSize: "12px",
-              fontWeight: "bold",
-            },
-          });
-
-          // Info window
-          const infoWindow = new window.google.maps.InfoWindow({
-            content: `
-              <div style="padding: 8px; max-width: 200px;">
-                <strong style="font-size: 14px;">${hotel.name}</strong>
-                <div style="font-size: 12px; color: #666; margin: 4px 0;">📍 ${hotel.location}</div>
-                <div style="display: flex; align-items: center; gap: 4px; margin: 4px 0;">
-                  <span style="color: #f59e0b;">★</span>
-                  <span style="font-size: 13px; font-weight: 600;">${hotel.rating}</span>
-                  <span style="font-size: 12px; color: #666;">(${hotel.reviews})</span>
-                </div>
-                <div style="font-size: 14px; font-weight: bold; color: #1f2937; margin: 4px 0;">
-                  ${hotel.currency || "$"}${hotel.pricePerNight} <span style="font-size: 12px; font-weight: normal; color: #666;">/night</span>
-                </div>
-                <button 
-                  onclick="window.handleHotelBook('${hotel.id}')"
-                  style="
-                    background: #2563eb;
-                    color: white;
-                    border: none;
-                    padding: 4px 16px;
-                    border-radius: 6px;
-                    font-size: 13px;
-                    font-weight: 600;
-                    cursor: pointer;
-                    margin-top: 4px;
-                    width: 100%;
-                  "
-                >
-                  Book Now
-                </button>
-              </div>
-            `,
-          });
-
-          marker.addListener("click", () => {
-            onMarkerClick(hotel.id);
-            infoWindow.open(map, marker);
-          });
-
-          // If this is the selected hotel, open its info window
-          if (selectedHotelId === hotel.id) {
-            setTimeout(() => {
-              infoWindow.open(map, marker);
-              map.panTo(position);
-              map.setZoom(15);
-            }, 500);
-          }
-        });
-
-        // Fit bounds if multiple hotels
-        if (hotels.length > 1) {
-          const bounds = new window.google.maps.LatLngBounds();
-          hotels.forEach((hotel) => {
-            let pos;
-            if (hotel.lat && hotel.lng) {
-              pos = { lat: hotel.lat, lng: hotel.lng };
-            } else {
-              const latOffset = (Math.random() - 0.5) * 0.05;
-              const lngOffset = (Math.random() - 0.5) * 0.05;
-              pos = {
-                lat: center.lat + latOffset,
-                lng: center.lng + lngOffset,
-              };
-            }
-            bounds.extend(pos);
-          });
-          map.fitBounds(bounds);
-        }
-
-        // Expose book function to window
-        (window as any).handleHotelBook = (hotelId: string) => {
-          onMarkerClick(hotelId);
-        };
-
-      } catch (error) {
-        console.error("Error initializing map:", error);
-        setMapError("Failed to load map. Please check your API key.");
-      }
-    };
-
-    loadGoogleMaps();
-
-    return () => {
-      delete (window as any).handleHotelBook;
-    };
-  }, [center, hotels, selectedHotelId, onMarkerClick]);
-
-  if (mapError) {
-    return (
-      <div className="h-full w-full bg-gray-100 rounded-2xl flex flex-col items-center justify-center p-8">
-        <div className="text-5xl mb-4">🗺️</div>
-        <p className="text-gray-700 font-medium text-center">Map unavailable</p>
-        <p className="text-gray-500 text-sm text-center mt-1">{mapError}</p>
-        <p className="text-gray-400 text-xs text-center mt-2">
-          Please check your Google Maps API key
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full w-full rounded-2xl overflow-hidden bg-gray-200 relative">
-      <div ref={mapRef} className="w-full h-full" style={{ minHeight: "500px" }} />
-      {!isMapLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-200">
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-gray-600 text-sm">Loading map...</p>
-          </div>
-        </div>
-      )}
-      {isMapLoaded && hotels.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg text-xs text-gray-600">
-          📍 {hotels.length} hotel{hotels.length > 1 ? 's' : ''} displayed
-        </div>
-      )}
-    </div>
-  );
-};
-
 // ============= MAIN COMPONENT =============
 const HotelsPage: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const locParam = params.get("location") || params.get("search") || params.get("q") || params.get("routeStop");
+    const params = new URLSearchParams(location.search);
+    const locParam =
+      params.get("location") ||
+      params.get("search") ||
+      params.get("q") ||
+      params.get("routeStop");
     if (locParam && locParam.trim()) {
       setSearchQuery(locParam.trim());
     }
-  }, []);
-  const [stayTypeFilter, setStayTypeFilter] = useState<"hotels" | "homestays" | "all">(() => {
+
+    if (location.pathname.includes("/pages/homestays")) {
+      setStayTypeFilter("homestays");
+    } else {
+      const t = params.get("type") || params.get("category");
+      if (t === "homestays" || t === "homestay") {
+        setStayTypeFilter("homestays");
+      }
+    }
+  }, [location.pathname, location.search]);
+
+  const [stayTypeFilter, setStayTypeFilter] = useState<
+    "hotels" | "homestays" | "all"
+  >(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const t = params.get("type") || params.get("category");
-      if (t === "homestays" || t === "homestay" || window.location.pathname.includes("/pages/homestays")) {
+      if (
+        t === "homestays" ||
+        t === "homestay" ||
+        window.location.pathname.includes("/pages/homestays")
+      ) {
         return "homestays";
       }
     }
@@ -609,7 +570,10 @@ const HotelsPage: React.FC = () => {
   });
 
   const [hotels, setHotels] = useState<Hotel[]>([]);
+  const [googleHotels, setGoogleHotels] = useState<Hotel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [useGoogleSearch, setUseGoogleSearch] = useState(true);
   const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null);
   const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null);
   const [bookingData, setBookingData] = useState<BookingData | null>(null);
@@ -625,43 +589,151 @@ const HotelsPage: React.FC = () => {
   });
   const [showFilters, setShowFilters] = useState(false);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
-  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(null);
+  const [yelpDetailData, setYelpDetailData] = useState<YelpDetailData | null>(
+    null
+  );
   const [showYelpModal, setShowYelpModal] = useState(false);
   const hotelListRef = useRef<HTMLDivElement>(null);
 
+  // ============= YELP DETAIL OPEN =============
   const handleOpenYelpDetail = (h: Hotel) => {
     const rawPrice = (h as any).pricePerNight || h.pricePerNight || 2500;
-    const currency = h.currency || "NRs ";
+    const currency = (h.currency || "NRs").trim();
+    const isGoogle = h.source === "google";
+    const propType = (h as any).propertyType || (h.name.toLowerCase().includes("homestay") ? "Homestay" : "Hotel");
+    const isHomestay = propType.toLowerCase() === "homestay" || h.name.toLowerCase().includes("homestay");
+
+    // Retrieve room types list
+    const rawRT = (h as any).roomTypes || (h as any).room_types;
+    let roomTypesList: any[] = [];
+    if (Array.isArray(rawRT)) {
+      roomTypesList = rawRT;
+    } else if (typeof rawRT === "string" && (rawRT as string).trim()) {
+      try { roomTypesList = JSON.parse(rawRT); } catch (e) {}
+    }
+
+    let offerings: any[] = [];
+    if (roomTypesList.length > 0) {
+      offerings = roomTypesList.map((rt: any) => {
+        const title = rt.typeName || rt.name || rt.type || (isHomestay ? "Host Bedroom" : "Deluxe Room");
+        const rate = Number(rt.ratePerNight || rt.pricePerNight || rt.price) || rawPrice;
+        const cap = Number(rt.capacity || rt.maxGuests) || 2;
+        const bed = rt.bedType || (cap > 2 ? "2 Double Beds" : "1 Double Bed");
+        const facs = Array.isArray(rt.facilities) && rt.facilities.length > 0
+          ? rt.facilities.join(" • ")
+          : typeof rt.facilities === "string" && rt.facilities.trim()
+          ? rt.facilities
+          : "Attached Bathroom • Mountain View • Hot Shower";
+        const img = rt.imageUrl || (Array.isArray(rt.photos) && rt.photos[0]) || h.image;
+
+        return {
+          title,
+          price: `${currency} ${rate.toLocaleString()} / night`,
+          desc: `Capacity: ${cap} ${cap === 1 ? "Guest" : "Guests"} • Bed: ${bed} • ${facs}`,
+          image: img,
+          ratePerNight: rate,
+          capacity: cap,
+          bedType: bed,
+          facilities: Array.isArray(rt.facilities) ? rt.facilities : [],
+        };
+      });
+    } else {
+      // Fallback room options
+      offerings = [
+        {
+          title: isHomestay ? "Traditional Host Wooden Room" : (isGoogle ? "Standard Room" : "Deluxe Mountain View Room"),
+          price: `${currency} ${rawPrice.toLocaleString()} / night`,
+          desc: isHomestay
+            ? "Capacity: 2 Guests • 1 Double Bed • Homemade Hearth Dining, Organic Meals & Solar Hot Shower"
+            : "Capacity: 2 Guests • 1 King Bed • Mountain View, Ensuite Bathroom, AC & Wi-Fi",
+          image: (h as any).hotelPhotos?.[0] || h.image,
+          ratePerNight: rawPrice,
+          capacity: 2,
+          bedType: isHomestay ? "1 Double Bed" : "1 King Bed",
+          facilities: ["Attached Bathroom", "Hot Shower", "Mountain View", "Wi-Fi"],
+        },
+        {
+          title: isHomestay ? "Family Village Cultural Room" : (isGoogle ? "Deluxe Room" : "Executive Valley Suite"),
+          price: `${currency} ${Math.round(rawPrice * 1.35).toLocaleString()} / night`,
+          desc: isHomestay
+            ? "Capacity: 4 Guests • 2 Double Beds • Village Balcony, Local Host Hospitality & Tea Tasting"
+            : "Capacity: 4 Guests • 2 Queen Beds • Private Balcony, Heating, Mini Bar & Panoramic Peaks",
+          image: (h as any).hotelPhotos?.[1] || (h as any).hotelPhotos?.[0] || h.image,
+          ratePerNight: Math.round(rawPrice * 1.35),
+          capacity: 4,
+          bedType: "2 Double Beds",
+          facilities: ["Attached Bathroom", "Private Balcony", "Hot Shower", "Mountain View", "Heater"],
+        },
+      ];
+    }
+
+    const checkIn = (h as any).checkInTime || "12:00 PM";
+    const checkOut = (h as any).checkOutTime || "10:00 AM";
+    const phoneNum = (h as any).phoneNumber || (h as any).contact || "+977 1 4567890";
+    const whatsappNum = (h as any).whatsappNumber || phoneNum;
+
     setYelpDetailData({
       id: h.id,
       name: h.name,
-      category: (h as any).propertyType || "Luxury Hotel & Mountain Resort",
+      category: propType,
       rating: h.rating || 4.8,
       reviewCount: h.reviews || 42,
-      priceLevel: "$$",
+      priceLevel: isHomestay ? "Authentic Village Rate" : "$$",
       address: h.location,
       location: h.location,
-      phone: (h as any).phoneNumber || h.contact || "+977 1 4567890",
-      whatsapp: (h as any).whatsappNumber || "+9779801234567",
+      phone: phoneNum,
+      whatsapp: whatsappNum,
+      contactPerson: (h as any).contactPerson,
+      checkInTime: checkIn,
+      checkOutTime: checkOut,
+      partnerStatus: (h as any).partnerStatus || "Verified Partner",
+      availabilityStatus: (h as any).availabilityStatus || "Available",
       image: h.image,
-      galleryImages: (h as any).hotelPhotos || (h as any).photos || (h.image ? [h.image] : []),
-      description: (h as any).description || h.description || `${h.name} offers magnificent mountain view accommodation, gourmet dining, and warm Nepalese hospitality.`,
-      amenities: (h as any).facilities || h.amenities || ["Free Wi-Fi", "Mountain View", "AC & Heating", "Hot Shower", "24/7 Room Service", "Free Parking"],
-      hours: (h as any).operatingHours ? [{ day: "Front Desk & Schedule", time: (h as any).operatingHours }] : undefined,
-      priceTag: `${currency} ${rawPrice} / night`,
-      entityType: "hotel",
-      offerings: h.roomTypes?.map((rt: any) => ({
-        title: rt.typeName || rt.type || "Deluxe Room",
-        price: `NRs ${rt.pricePerNight || rawPrice} / night`,
-        desc: `Capacity: ${rt.maxGuests || 2} Guests • ${rt.type === "AC" || rt.isAC ? "Air Conditioned" : "Standard Heating"}`,
-      })) || [
-        { title: "Deluxe Mountain View Suite", price: `${currency} ${rawPrice}`, desc: "Spacious suite with private balcony overviewing Annapurna peaks." },
-        { title: "Standard Double Room", price: `${currency} ${Math.round(rawPrice * 0.8)}`, desc: "Comfortable double bed room with ensuite modern bathroom." },
+      galleryImages: (() => {
+        const raw: string[] = [
+          ...(Array.isArray((h as any).hotelPhotos) ? (h as any).hotelPhotos : []),
+          ...(Array.isArray((h as any).photos) ? (h as any).photos : []),
+          ...(h.image ? [h.image] : []),
+        ];
+        if (Array.isArray((h as any).roomTypes)) {
+          (h as any).roomTypes.forEach((rt: any) => {
+            if (rt.imageUrl) raw.push(rt.imageUrl);
+            if (Array.isArray(rt.photos)) raw.push(...rt.photos);
+          });
+        }
+        const unique = Array.from(new Set(raw.filter((img) => typeof img === "string" && img.trim().length > 0)));
+        return unique.length > 0 ? unique : [h.image || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80"];
+      })(),
+      description:
+        (h as any).description ||
+        h.description ||
+        `${h.name} offers magnificent accommodation, warm hospitality, and scenic views in Nepal.`,
+      amenities:
+        (Array.isArray((h as any).facilities) && (h as any).facilities.length > 0)
+          ? (h as any).facilities
+          : (Array.isArray(h.amenities) && h.amenities.length > 0)
+          ? h.amenities
+          : [
+              "Free Wi-Fi",
+              "Mountain View",
+              "AC & Heating",
+              "Hot Shower",
+              "24/7 Room Service",
+              "Free Parking",
+            ],
+      hours: [
+        { day: "Check-in Time", time: checkIn },
+        { day: "Check-out Time", time: checkOut },
+        { day: "Front Desk & Reception", time: "24/7 Assistance" },
       ],
+      priceTag: `${currency} ${rawPrice.toLocaleString()} / night`,
+      entityType: isHomestay ? "homestay" : "hotel",
+      offerings,
     });
     setShowYelpModal(true);
   };
 
+  // ============= CMS + API HOTELS FETCH =============
   const fetchHotels = useCallback(async () => {
     setLoading(true);
     try {
@@ -671,26 +743,40 @@ const HotelsPage: React.FC = () => {
       const rawHotels: any[] = Array.isArray(data)
         ? data
         : data && typeof data === "object" && Array.isArray((data as any).data)
-          ? (data as any).data
-          : [];
+        ? (data as any).data
+        : [];
 
       const cmsHotels = cmsStore.getHotels();
 
       const transformedHotels: Hotel[] = rawHotels.map((hotel: any) => {
-        const storeMatch = cmsHotels.find((s: any) => String(s.id) === String(hotel.id));
-        const photos = (Array.isArray(storeMatch?.hotelPhotos) && storeMatch.hotelPhotos.length > 0)
-          ? storeMatch.hotelPhotos
-          : (Array.isArray(storeMatch?.photos) && storeMatch.photos.length > 0)
-          ? storeMatch.photos
-          : (Array.isArray(hotel.hotelPhotos) && hotel.hotelPhotos.length > 0)
-          ? hotel.hotelPhotos
-          : (Array.isArray(hotel.photos) && hotel.photos.length > 0)
-          ? hotel.photos
-          : (hotel.imageUrl ? [hotel.imageUrl] : (storeMatch?.imageUrl ? [storeMatch.imageUrl] : []));
+        const storeMatch = cmsHotels.find(
+          (s: any) => String(s.id) === String(hotel.id)
+        );
+        const photos =
+          Array.isArray(storeMatch?.hotelPhotos) &&
+          storeMatch.hotelPhotos.length > 0
+            ? storeMatch.hotelPhotos
+            : Array.isArray(storeMatch?.photos) &&
+              storeMatch.photos.length > 0
+            ? storeMatch.photos
+            : Array.isArray(hotel.hotelPhotos) && hotel.hotelPhotos.length > 0
+            ? hotel.hotelPhotos
+            : Array.isArray(hotel.photos) && hotel.photos.length > 0
+            ? hotel.photos
+            : hotel.imageUrl
+            ? [hotel.imageUrl]
+            : storeMatch?.imageUrl
+            ? [storeMatch.imageUrl]
+            : [];
 
-        const imageUrl = (hotel.imageUrl && typeof hotel.imageUrl === "string" && hotel.imageUrl.trim() !== "")
-          ? hotel.imageUrl
-          : (photos[0] || storeMatch?.imageUrl || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80");
+        const imageUrl =
+          hotel.imageUrl &&
+          typeof hotel.imageUrl === "string" &&
+          hotel.imageUrl.trim() !== ""
+            ? hotel.imageUrl
+            : photos[0] ||
+              storeMatch?.imageUrl ||
+              "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
 
         let lat: number | undefined;
         let lng: number | undefined;
@@ -704,12 +790,20 @@ const HotelsPage: React.FC = () => {
           }
         }
 
-        const pricePerNight = storeMatch?.pricePerNight !== undefined && storeMatch.pricePerNight > 0
-          ? storeMatch.pricePerNight
-          : (typeof hotel.pricePerNight === "number" && hotel.pricePerNight > 0 ? hotel.pricePerNight : 2500);
+        const pricePerNight =
+          storeMatch?.pricePerNight !== undefined &&
+          storeMatch.pricePerNight > 0
+            ? storeMatch.pricePerNight
+            : typeof hotel.pricePerNight === "number" &&
+              hotel.pricePerNight > 0
+            ? hotel.pricePerNight
+            : 2500;
         const currency = storeMatch?.currency || hotel.currency || "NRs";
         const hName = hotel.hotelName || hotel.name || "Unnamed Hotel";
-        const rawPropType = storeMatch?.propertyType || hotel.propertyType || (hName.toLowerCase().includes("homestay") ? "Homestay" : "Hotel");
+        const rawPropType =
+          storeMatch?.propertyType ||
+          hotel.propertyType ||
+          (hName.toLowerCase().includes("homestay") ? "Homestay" : "Hotel");
 
         return {
           id: String(hotel.id ?? Math.random()),
@@ -720,87 +814,149 @@ const HotelsPage: React.FC = () => {
           photos: photos.length > 0 ? photos : [imageUrl],
           rating: typeof hotel.rating === "number" ? hotel.rating : 4.5,
           reviews: typeof hotel.reviews === "number" ? hotel.reviews : 0,
-          location: (storeMatch?.location && storeMatch.location.trim() !== '' && storeMatch.location !== 'N/A') ? storeMatch.location : (hotel.location || "Location not specified"),
+          location:
+            storeMatch?.location &&
+            storeMatch.location.trim() !== "" &&
+            storeMatch.location !== "N/A"
+              ? storeMatch.location
+              : hotel.location || "Location not specified",
           pricePerNight,
           currency,
-          amenities: (Array.isArray((storeMatch as any)?.facilities) && (storeMatch as any).facilities.length > 0)
-            ? (storeMatch as any).facilities
-            : (Array.isArray(hotel.amenities) ? hotel.amenities : (Array.isArray(hotel.facilities) ? hotel.facilities : [])),
+          amenities:
+            Array.isArray((storeMatch as any)?.facilities) &&
+            (storeMatch as any).facilities.length > 0
+              ? (storeMatch as any).facilities
+              : Array.isArray(hotel.amenities)
+              ? hotel.amenities
+              : Array.isArray(hotel.facilities)
+              ? hotel.facilities
+              : [],
           distance: hotel.distance || "0.5 km",
           available:
-            hotel.availabilityStatus !== undefined && hotel.availabilityStatus !== null
+            hotel.availabilityStatus !== undefined &&
+            hotel.availabilityStatus !== null
               ? hotel.availabilityStatus === "Available"
-              : (hotel.available ?? true),
+              : hotel.available ?? true,
           status: hotel.approvalStatus
-            ? (String(hotel.approvalStatus).toLowerCase().replace(/\s+/g, "-") as any)
+            ? (String(hotel.approvalStatus)
+                .toLowerCase()
+                .replace(/\s+/g, "-") as any)
             : "draft",
-          roomTypes: [],
+          roomTypes: (() => {
+            const rawRT = storeMatch?.roomTypes || (hotel as any)?.roomTypes || (hotel as any)?.room_types;
+            if (Array.isArray(rawRT)) return rawRT;
+            if (typeof rawRT === "string" && (rawRT as string).trim()) {
+              try { return JSON.parse(rawRT); } catch (e) {}
+            }
+            return [];
+          })(),
+          contactPerson: storeMatch?.contactPerson || hotel.contactPerson || "",
+          phoneNumber: storeMatch?.phoneNumber || hotel.phoneNumber || "",
+          whatsappNumber: (storeMatch as any)?.whatsAppNumber || (storeMatch as any)?.whatsappNumber || (hotel as any).whatsappNumber || "",
+          checkInTime: storeMatch?.checkInTime || hotel.checkInTime || "12:00 PM",
+          checkOutTime: storeMatch?.checkOutTime || hotel.checkOutTime || "10:00 AM",
+          availabilityStatus: storeMatch?.availabilityStatus || hotel.availabilityStatus || "Available",
+          partnerStatus: storeMatch?.partnerStatus || hotel.partnerStatus || "Verified Partner",
           lat: storeMatch?.latitude || lat,
           lng: storeMatch?.longitude || lng,
           gpsCoordinates: hotel.gpsCoordinates,
           propertyType: rawPropType,
+          source: "api",
         };
       });
 
-      cmsHotels.filter((sh: any) => !String(sh.id).startsWith("ht-")).forEach((sh: any) => {
-        if (!transformedHotels.some((m) => String(m.id) === String(sh.id))) {
-          const photos = (Array.isArray(sh.hotelPhotos) && sh.hotelPhotos.length > 0)
-            ? sh.hotelPhotos
-            : (Array.isArray(sh.photos) && sh.photos.length > 0)
-            ? sh.photos
-            : (sh.imageUrl ? [sh.imageUrl] : []);
-          const imageUrl = sh.imageUrl || photos[0] || "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
-          const shName = sh.hotelName || "Unnamed Hotel";
-          const shPropType = sh.propertyType || (shName.toLowerCase().includes("homestay") ? "Homestay" : "Hotel");
+      cmsHotels
+        .forEach((sh: any) => {
+          if (
+            !transformedHotels.some((m) => String(m.id) === String(sh.id))
+          ) {
+            const photos =
+              Array.isArray(sh.hotelPhotos) && sh.hotelPhotos.length > 0
+                ? sh.hotelPhotos
+                : Array.isArray(sh.photos) && sh.photos.length > 0
+                ? sh.photos
+                : sh.imageUrl
+                ? [sh.imageUrl]
+                : [];
+            const imageUrl =
+              sh.imageUrl ||
+              photos[0] ||
+              "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80";
+            const shName = sh.hotelName || "Unnamed Hotel";
+            const shPropType =
+              sh.propertyType ||
+              (shName.toLowerCase().includes("homestay")
+                ? "Homestay"
+                : "Hotel");
 
-          transformedHotels.unshift({
-            id: String(sh.id),
-            name: shName,
-            description: sh.location || "No description available",
-            image: imageUrl,
-            hotelPhotos: photos,
-            photos: photos,
-            rating: 4.8,
-            reviews: 35,
-            location: sh.location || "Nepal",
-            pricePerNight: Number(sh.pricePerNight) || 2500,
-            currency: sh.currency || "NRs",
-            amenities: Array.isArray(sh.facilities) ? sh.facilities : [],
-            distance: "1.0 km",
-            available: true,
-            status: "published",
-            roomTypes: [],
-            lat: sh.latitude,
-            lng: sh.longitude,
-            propertyType: shPropType,
-          });
-        }
-      });
+            const rawShRT = sh.roomTypes || (sh as any).room_types;
+            let shRoomTypes = Array.isArray(rawShRT) ? rawShRT : [];
+            if (typeof rawShRT === "string" && (rawShRT as string).trim()) {
+              try { shRoomTypes = JSON.parse(rawShRT); } catch (e) {}
+            }
+
+            transformedHotels.unshift({
+              id: String(sh.id),
+              name: shName,
+              description: sh.description || sh.location || "No description available",
+              image: imageUrl,
+              hotelPhotos: photos,
+              photos: photos,
+              rating: 4.8,
+              reviews: 35,
+              location: sh.location || "Nepal",
+              pricePerNight: Number(sh.pricePerNight) || 2500,
+              currency: sh.currency || "NRs",
+              amenities: Array.isArray(sh.facilities) ? sh.facilities : [],
+              distance: "1.0 km",
+              available: true,
+              status: "published",
+              roomTypes: shRoomTypes,
+              contactPerson: sh.contactPerson || "",
+              phoneNumber: sh.phoneNumber || "",
+              whatsappNumber: (sh as any).whatsAppNumber || sh.whatsappNumber || "",
+              checkInTime: sh.checkInTime || "12:00 PM",
+              checkOutTime: sh.checkOutTime || "10:00 AM",
+              availabilityStatus: sh.availabilityStatus || "Available",
+              partnerStatus: sh.partnerStatus || "Verified Partner",
+              lat: sh.latitude,
+              lng: sh.longitude,
+              propertyType: shPropType,
+              source: "cms",
+            });
+          }
+        });
 
       setHotels(transformedHotels);
       setLoading(false);
 
+      // Rooms background me fetch karo (sirf API hotels ke liye)
       Promise.all(
         transformedHotels.map(async (h) => {
           try {
             const rooms = await getHotelRooms(h.id);
             const roomList = Array.isArray(rooms)
               ? rooms
-              : rooms && typeof rooms === "object" && Array.isArray((rooms as any).data)
-                ? (rooms as any).data
-                : [];
+              : rooms &&
+                typeof rooms === "object" &&
+                Array.isArray((rooms as any).data)
+              ? (rooms as any).data
+              : [];
             return { id: h.id, rooms: roomList };
           } catch (e) {
             console.error(`Error fetching rooms for hotel ${h.id}:`, e);
             return { id: h.id, rooms: [] };
           }
-        }),
+        })
       ).then((roomResults) => {
         setHotels((prevHotels) =>
           prevHotels.map((h) => {
             const match = roomResults.find((r) => r.id === h.id);
-            return match ? { ...h, roomTypes: match.rooms } : h;
-          }),
+            if (match && Array.isArray(match.rooms) && match.rooms.length > 0) {
+              return { ...h, roomTypes: match.rooms };
+            }
+            return h;
+          })
         );
       });
     } catch (error) {
@@ -810,9 +966,185 @@ const HotelsPage: React.FC = () => {
     }
   }, []);
 
-  const filterHotels = useCallback(() => {
-    let filtered = hotels;
+  // ============= GOOGLE PLACES FETCH =============
+  const fetchGoogleHotels = useCallback(async (query: string) => {
+    if (!query.trim() || query.length < 3) {
+      setGoogleHotels([]);
+      return;
+    }
 
+    setGoogleLoading(true);
+    try {
+      await loadGooglePlacesScript();
+      const google = (window as any).google;
+
+      if (!google?.maps?.places) {
+        console.warn("Google Places not available");
+        setGoogleHotels([]);
+        setGoogleLoading(false);
+        return;
+      }
+
+      const service = getPlacesService();
+
+      // Step 1: Query ko geocode karo
+      const geocodeQuery = (): Promise<{ lat: number; lng: number } | null> =>
+        new Promise((resolve) => {
+          const geocoder = new google.maps.Geocoder();
+          geocoder.geocode(
+            { address: query },
+            (results: any, status: any) => {
+              if (status === "OK" && results?.[0]) {
+                const loc = results[0].geometry.location;
+                resolve({ lat: loc.lat(), lng: loc.lng() });
+              } else {
+                resolve(null);
+              }
+            }
+          );
+        });
+
+      const center = await geocodeQuery();
+      const searchCenter = center
+        ? new google.maps.LatLng(center.lat, center.lng)
+        : new google.maps.LatLng(28.3949, 84.124); // Nepal center fallback
+
+      // Step 2: Text Search
+      const textSearch = (): Promise<any[]> =>
+        new Promise((resolve) => {
+          service.textSearch(
+            {
+              query: `${query} hotels`,
+              location: searchCenter,
+              radius: 20000, // 20 km
+            },
+            (results: any, status: any) => {
+              if (
+                status === google.maps.places.PlacesServiceStatus.OK &&
+                results
+              ) {
+                resolve(results);
+              } else {
+                console.warn("Places textSearch status:", status);
+                resolve([]);
+              }
+            }
+          );
+        });
+
+      const results = await textSearch();
+      console.log("Google Places results:", results);
+
+      const converted: Hotel[] = results.slice(0, 20).map((place: any, index: number) => {
+        const lat = place.geometry?.location?.lat() ?? 0;
+        const lng = place.geometry?.location?.lng() ?? 0;
+        const photoUrl = place.photos?.[0]?.getUrl({
+          maxWidth: 800,
+          maxHeight: 600,
+        });
+
+        const nameLower = (place.name || "").toLowerCase();
+        const propType = nameLower.includes("homestay")
+          ? "Homestay"
+          : nameLower.includes("resort")
+          ? "Resort"
+          : nameLower.includes("lodge")
+          ? "Lodge"
+          : nameLower.includes("guest")
+          ? "Guest House"
+          : "Hotel";
+
+        return {
+          id: `google-${place.place_id || index}`,
+          placeId: place.place_id,
+          name: place.name || "Unnamed Hotel",
+          description:
+            place.formatted_address || "Hotel via Google Places",
+          image:
+            photoUrl ||
+            "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80",
+          hotelPhotos: place.photos
+            ? place.photos
+                .slice(0, 6)
+                .map((p: any) => p.getUrl({ maxWidth: 1200 }))
+            : [],
+          photos: place.photos
+            ? place.photos
+                .slice(0, 6)
+                .map((p: any) => p.getUrl({ maxWidth: 1200 }))
+            : [],
+          rating: place.rating ?? 4.5,
+          reviews: place.user_ratings_total ?? 0,
+          location: place.formatted_address || place.vicinity || "Nepal",
+          pricePerNight:
+            place.price_level === 4
+              ? 8000
+              : place.price_level === 3
+              ? 5000
+              : place.price_level === 2
+              ? 3000
+              : 2500,
+          currency: "NRs",
+          amenities: [],
+          distance: "0.5 km",
+          available: true,
+          lat,
+          lng,
+          status: "published",
+          roomTypes: [],
+          propertyType: propType,
+          source: "google",
+          googleRating: place.rating,
+        };
+      });
+
+      setGoogleHotels(converted);
+    } catch (err) {
+      console.error("Google Places error:", err);
+      setGoogleHotels([]);
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, []);
+
+  // ============= GOOGLE SEARCH DEBOUNCE =============
+  useEffect(() => {
+    if (!useGoogleSearch) {
+      setGoogleHotels([]);
+      return;
+    }
+    if (!searchQuery.trim() || searchQuery.length < 3) {
+      setGoogleHotels([]);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      fetchGoogleHotels(searchQuery);
+    }, 900);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, useGoogleSearch, fetchGoogleHotels]);
+
+  // ============= FILTER + MERGE =============
+  const filterHotels = useCallback(() => {
+    // CMS/API + Google merge
+    let filtered: Hotel[] = [...hotels, ...googleHotels];
+
+    // Duplicate remove (same name + location)
+    const seen = new Set<string>();
+    filtered = filtered.filter((h) => {
+      const key = `${(h.name || "").toLowerCase().trim()}-${(
+        h.location || ""
+      )
+        .toLowerCase()
+        .trim()
+        .slice(0, 40)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Stay type filter
     if (stayTypeFilter === "hotels") {
       filtered = filtered.filter((h) => {
         const p = (h.propertyType || "").toLowerCase();
@@ -827,61 +1159,93 @@ const HotelsPage: React.FC = () => {
       });
     }
 
+    // Search query filter
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.toLowerCase().trim();
+      // Google hotels already searchQuery se aaye hain, unhe skip karo filter me
+      const googleIds = new Set(googleHotels.map((g) => g.id));
       filtered = filtered.filter((hotel) => {
+        if (googleIds.has(hotel.id)) return true; // Google results already matched
         const name = (hotel.name || "").toLowerCase();
         const location = (hotel.location || "").toLowerCase();
         const description = (hotel.description || "").toLowerCase();
         const matchesAmenities =
           Array.isArray(hotel.amenities) &&
-          hotel.amenities.some((a) => (a || "").toLowerCase().includes(query));
-        return name.includes(query) || location.includes(query) || description.includes(query) || matchesAmenities;
+          hotel.amenities.some((a) =>
+            (a || "").toLowerCase().includes(query)
+          );
+        return (
+          name.includes(query) ||
+          location.includes(query) ||
+          description.includes(query) ||
+          matchesAmenities
+        );
       });
     }
 
+    // Rating filter
     if (filters.rating > 0) {
-      filtered = filtered.filter((hotel) => (hotel.rating ?? 0) >= filters.rating);
+      filtered = filtered.filter(
+        (hotel) => (hotel.rating ?? 0) >= filters.rating
+      );
     }
 
+    // Amenities filter (sirf un hotels pe apply karo jinke paas amenities list hai)
     if (filters.amenities && filters.amenities.length > 0) {
       filtered = filtered.filter(
         (hotel) =>
           Array.isArray(hotel.amenities) &&
-          filters.amenities.some((amenity) => hotel.amenities.includes(amenity)),
+          filters.amenities.some((amenity) =>
+            hotel.amenities.includes(amenity)
+          )
       );
     }
 
+    // Room type filter
     if (filters.roomType !== "all") {
       filtered = filtered.filter(
         (hotel) =>
           Array.isArray(hotel.roomTypes) &&
-          hotel.roomTypes.some((r) => r && r.type === filters.roomType),
+          hotel.roomTypes.some((r) => r && r.type === filters.roomType)
       );
     }
 
+    // Sort
     switch (filters.sortBy) {
       case "price-low":
-        filtered = [...filtered].sort((a, b) => (a.pricePerNight ?? 0) - (b.pricePerNight ?? 0));
+        filtered = [...filtered].sort(
+          (a, b) => (a.pricePerNight ?? 0) - (b.pricePerNight ?? 0)
+        );
         break;
       case "price-high":
-        filtered = [...filtered].sort((a, b) => (b.pricePerNight ?? 0) - (a.pricePerNight ?? 0));
+        filtered = [...filtered].sort(
+          (a, b) => (b.pricePerNight ?? 0) - (a.pricePerNight ?? 0)
+        );
         break;
       case "rating":
-        filtered = [...filtered].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+        filtered = [...filtered].sort(
+          (a, b) => (b.rating ?? 0) - (a.rating ?? 0)
+        );
         break;
       default:
-        filtered = [...filtered].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+        // Recommended: Google results top pe, phir CMS
+        filtered = [...filtered].sort((a, b) => {
+          const aG = a.source === "google" ? 1 : 0;
+          const bG = b.source === "google" ? 1 : 0;
+          if (aG !== bG) return bG - aG;
+          return (b.rating ?? 0) - (a.rating ?? 0);
+        });
         break;
     }
 
     return filtered;
-  }, [hotels, searchQuery, filters, stayTypeFilter]);
+  }, [hotels, googleHotels, searchQuery, filters, stayTypeFilter]);
 
   useEffect(() => {
     fetchHotels();
   }, [fetchHotels]);
 
+  // ============= HANDLERS =============
   const handleBookClick = (hotel: Hotel) => {
     setSelectedHotel(hotel);
     setShowBookingModal(true);
@@ -896,7 +1260,9 @@ const HotelsPage: React.FC = () => {
 
   const handleMarkerClick = (hotelId: string) => {
     setSelectedHotelId(hotelId);
-    const hotel = hotels.find((h) => h.id === hotelId);
+    const hotel =
+      hotels.find((h) => h.id === hotelId) ||
+      googleHotels.find((h) => h.id === hotelId);
     if (hotel && hotelListRef.current) {
       const cards = hotelListRef.current.querySelectorAll("[data-hotel-id]");
       cards.forEach((card) => {
@@ -917,13 +1283,11 @@ const HotelsPage: React.FC = () => {
     navigate(-1);
   };
 
-  console.log("Filtered Hotels:", filteredHotels);
-  console.log("Loading:", loading);
-  console.log("Hotels with coordinates:", filteredHotels.map(h => ({ name: h.name, lat: h.lat, lng: h.lng })));
+  const isLoading = loading || googleLoading;
 
   return (
     <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
-      {/* Header */}
+      {/* ============ HEADER ============ */}
       <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 text-white flex-shrink-0 shadow-lg z-30">
         <div className="px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-3">
@@ -940,32 +1304,64 @@ const HotelsPage: React.FC = () => {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <input
                   type="text"
-                  placeholder="Search hotels by name, location, or amenities..."
+                  placeholder="Search city, hotel name... (e.g. Pokhara, Kathmandu)"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-9 pr-4 py-2 bg-white/95 text-gray-900 placeholder-gray-500 border-0 rounded-xl focus:ring-2 focus:ring-white/50 outline-none transition-all shadow-sm text-sm"
                 />
+                {googleLoading && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
+                onClick={() => setUseGoogleSearch(!useGoogleSearch)}
+                className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  useGoogleSearch
+                    ? "bg-green-500 text-white shadow-md"
+                    : "bg-white/20 backdrop-blur-sm text-white border border-white/30"
+                }`}
+                title="Toggle Google Places search"
+              >
+                <Globe className="h-3.5 w-3.5" />
+                <span className="hidden lg:inline">
+                  {useGoogleSearch ? "Google ON" : "Google OFF"}
+                </span>
+              </button>
+
+              <button
                 onClick={() => setShowFilters(!showFilters)}
                 className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-sm font-medium ${
-                  showFilters ? "bg-white text-blue-600" : "bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white border border-white/30"
+                  showFilters
+                    ? "bg-white text-blue-600"
+                    : "bg-white/20 backdrop-blur-sm hover:bg-white/30 text-white border border-white/30"
                 }`}
               >
                 <Filter className="h-4 w-4" />
                 <span className="hidden sm:inline">Filters</span>
-                <ChevronDown className={`h-3 w-3 transition-transform ${showFilters ? "rotate-180" : ""}`} />
+                <ChevronDown
+                  className={`h-3 w-3 transition-transform ${
+                    showFilters ? "rotate-180" : ""
+                  }`}
+                />
               </button>
 
               <button
                 onClick={() => setIsMapExpanded(!isMapExpanded)}
                 className="flex items-center gap-2 px-3 py-2 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl hover:bg-white/30 transition-all text-white flex-shrink-0"
               >
-                {isMapExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-                <span className="hidden lg:inline text-sm">{isMapExpanded ? "Collapse" : "Expand"}</span>
+                {isMapExpanded ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+                <span className="hidden lg:inline text-sm">
+                  {isMapExpanded ? "Collapse" : "Expand"}
+                </span>
               </button>
             </div>
           </div>
@@ -1013,7 +1409,7 @@ const HotelsPage: React.FC = () => {
 
             <div className="flex items-center gap-2">
               <span className="text-xs sm:text-sm font-semibold text-blue-100">
-                {loading
+                {isLoading
                   ? "Loading..."
                   : `${filteredHotels.length} ${
                       stayTypeFilter === "homestays"
@@ -1023,26 +1419,45 @@ const HotelsPage: React.FC = () => {
                         : "stay" + (filteredHotels.length === 1 ? "" : "s")
                     } found`}
               </span>
+              {googleHotels.length > 0 && (
+                <span className="text-xs text-green-200 bg-green-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Globe className="w-3 h-3" />
+                  {googleHotels.length} from Google
+                </span>
+              )}
               {searchQuery && (
-                <span className="text-xs text-blue-200/80 bg-white/10 px-2 py-0.5 rounded-full">"{searchQuery}"</span>
+                <span className="text-xs text-blue-200/80 bg-white/10 px-2 py-0.5 rounded-full">
+                  "{searchQuery}"
+                </span>
               )}
             </div>
           </div>
         </div>
 
+        {/* Filters Panel */}
         {showFilters && (
           <div className="bg-white/10 backdrop-blur-sm border-t border-white/20">
             <div className="px-4 sm:px-6 lg:px-8 py-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-white/80 mb-1.5">Rating</label>
+                  <label className="block text-xs font-medium text-white/80 mb-1.5">
+                    Rating
+                  </label>
                   <div className="flex gap-1.5">
                     {[3, 4, 5].map((rating) => (
                       <button
                         key={rating}
-                        onClick={() => setFilters({ ...filters, rating: filters.rating === rating ? 0 : rating })}
+                        onClick={() =>
+                          setFilters({
+                            ...filters,
+                            rating:
+                              filters.rating === rating ? 0 : rating,
+                          })
+                        }
                         className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                          filters.rating === rating ? "bg-white text-blue-600 shadow-md" : "bg-white/20 text-white hover:bg-white/30"
+                          filters.rating === rating
+                            ? "bg-white text-blue-600 shadow-md"
+                            : "bg-white/20 text-white hover:bg-white/30"
                         }`}
                       >
                         {rating}+
@@ -1051,32 +1466,59 @@ const HotelsPage: React.FC = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/80 mb-1.5">Sort By</label>
+                  <label className="block text-xs font-medium text-white/80 mb-1.5">
+                    Sort By
+                  </label>
                   <select
                     className="w-full px-3 py-1.5 bg-white/20 text-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none text-sm border-0"
                     value={filters.sortBy}
-                    onChange={(e) => setFilters({ ...filters, sortBy: e.target.value })}
+                    onChange={(e) =>
+                      setFilters({ ...filters, sortBy: e.target.value })
+                    }
                   >
-                    <option value="recommended" className="text-gray-900">Recommended</option>
-                    <option value="price-low" className="text-gray-900">Price: Low to High</option>
-                    <option value="price-high" className="text-gray-900">Price: High to Low</option>
-                    <option value="rating" className="text-gray-900">Rating</option>
+                    <option value="recommended" className="text-gray-900">
+                      Recommended
+                    </option>
+                    <option value="price-low" className="text-gray-900">
+                      Price: Low to High
+                    </option>
+                    <option value="price-high" className="text-gray-900">
+                      Price: High to Low
+                    </option>
+                    <option value="rating" className="text-gray-900">
+                      Rating
+                    </option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/80 mb-1.5">Room Type</label>
+                  <label className="block text-xs font-medium text-white/80 mb-1.5">
+                    Room Type
+                  </label>
                   <select
                     className="w-full px-3 py-1.5 bg-white/20 text-white rounded-lg focus:ring-2 focus:ring-white/50 outline-none text-sm border-0"
                     value={filters.roomType}
-                    onChange={(e) => setFilters({ ...filters, roomType: e.target.value as "all" | "AC" | "Non-AC" })}
+                    onChange={(e) =>
+                      setFilters({
+                        ...filters,
+                        roomType: e.target.value as "all" | "AC" | "Non-AC",
+                      })
+                    }
                   >
-                    <option value="all" className="text-gray-900">All Types</option>
-                    <option value="AC" className="text-gray-900">❄️ AC</option>
-                    <option value="Non-AC" className="text-gray-900">🌬️ Non-AC</option>
+                    <option value="all" className="text-gray-900">
+                      All Types
+                    </option>
+                    <option value="AC" className="text-gray-900">
+                      ❄️ AC
+                    </option>
+                    <option value="Non-AC" className="text-gray-900">
+                      🌬️ Non-AC
+                    </option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-white/80 mb-1.5">Amenities</label>
+                  <label className="block text-xs font-medium text-white/80 mb-1.5">
+                    Amenities
+                  </label>
                   <div className="flex gap-1.5 flex-wrap">
                     {["WiFi", "Parking", "Pool", "Spa"].map((amenity) => (
                       <button
@@ -1085,12 +1527,16 @@ const HotelsPage: React.FC = () => {
                           setFilters({
                             ...filters,
                             amenities: filters.amenities.includes(amenity)
-                              ? filters.amenities.filter((a) => a !== amenity)
+                              ? filters.amenities.filter(
+                                  (a) => a !== amenity
+                                )
                               : [...filters.amenities, amenity],
                           });
                         }}
                         className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
-                          filters.amenities.includes(amenity) ? "bg-white text-blue-600 shadow-md" : "bg-white/20 text-white hover:bg-white/30"
+                          filters.amenities.includes(amenity)
+                            ? "bg-white text-blue-600 shadow-md"
+                            : "bg-white/20 text-white hover:bg-white/30"
                         }`}
                       >
                         {amenity}
@@ -1104,15 +1550,24 @@ const HotelsPage: React.FC = () => {
         )}
       </div>
 
-      {/* Main Content */}
+      {/* ============ MAIN CONTENT ============ */}
       <div className="flex-1 flex overflow-hidden">
         {/* Hotel List - Left */}
-        <div className="w-1/2 overflow-y-auto bg-gray-50 border-r border-gray-200" ref={hotelListRef}>
+        <div
+          className="w-1/2 overflow-y-auto bg-gray-50 border-r border-gray-200"
+          ref={hotelListRef}
+        >
           <div className="p-4">
-            {loading ? (
+            {isLoading && filteredHotels.length === 0 ? (
               <LoadingSkeleton />
             ) : filteredHotels.length === 0 ? (
-              <EmptyState message="No hotels found matching your criteria." />
+              <EmptyState
+                message={
+                  searchQuery.length >= 3 && googleLoading
+                    ? `Searching "${searchQuery}" on Google Places...`
+                    : "No hotels found matching your criteria. Try searching a city name."
+                }
+              />
             ) : (
               <div className="space-y-3">
                 {filteredHotels.map((hotel) => (
@@ -1120,7 +1575,9 @@ const HotelsPage: React.FC = () => {
                     key={hotel.id}
                     data-hotel-id={hotel.id}
                     className={`bg-white rounded-xl border transition-all cursor-pointer hover:shadow-md ${
-                      selectedHotelId === hotel.id ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md" : "border-gray-200 hover:border-blue-300"
+                      selectedHotelId === hotel.id
+                        ? "border-blue-500 ring-2 ring-blue-500/30 shadow-md"
+                        : "border-gray-200 hover:border-blue-300"
                     }`}
                     onClick={() => {
                       setSelectedHotelId(hotel.id);
@@ -1129,12 +1586,28 @@ const HotelsPage: React.FC = () => {
                     }}
                   >
                     {(() => {
-                      const displayPrice = hotel.pricePerNight && hotel.pricePerNight > 0 ? hotel.pricePerNight : (hotel.roomTypes && hotel.roomTypes[0]?.pricePerNight) || 2500;
+                      const displayPrice =
+                        hotel.pricePerNight && hotel.pricePerNight > 0
+                          ? hotel.pricePerNight
+                          : (hotel.roomTypes &&
+                              hotel.roomTypes[0]?.pricePerNight) ||
+                            2500;
                       const rawCurrency = hotel.currency || "NRs";
-                      const currencyStr = rawCurrency.endsWith(" ") ? rawCurrency : `${rawCurrency} `;
-                      const amenitiesList = Array.isArray(hotel.amenities) && hotel.amenities.length > 0 
-                        ? hotel.amenities 
-                        : ["Free Wi-Fi", "Mountain View", "AC & Heating", "24/7 Hot Shower", "Free Parking", "Breakfast"];
+                      const currencyStr = rawCurrency.endsWith(" ")
+                        ? rawCurrency
+                        : `${rawCurrency} `;
+                      const amenitiesList =
+                        Array.isArray(hotel.amenities) &&
+                        hotel.amenities.length > 0
+                          ? hotel.amenities
+                          : [
+                              "Free Wi-Fi",
+                              "Mountain View",
+                              "AC & Heating",
+                              "24/7 Hot Shower",
+                              "Free Parking",
+                              "Breakfast",
+                            ];
 
                       return (
                         <div className="flex flex-col sm:flex-row gap-3.5 p-3.5">
@@ -1144,12 +1617,19 @@ const HotelsPage: React.FC = () => {
                               alt={hotel.name || "Hotel"}
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                               onError={(e) => {
-                                (e.target as HTMLImageElement).src = "/logo/gojitriplogo.jpg";
+                                (e.target as HTMLImageElement).src =
+                                  "/logo/gojitriplogo.jpg";
                               }}
                             />
                             {(hotel as any).propertyType && (
                               <span className="absolute top-2 left-2 px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-md text-[10px] font-bold text-white uppercase tracking-wider">
                                 {(hotel as any).propertyType}
+                              </span>
+                            )}
+                            {hotel.source === "google" && (
+                              <span className="absolute top-2 right-2 px-1.5 py-0.5 bg-green-500 backdrop-blur-md rounded-md text-[10px] font-bold text-white flex items-center gap-0.5">
+                                <Globe className="w-2.5 h-2.5" />
+                                G
                               </span>
                             )}
                           </div>
@@ -1162,14 +1642,20 @@ const HotelsPage: React.FC = () => {
                                 </h3>
                                 <div className="flex items-center gap-1 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-full flex-shrink-0">
                                   <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
-                                  <span className="text-xs font-extrabold text-amber-900">{hotel.rating || 4.8}</span>
-                                  <span className="text-[10px] text-slate-500">({hotel.reviews || 42})</span>
+                                  <span className="text-xs font-extrabold text-amber-900">
+                                    {hotel.rating || 4.8}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">
+                                    ({hotel.reviews || 42})
+                                  </span>
                                 </div>
                               </div>
 
                               <div className="flex items-center gap-1.5 text-slate-600 text-xs mb-2">
                                 <MapPin className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
-                                <span className="truncate font-medium">{hotel.location || "Pokhara, Nepal"}</span>
+                                <span className="truncate font-medium">
+                                  {hotel.location || "Pokhara, Nepal"}
+                                </span>
                               </div>
 
                               {hotel.description && (
@@ -1178,13 +1664,17 @@ const HotelsPage: React.FC = () => {
                                 </p>
                               )}
 
-                              {/* Expanded Amenities & Facilities */}
                               <div className="flex gap-1.5 flex-wrap">
-                                {amenitiesList.slice(0, 4).map((amenity, idx) => (
-                                  <span key={idx} className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-medium border border-slate-200/60">
-                                    {amenity}
-                                  </span>
-                                ))}
+                                {amenitiesList
+                                  .slice(0, 4)
+                                  .map((amenity, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[10px] font-medium border border-slate-200/60"
+                                    >
+                                      {amenity}
+                                    </span>
+                                  ))}
                                 {amenitiesList.length > 4 && (
                                   <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded-md text-[10px] font-bold">
                                     +{amenitiesList.length - 4} more
@@ -1196,9 +1686,13 @@ const HotelsPage: React.FC = () => {
                             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                               <div>
                                 <span className="text-base font-extrabold text-slate-900">
-                                  {currencyStr}{displayPrice.toLocaleString()}
+                                  {currencyStr}
+                                  {displayPrice.toLocaleString()}
                                 </span>
-                                <span className="text-slate-500 text-xs font-normal"> / night</span>
+                                <span className="text-slate-500 text-xs font-normal">
+                                  {" "}
+                                  / night
+                                </span>
                               </div>
 
                               <div className="flex items-center gap-2">
@@ -1219,11 +1713,15 @@ const HotelsPage: React.FC = () => {
                                     handleBookClick(hotel);
                                   }}
                                   className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm hover:scale-105 active:scale-95 ${
-                                    hotel.available !== false ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-gray-200 text-gray-600 cursor-not-allowed"
+                                    hotel.available !== false
+                                      ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                      : "bg-gray-200 text-gray-600 cursor-not-allowed"
                                   }`}
                                   disabled={hotel.available === false}
                                 >
-                                  {hotel.available !== false ? "Book Stay" : "Sold Out"}
+                                  {hotel.available !== false
+                                    ? "Book Stay"
+                                    : "Sold Out"}
                                 </button>
                               </div>
                             </div>
@@ -1242,8 +1740,15 @@ const HotelsPage: React.FC = () => {
         <div className="w-1/2 bg-gray-100 p-3">
           <InteractiveMap
             items={filteredHotels.map((h) => {
-              const displayPrice = h.pricePerNight && h.pricePerNight > 0 ? h.pricePerNight : (h.roomTypes && h.roomTypes[0]?.pricePerNight) || 2500;
-              const currency = h.currency ? (h.currency.endsWith(" ") ? h.currency : `${h.currency} `) : "NRs ";
+              const displayPrice =
+                h.pricePerNight && h.pricePerNight > 0
+                  ? h.pricePerNight
+                  : (h.roomTypes && h.roomTypes[0]?.pricePerNight) || 2500;
+              const currency = h.currency
+                ? h.currency.endsWith(" ")
+                  ? h.currency
+                  : `${h.currency} `
+                : "NRs ";
               return {
                 id: h.id,
                 name: h.name,
@@ -1273,7 +1778,9 @@ const HotelsPage: React.FC = () => {
         data={yelpDetailData}
         onBookNow={(data) => {
           setShowYelpModal(false);
-          const found = hotels.find((h) => h.id === data.id);
+          const found =
+            hotels.find((h) => h.id === data.id) ||
+            googleHotels.find((h) => h.id === data.id);
           if (found) {
             setSelectedHotel(found);
             setShowBookingModal(true);
@@ -1306,4 +1813,4 @@ const HotelsPage: React.FC = () => {
   );
 };
 
-export default HotelsPage; 
+export default HotelsPage;  
