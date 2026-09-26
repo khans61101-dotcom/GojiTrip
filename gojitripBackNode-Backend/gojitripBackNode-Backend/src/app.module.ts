@@ -23,6 +23,7 @@ import { GuidesModule } from './guides/guides.module';
 
 // Places module
 import { PlacesModule } from './places/places.module';
+import { GoogleMapsModule } from './google-maps/google-maps.module';
 
 @Module({
   imports: [
@@ -46,6 +47,9 @@ import { PlacesModule } from './places/places.module';
 
     // Location / Google Places API
     PlacesModule,
+
+    // Google Directions & Geocoding Proxy
+    GoogleMapsModule,
   ],
 
   controllers: [AppController],

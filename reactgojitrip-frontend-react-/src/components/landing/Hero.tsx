@@ -13,6 +13,10 @@ import {
   Navigation,
   Loader2,
   X,
+  Route as RouteIcon,
+  ArrowUpDown,
+  ShieldCheck,
+  ArrowRight,
 } from "lucide-react";
 
 import {
@@ -256,7 +260,7 @@ const LocationInput = ({
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <label className="text-xs font-bold text-slate-500 uppercase tracking-wider pl-1">
           {label}
         </label>
@@ -275,7 +279,7 @@ const LocationInput = ({
               }
             }}
             onChange={(event) => handleChange(event.target.value)}
-            className="w-full pl-11 pr-12 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm placeholder:text-slate-400"
+            className="w-full pl-11 pr-12 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm placeholder:text-slate-400 font-medium text-slate-800 shadow-sm"
           />
 
           {loading && (
@@ -292,55 +296,58 @@ const LocationInput = ({
               className="absolute right-3 p-1 rounded-full hover:bg-slate-100 transition"
               aria-label={`Clear ${label}`}
             >
-              <X size={16} className="text-slate-400" />
+              <X size={16} className="text-slate-400 hover:text-slate-600" />
             </button>
           )}
+
+          {/* ======================================================
+              SUGGESTIONS (DROP-UP: POPS UP ABOVE INPUT)
+          ====================================================== */}
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute z-[100] left-0 right-0 bottom-full mb-2 bg-white border border-slate-200/90 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto divide-y divide-slate-100 ring-1 ring-slate-900/5">
+              <div className="px-3.5 py-1.5 bg-slate-50/90 border-b border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider sticky top-0 backdrop-blur-sm z-10">
+                <span>Suggested Locations</span>
+                <span className="text-[10px] text-blue-600 font-semibold lowercase">tap to select</span>
+              </div>
+              {suggestions.map((suggestion) => (
+                <button
+                  key={suggestion.placeId}
+                  type="button"
+                  onClick={() => handleSelect(suggestion)}
+                  className="w-full text-left px-3.5 py-2.5 hover:bg-blue-50/80 active:bg-blue-100/60 transition flex items-start gap-2.5 group cursor-pointer"
+                >
+                  <div className="mt-0.5 p-1.5 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-colors shrink-0">
+                    <MapPin size={15} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-slate-800 group-hover:text-blue-600 transition-colors truncate">
+                      {suggestion.name}
+                    </p>
+
+                    <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
+                      {suggestion.address}
+                    </p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* ======================================================
+              NO RESULTS (DROP-UP)
+          ====================================================== */}
+          {showSuggestions &&
+            !loading &&
+            value.trim().length >= 2 &&
+            suggestions.length === 0 && (
+              <div className="absolute z-[100] left-0 right-0 bottom-full mb-2 bg-white border border-slate-200 rounded-2xl shadow-xl px-4 py-3 text-xs text-slate-500 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                No matching locations found.
+              </div>
+            )}
         </div>
       </div>
-
-      {/* ======================================================
-          SUGGESTIONS
-      ====================================================== */}
-
-      {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-[100] left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-2xl overflow-hidden">
-          {suggestions.map((suggestion) => (
-            <button
-              key={suggestion.placeId}
-              type="button"
-              onClick={() => handleSelect(suggestion)}
-              className="w-full text-left px-4 py-3 hover:bg-blue-50 transition flex items-start gap-3 border-b border-slate-100 last:border-b-0"
-            >
-              <div className="mt-1 shrink-0">
-                <MapPin size={18} className="text-blue-500" />
-              </div>
-
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-800 truncate">
-                  {suggestion.name}
-                </p>
-
-                <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                  {suggestion.address}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ======================================================
-          NO RESULTS
-      ====================================================== */}
-
-      {showSuggestions &&
-        !loading &&
-        value.trim().length >= 2 &&
-        suggestions.length === 0 && (
-          <div className="absolute z-[100] left-0 right-0 mt-2 bg-white border border-slate-200 rounded-xl shadow-xl px-4 py-4">
-            <p className="text-sm text-slate-500">No locations found.</p>
-          </div>
-        )}
     </div>
   );
 };
@@ -379,6 +386,16 @@ export const Hero = () => {
   const [travellers, setTravellers] = useState("1");
 
   const [searching, setSearching] = useState(false);
+
+  // Swap Source and Destination locations
+  const handleSwapLocations = () => {
+    const tempSource = source;
+    const tempSourceLoc = sourceLocation;
+    setSource(destination);
+    setSourceLocation(destinationLocation);
+    setDestination(tempSource);
+    setDestinationLocation(tempSourceLoc);
+  };
 
   // ==========================================================
   // SEARCH ROUTE
@@ -542,55 +559,95 @@ export const Hero = () => {
           </div>
 
           {/* ==================================================
-              RIGHT SEARCH CARD
+              RIGHT SEARCH CARD (HIGHWAY & ROUTE PLANNER)
           ================================================== */}
 
           <div className="w-full max-w-md mx-auto lg:mx-0 lg:justify-self-end">
-            <div className="bg-white/90 backdrop-blur-xl border border-white/50 p-6 md:p-8 rounded-3xl shadow-2xl shadow-black/10">
-              {/* SOURCE */}
-
-              <div className="mb-4">
-                <LocationInput
-                  label="Source"
-                  placeholder="Enter starting location"
-                  value={source}
-                  selectedLocation={sourceLocation}
-                  iconColor="text-blue-500"
-                  onChange={setSource}
-                  onSelect={setSourceLocation}
-                  onClear={() => setSourceLocation(null)}
-                />
+            <div className="bg-white/95 backdrop-blur-2xl border border-white/80 p-6 sm:p-7 rounded-[32px] shadow-2xl shadow-blue-950/15 relative transition-all">
+              {/* Decorative Accent Highlights (contained so dropups are not clipped) */}
+              <div className="absolute inset-0 rounded-[32px] overflow-hidden pointer-events-none">
+                <div className="absolute -top-10 -right-10 w-36 h-36 bg-blue-500/10 rounded-full blur-2xl" />
+                <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-emerald-500/10 rounded-full blur-2xl" />
               </div>
 
-              {/* DESTINATION */}
+              {/* CARD HEADER: CLEAR ROUTE SEARCH MENTION */}
+              <div className="mb-5 relative z-10 space-y-1.5 pb-4 border-b border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200/80 text-blue-700 text-[11px] font-extrabold uppercase tracking-wider">
+                    <RouteIcon className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Route & Highway Search</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-0.5" />
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-emerald-600" />
+                    Google Verified
+                  </span>
+                </div>
 
-              <div className="mb-4">
-                <LocationInput
-                  label="Destination"
-                  placeholder="Enter destination"
-                  value={destination}
-                  selectedLocation={destinationLocation}
-                  iconColor="text-red-500"
-                  onChange={setDestination}
-                  onSelect={setDestinationLocation}
-                  onClear={() => setDestinationLocation(null)}
-                />
+                <h3 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                  Search Travel Route
+                </h3>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  Enter starting point and destination to inspect live road distance, elevation, tolls & stops.
+                </p>
+              </div>
+
+              {/* SOURCE & DESTINATION INPUTS WITH INTERACTIVE SWAP */}
+              <div className="relative mb-4 space-y-3 z-10">
+                {/* SOURCE */}
+                <div className="relative z-30 focus-within:z-50">
+                  <LocationInput
+                    label="Starting Point (Source)"
+                    placeholder="Enter starting location"
+                    value={source}
+                    selectedLocation={sourceLocation}
+                    iconColor="text-blue-600"
+                    onChange={setSource}
+                    onSelect={setSourceLocation}
+                    onClear={() => setSourceLocation(null)}
+                  />
+                </div>
+
+                {/* SWAP BUTTON */}
+                <div className="relative flex justify-center -my-2.5 z-20">
+                  <button
+                    type="button"
+                    onClick={handleSwapLocations}
+                    className="p-1.5 bg-white border border-slate-200 rounded-full shadow-md text-slate-500 hover:text-blue-600 hover:border-blue-300 hover:scale-110 active:scale-95 transition-all flex items-center justify-center cursor-pointer group"
+                    title="Swap Source and Destination"
+                    aria-label="Swap starting location and destination"
+                  >
+                    <ArrowUpDown className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-300" />
+                  </button>
+                </div>
+
+                {/* DESTINATION */}
+                <div className="relative z-20 focus-within:z-50">
+                  <LocationInput
+                    label="Final Destination"
+                    placeholder="Enter destination"
+                    value={destination}
+                    selectedLocation={destinationLocation}
+                    iconColor="text-rose-500"
+                    onChange={setDestination}
+                    onSelect={setDestinationLocation}
+                    onClear={() => setDestinationLocation(null)}
+                  />
+                </div>
               </div>
 
               {/* DATE + TRAVELLERS */}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5 relative z-10">
                 {/* DATE */}
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider pl-1">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider pl-1">
                     Date of Journey
                   </label>
 
                   <div className="relative flex items-center">
                     <Calendar
-                      className="absolute left-4 text-blue-500"
-                      size={18}
+                      className="absolute left-3.5 text-blue-500"
+                      size={16}
                     />
 
                     <input
@@ -598,22 +655,21 @@ export const Hero = () => {
                       min={today}
                       value={date}
                       onChange={(event) => setDate(event.target.value)}
-                      className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm"
+                      className="w-full pl-10 pr-3 py-2.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-xs font-semibold text-slate-800"
                     />
                   </div>
                 </div>
 
                 {/* TRAVELLERS */}
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider pl-1">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider pl-1">
                     No. of Travellers
                   </label>
 
                   <div className="relative flex items-center">
                     <Users
-                      className="absolute left-4 text-blue-500"
-                      size={18}
+                      className="absolute left-3.5 text-blue-500"
+                      size={16}
                     />
 
                     <input
@@ -623,36 +679,51 @@ export const Hero = () => {
                       placeholder="1 Traveller"
                       value={travellers}
                       onChange={(event) => setTravellers(event.target.value)}
-                      className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-sm placeholder:text-slate-400"
+                      className="w-full pl-10 pr-3 py-2.5 bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition text-xs font-semibold text-slate-800 placeholder:text-slate-400"
                     />
                   </div>
                 </div>
               </div>
 
               {/* SEARCH BUTTON */}
+              <div className="relative z-10 space-y-2.5">
+                <button
+                  type="button"
+                  onClick={handleSearch}
+                  disabled={searching}
+                  className="w-full flex items-center justify-center gap-2.5 py-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:via-indigo-700 hover:to-blue-800 disabled:opacity-70 disabled:cursor-not-allowed text-white rounded-2xl font-black text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-600/40 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                >
+                  {searching ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Searching Route...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Navigation size={18} className="rotate-45" />
+                      <span>Search Route</span>
+                      <ArrowRight size={16} className="ml-0.5" />
+                    </>
+                  )}
+                </button>
 
-              <button
-                type="button"
-                onClick={handleSearch}
-                disabled={searching}
-                className="w-full flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-70 disabled:cursor-not-allowed text-white rounded-xl font-bold text-base transition shadow-lg shadow-blue-600/30 hover:shadow-blue-600/40 hover:scale-[1.02] active:scale-[0.98]"
-              >
-                {searching ? (
-                  <>
-                    <Loader2 size={20} className="animate-spin" />
-                    Searching...
-                  </>
-                ) : (
-                  <>
-                    <Search size={20} />
-                    Search Route
-                  </>
-                )}
-              </button>
-            </div>
+                {/* TRUST / FEATURE BADGES BAR */}
+                <div className="pt-1 flex items-center justify-between text-[10px] text-slate-500 font-semibold px-1">
+                  <span className="flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    Live Road Distance
+                  </span>
+                  <span>•</span>
+                  <span>Fuel & Rest Stops</span>
+                  <span>•</span>
+                  <span>Elevation Profile</span>
+                </div>
+              </div>
+              </div>
           </div>
-        </div>
-      </div>
-    </section>
-  );
+                                                                                            </div>
+                                                                                          </div>
+                                                                                        </section>
+  );  
 };
+      

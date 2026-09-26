@@ -5,8 +5,15 @@ import "@/styles/pages/route/route.css";
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { SafeImage } from "@/components/common/SafeImage";
-import { InteractiveMap, lookupSingleCoordinate, LOCATION_COORDINATES_MAP, type MapMarkerItem } from "@/components/common/InteractiveMap";
-import { apiRequest, planRoute, type RouteSearchData, type RouteStop } from "@/lib/api";
+import { InteractiveMap, lookupSingleCoordinate, type MapMarkerItem } from "@/components/common/InteractiveMap";
+import { apiRequest, type RouteSearchData } from "@/lib/api";
+import {
+  getDirections,
+  GoogleApiError,
+  type DirectionsResponse,
+  type DirectionsLeg,
+  type DirectionsStep,
+} from "@/lib/google-maps-client";
 import { cmsStore } from "@/lib/cms-store";
 import type { RouteEntry, RoutePOI, EmergencyContact } from "@/types/cms";
 import AddRouteModal from "@/components/common/AddRouteModal";
@@ -38,6 +45,7 @@ import {
   Sparkles,
   CheckCircle2,
   ArrowLeft,
+  RotateCw,
 } from "lucide-react";
 
 /* ============================================================
@@ -65,7 +73,13 @@ const actionCategories: ActionCategory[] = [
    TIMELINE STOP TYPE
 ============================================================ */
 
-type TimelineStop = RouteStop & {
+type TimelineStop = {
+  id: string;
+  name: string;
+  type: string;
+  subtitle?: string;
+  address?: string;
+  details?: string;
   sequence: number;
   isSource: boolean;
   isDestination: boolean;
@@ -76,6 +90,11 @@ type TimelineStop = RouteStop & {
   distanceKm?: string;
   travelTime?: string;
   extraInfo?: string;
+  lat?: number;
+  lng?: number;
+  latitude?: number;
+  longitude?: number;
+  isExtension?: boolean;
 };
 
 interface PlaceSuggestion {
@@ -83,8 +102,6 @@ interface PlaceSuggestion {
   name: string;
   address: string;
 }
-
-const DEFAULT_IMAGE = "https://images.unsplash.com/photo-1544735716-392fe2489ffa?auto=format&fit=crop&w=800&q=80";
 
 /* ==========================================================
    CITY & EXTRA INFO PARSER FOR CLEAN DISPLAY
@@ -113,7 +130,7 @@ export function extractCityAndExtraInfo(
     const beforeParen = parenMatch[1].trim();
     const parenContent = parenMatch[2].trim();
 
-    const keywordsRegex = /\s+(highway junction|service hub|fuel station|hilltop bypass|expressway|transit hub|heritage waypoint|lake corridor|express hub|gateway|food stop|rest stop|riverside|bridge hub|town|fort|valley|viewpoint|bypass|junction|food court|checkpost|mountain hub|village|border stop|checkpost|service stop|highway hub|express corridor|corridor)$/i;
+    const keywordsRegex = /\s+(highway junction|service hub|fuel station|hilltop bypass|expressway|transit hub|heritage waypoint|lake corridor|express hub|gateway|food stop|rest stop|riverside|bridge hub|town|fort|valley|viewpoint|bypass|junction|food court|checkpost|mountain hub|village|border stop|service stop|highway hub|express corridor|corridor)$/i;
     const kwMatch = beforeParen.match(keywordsRegex);
 
     if (kwMatch && kwMatch.index && kwMatch.index > 1) {
@@ -154,490 +171,30 @@ export function extractCityAndExtraInfo(
 }
 
 /* ==========================================================
-   ROUTE CORRIDOR INTERMEDIATE LOCATIONS RESOLVER
+   FORMAT HELPERS FOR GOOGLE MAPS API DATA
 ========================================================== */
-function resolveCorridorStops(
-  src: string,
-  dst: string,
-  routeName?: string,
-  cmsPois?: any[]
-): Array<{ name: string; extraInfo?: string; type: string; details: string; distPct: number }> {
-  const norm = (s: string) =>
-    (s || "")
-      .toLowerCase()
-      .replace(/u/g, "a")
-      .replace(/[^a-z0-9]/g, "");
-
-  const srcNorm = norm(src);
-  const dstNorm = norm(dst);
-  const nameNorm = norm(routeName || "");
-
-  // 1. Predefined Highway Corridor Resolver with Fuzzy Spell Matching & Intermediate States
-  // A. Panjab / Punjab -> Goa
-  if (
-    (srcNorm.includes("pnjb") || srcNorm.includes("panjab") || srcNorm.includes("punjab") || nameNorm.includes("panjab") || nameNorm.includes("punjab")) &&
-    (dstNorm.includes("goa") || nameNorm.includes("goa"))
-  ) {
-    return [
-      { name: "Ludhiana & Ambala", extraInfo: "Punjab & Haryana Transit Hub", type: "rest", details: "Punjab & Haryana Central Highway & Transport Hub", distPct: 0.12 },
-      { name: "Delhi NCR", extraInfo: "Expressway Bypass (Delhi State)", type: "rest", details: "Capital Transit & Highway Bypass Corridor", distPct: 0.25 },
-      { name: "Jaipur", extraInfo: "Heritage Waypoint (Rajasthan)", type: "place", details: "Rajasthan Heritage Waypoint & Tourist Stop", distPct: 0.4 },
-      { name: "Udaipur", extraInfo: "Lake Corridor (Rajasthan)", type: "place", details: "Scenic Lake City Travel & Rest Stop", distPct: 0.55 },
-      { name: "Ahmedabad", extraInfo: "Express Hub (Gujarat)", type: "fuel", details: "Gujarat Expressway Fuel, EV & Rest Stop", distPct: 0.7 },
-      { name: "Mumbai-Pune", extraInfo: "Coastal Expressway (Maharashtra)", type: "rest", details: "Coastal Highway Transit Stop & Food Court", distPct: 0.85 },
-    ];
+function formatMeters(meters: number): string {
+  if (meters >= 1000) {
+    return `${(meters / 1000).toFixed(1)} km`;
   }
-
-  // B. Bhopal -> Indore
-  if (
-    (srcNorm.includes("bhpl") || srcNorm.includes("bhopal") || nameNorm.includes("bhopal")) &&
-    (dstNorm.includes("indor") || nameNorm.includes("indore"))
-  ) {
-    return [
-      { name: "Sehore", extraInfo: "Highway Junction (Madhya Pradesh)", type: "rest", details: "Sehore Bypass & Refreshment Rest Stop", distPct: 0.2 },
-      { name: "Ashta", extraInfo: "Service Hub (Madhya Pradesh)", type: "food", details: "Ashta Highway Service Hub & Food Restaurants", distPct: 0.4 },
-      { name: "Sonkatch", extraInfo: "Fuel Station (Madhya Pradesh)", type: "fuel", details: "Sonkatch Fuel & Travel Service Point", distPct: 0.65 },
-      { name: "Dewas", extraInfo: "Hilltop Bypass (Madhya Pradesh)", type: "place", details: "Dewas Hilltop Temple & Highway Bypass Hub", distPct: 0.8 },
-    ];
-  }
-
-  // C. Delhi -> Jaipur
-  if (
-    (srcNorm.includes("delhi") || nameNorm.includes("delhi")) &&
-    (dstNorm.includes("jaipur") || nameNorm.includes("jaipur"))
-  ) {
-    return [
-      { name: "Gurgaon", extraInfo: "Manesar Corridor (Haryana)", type: "rest", details: "Millennium City Highway Corridor in Haryana", distPct: 0.15 },
-      { name: "Dharuhera", extraInfo: "Express Hub (Haryana)", type: "fuel", details: "Highway Fuel & Fast Charger Station in Haryana", distPct: 0.3 },
-      { name: "Neemrana", extraInfo: "Heritage Fort (Rajasthan)", type: "place", details: "Neemrana Fort Heritage & Culture Stop in Rajasthan", distPct: 0.5 },
-      { name: "Kotputli", extraInfo: "Bypass Junction (Rajasthan)", type: "rest", details: "Kotputli Highway Junction & Rest Area in Rajasthan", distPct: 0.7 },
-      { name: "Shahpura", extraInfo: "Food Court (Rajasthan)", type: "food", details: "Shahpura Food Court & Refreshment Stop in Rajasthan", distPct: 0.85 },
-    ];
-  }
-
-  // D. Kathmandu -> Pokhara
-  if (
-    (srcNorm.includes("ktm") || srcNorm.includes("kathmandu") || nameNorm.includes("kathmandu")) &&
-    (dstNorm.includes("pkh") || dstNorm.includes("pokhara") || nameNorm.includes("pokhara"))
-  ) {
-    return [
-      { name: "Naubise", extraInfo: "Highway Junction (Bagmati Province, Nepal)", type: "rest", details: "Kathmandu Valley Exit & Highway Hub", distPct: 0.15 },
-      { name: "Malekhu", extraInfo: "Riverside Food Stop (Bagmati Province, Nepal)", type: "food", details: "Malekhu Riverside Fish & Refreshment Stop", distPct: 0.35 },
-      { name: "Mugling", extraInfo: "Bridge Hub (Gandaki Province, Nepal)", type: "rest", details: "Trishuli River Bridge Highway Hub", distPct: 0.55 },
-      { name: "Dumre & Bandipur", extraInfo: "Hillside Heritage (Gandaki Province, Nepal)", type: "place", details: "Bandipur Hillside Heritage & Viewpoint Stop", distPct: 0.7 },
-      { name: "Damauli", extraInfo: "Town Service Hub (Gandaki Province, Nepal)", type: "fuel", details: "Tanahun Service & Fuel Station Stop", distPct: 0.85 },
-    ];
-  }
-
-  // E. Kathmandu -> Chitwan
-  if (
-    (srcNorm.includes("kathmandu") || nameNorm.includes("kathmandu")) &&
-    (dstNorm.includes("chitwan") || dstNorm.includes("sauraha") || nameNorm.includes("chitwan"))
-  ) {
-    return [
-      { name: "Naubise", extraInfo: "Highway Junction (Bagmati Province, Nepal)", type: "rest", details: "Highway Transit Point", distPct: 0.15 },
-      { name: "Malekhu", extraInfo: "Food Stop (Bagmati Province, Nepal)", type: "food", details: "Refreshment & Local Food Stop", distPct: 0.35 },
-      { name: "Mugling", extraInfo: "Trishuli Junction (Gandaki Province, Nepal)", type: "rest", details: "Trishuli Confluence Junction", distPct: 0.55 },
-      { name: "Kurintar", extraInfo: "Cable Car Station (Bagmati Province, Nepal)", type: "place", details: "Manakamana Cable Car & Pilgrimage Hub", distPct: 0.7 },
-      { name: "Bharatpur", extraInfo: "Chitwan Gateway (Bagmati Province, Nepal)", type: "fuel", details: "Chitwan Entrance Fuel & Service Hub", distPct: 0.88 },
-    ];
-  }
-
-  // F. Pokhara -> Muktinath
-  if (
-    (srcNorm.includes("pokhara") || nameNorm.includes("pokhara")) &&
-    (dstNorm.includes("muktinath") || dstNorm.includes("jomsom") || nameNorm.includes("muktinath"))
-  ) {
-    return [
-      { name: "Kusma", extraInfo: "Adventure Bridge (Parbat, Nepal)", type: "place", details: "Suspension Bridge & Adventure Hub", distPct: 0.3 },
-      { name: "Beni", extraInfo: "Mustang Gateway (Myagdi, Nepal)", type: "rest", details: "Myagdi River Junction & Mustang Gateway", distPct: 0.45 },
-      { name: "Tatopani", extraInfo: "Hot Springs (Myagdi, Nepal)", type: "place", details: "Natural Hot Springs Rest Stop", distPct: 0.6 },
-      { name: "Ghasa", extraInfo: "Pine Forest Checkpost (Mustang, Nepal)", type: "rest", details: "Mustang Checkpost & Pine Forest Corridor", distPct: 0.75 },
-      { name: "Jomsom", extraInfo: "Mountain Hub (Mustang, Nepal)", type: "place", details: "Apple Orchards & Mountain Airport Hub", distPct: 0.88 },
-      { name: "Kagbeni", extraInfo: "Sacred Village (Mustang, Nepal)", type: "place", details: "Sacred River Confluence & Ancient Village", distPct: 0.95 },
-    ];
-  }
-
-  // G. Indore -> Pune (~665 km)
-  if (
-    (srcNorm.includes("indor") || nameNorm.includes("indore")) &&
-    (dstNorm.includes("pune") || nameNorm.includes("pune"))
-  ) {
-    return [
-      { name: "Sendhwa", extraInfo: "MP ➔ MH State Border", type: "rest", details: "State Border Checkpost, Fuel Stations & Highway Amenities", distPct: 0.2 },
-      { name: "Dhule", extraInfo: "Transit Hub (Maharashtra State)", type: "fuel", details: "NH52 Major Highway Junction & EV Fast Chargers in MH", distPct: 0.38 },
-      { name: "Malegaon", extraInfo: "Food & Service Stop (Maharashtra State)", type: "food", details: "Highway Food Court & 24/7 Traveller Refreshment Stop in MH", distPct: 0.52 },
-      { name: "Nashik", extraInfo: "Travel & Wine Capital (Maharashtra State)", type: "place", details: "Panchavati Temple Heritage, Wine Capital & Highway Service Hub in MH", distPct: 0.68 },
-      { name: "Sangamner", extraInfo: "Shirdi Junction (Maharashtra State)", type: "rest", details: "Shirdi Pilgrimage Corridor & Rest Hub in MH", distPct: 0.82 },
-      { name: "Narayangaon", extraInfo: "Khed Bypass (Maharashtra State)", type: "fuel", details: "Fuel & Refreshment Station Before Entering Pune Valley in MH", distPct: 0.92 },
-    ];
-  }
-
-  // H. Indore -> Mumbai (~585 km)
-  if (
-    (srcNorm.includes("indor") || nameNorm.includes("indore")) &&
-    (dstNorm.includes("mumbai") || nameNorm.includes("mumbai"))
-  ) {
-    return [
-      { name: "Sendhwa", extraInfo: "Border Rest Stop (MP ➔ MH Border)", type: "rest", details: "MP-Maharashtra Border Transit & Rest Point", distPct: 0.22 },
-      { name: "Dhule", extraInfo: "Highway Junction (Maharashtra State)", type: "fuel", details: "NH52 Transit Hub & High Speed EV Charger Point in MH", distPct: 0.42 },
-      { name: "Malegaon", extraInfo: "Food Hub (Maharashtra State)", type: "food", details: "Highway Restaurant & Traveller Food Stop in MH", distPct: 0.56 },
-      { name: "Nashik", extraInfo: "Panchavati Heritage (Maharashtra State)", type: "place", details: "Godavari River Heritage & Travel Stop in MH", distPct: 0.72 },
-      { name: "Igatpuri", extraInfo: "Hill Station Stop (Maharashtra State)", type: "place", details: "Scenic Ghat Viewpoint & Cool Mountain Rest Area in MH", distPct: 0.84 },
-      { name: "Thane", extraInfo: "Expressway Gateway (Maharashtra State)", type: "fuel", details: "Mumbai Entry Toll Plaza & Fuel Station in MH", distPct: 0.94 },
-    ];
-  }
-
-  // I. Indore -> Surat (~450 km)
-  if (
-    (srcNorm.includes("indor") || nameNorm.includes("indore")) &&
-    (dstNorm.includes("surat") || nameNorm.includes("surat"))
-  ) {
-    return [
-      { name: "Dhar", extraInfo: "Mandav Fort Gateway (Madhya Pradesh)", type: "place", details: "Historic Mandu Fort Gateway & Scenic Point in MP", distPct: 0.2 },
-      { name: "Jhabua", extraInfo: "Dahod Junction (MP ➔ Gujarat Border)", type: "rest", details: "MP-Gujarat Highway Checkpost & Rest Stop", distPct: 0.4 },
-      { name: "Godhra", extraInfo: "Expressway Hub (Gujarat State)", type: "fuel", details: "Expressway Fuel Station & EV Charger in Gujarat", distPct: 0.58 },
-      { name: "Vadodara", extraInfo: "Express Corridor (Gujarat State)", type: "rest", details: "NE1 Expressway Transit Hub & Dining in Gujarat", distPct: 0.75 },
-      { name: "Bharuch", extraInfo: "Narmada Bridge (Gujarat State)", type: "place", details: "Narmada Cable Bridge Viewpoint & Rest Area in Gujarat", distPct: 0.88 },
-    ];
-  }
-
-  // J. Bhopal -> Delhi (~780 km)
-  if (
-    (srcNorm.includes("bhopal") || nameNorm.includes("bhopal")) &&
-    (dstNorm.includes("delhi") || nameNorm.includes("delhi"))
-  ) {
-    return [
-      { name: "Vidisha", extraInfo: "Sanchi Stupa Gateway (Madhya Pradesh)", type: "place", details: "UNESCO Heritage Sanchi Stupa Gateway in MP", distPct: 0.1 },
-      { name: "Bina", extraInfo: "Highway Junction (Madhya Pradesh)", type: "rest", details: "Central MP Transit & Refreshment Stop", distPct: 0.25 },
-      { name: "Jhansi", extraInfo: "Fort Corridor (Uttar Pradesh)", type: "place", details: "Historic Jhansi Fort & Highway Service Point in UP", distPct: 0.42 },
-      { name: "Gwalior", extraInfo: "Fort Waypoint (Madhya Pradesh)", type: "place", details: "Gwalior Royal Heritage & Highway Rest Area in MP", distPct: 0.58 },
-      { name: "Agra", extraInfo: "Taj Expressway Corridor (Uttar Pradesh)", type: "fuel", details: "Yamuna Expressway Entrance, Fuel & EV Fast Chargers in UP", distPct: 0.78 },
-      { name: "Mathura", extraInfo: "Vrindavan Gateway (Uttar Pradesh)", type: "rest", details: "Sacred Mathura Corridor & Refreshment Stop in UP", distPct: 0.88 },
-    ];
-  }
-
-  // K. Delhi -> Manali (~530 km)
-  if (
-    (srcNorm.includes("delhi") || nameNorm.includes("delhi")) &&
-    (dstNorm.includes("manali") || nameNorm.includes("manali"))
-  ) {
-    return [
-      { name: "Panipat", extraInfo: "Service Hub (Haryana State)", type: "fuel", details: "Grand Trunk Road Fuel & Dining Stop in Haryana", distPct: 0.18 },
-      { name: "Ambala", extraInfo: "Transport Junction (Punjab / Haryana)", type: "rest", details: "Punjab-Haryana Border Transit Hub", distPct: 0.36 },
-      { name: "Chandigarh", extraInfo: "Express Hub (Chandigarh UT)", type: "place", details: "Beautiful City Bypass & Highway Rest Area", distPct: 0.46 },
-      { name: "Bilaspur", extraInfo: "Swarghat Viewpoint (Himachal Pradesh)", type: "place", details: "Gobind Sagar Lake & Mountain Viewpoint in Himachal", distPct: 0.65 },
-      { name: "Mandi", extraInfo: "Tunnel & Beas River (Himachal Pradesh)", type: "rest", details: "Beas River Valley & Tunnel Highway Stop in Himachal", distPct: 0.82 },
-      { name: "Kullu", extraInfo: "Valley Rest Stop (Himachal Pradesh)", type: "food", details: "Kullu Apple Orchards & River Rafting Stop in Himachal", distPct: 0.92 },
-    ];
-  }
-
-  // L. Indore -> Gwalior (~510 km)
-  if (
-    (srcNorm.includes("indor") || nameNorm.includes("indore")) &&
-    (dstNorm.includes("gwlr") || dstNorm.includes("gwalior") || nameNorm.includes("gwalior"))
-  ) {
-    return [
-      { name: "Dewas", extraInfo: "Highway Junction (Madhya Pradesh)", type: "rest", details: "Highway Bypass & Refreshment Stop in MP", distPct: 0.15 },
-      { name: "Sarangpur", extraInfo: "Shajapur Corridor (Madhya Pradesh)", type: "food", details: "NH46 Highway Food Court & Restaurants in MP", distPct: 0.32 },
-      { name: "Biaora", extraInfo: "Service Hub (Madhya Pradesh)", type: "fuel", details: "Central Highway Fuel & EV Service Hub in MP", distPct: 0.48 },
-      { name: "Guna", extraInfo: "Transit Hub (Madhya Pradesh)", type: "fuel", details: "Major Highway Junction & Fueling Station in MP", distPct: 0.65 },
-      { name: "Shivpuri", extraInfo: "Fort & Heritage (Madhya Pradesh)", type: "place", details: "Madhav National Park & Historic Fort Gateway in MP", distPct: 0.82 },
-      { name: "Mohana", extraInfo: "Gwalior Gateway (Madhya Pradesh)", type: "rest", details: "Highway Rest Area Before Entering Gwalior Fort Valley in MP", distPct: 0.93 },
-    ];
-  }
-
-  // M. Gwalior -> Pune (~950 km)
-  if (
-    (srcNorm.includes("gwlr") || srcNorm.includes("gwalior") || nameNorm.includes("gwalior")) &&
-    (dstNorm.includes("pune") || nameNorm.includes("pune"))
-  ) {
-    return [
-      { name: "Shivpuri", extraInfo: "Fort Waypoint (Madhya Pradesh)", type: "place", details: "Historic Fort Waypoint & Highway Hub in MP", distPct: 0.15 },
-      { name: "Guna", extraInfo: "Highway Rest Area (Madhya Pradesh)", type: "rest", details: "Central Highway Transit Point in MP", distPct: 0.28 },
-      { name: "Dewas", extraInfo: "Indore Express Hub (Madhya Pradesh)", type: "fuel", details: "MP Highway Fuel, EV Charger & Food Court", distPct: 0.45 },
-      { name: "Sendhwa", extraInfo: "Border Checkpost (MP ➔ MH Border)", type: "rest", details: "MP-MH State Border Checkpost & Amenities", distPct: 0.6 },
-      { name: "Dhule", extraInfo: "Transit Hub (Maharashtra State)", type: "fuel", details: "NH52 Highway Junction & Fast Charger Point in MH", distPct: 0.72 },
-      { name: "Nashik", extraInfo: "Wine & Heritage Stop (Maharashtra State)", type: "place", details: "Godavari Temple Heritage & Refreshments in MH", distPct: 0.84 },
-      { name: "Sangamner", extraInfo: "Khed Bypass (Maharashtra State)", type: "fuel", details: "Fuel & Service Stop Approaching Pune Entry in MH", distPct: 0.94 },
-    ];
-  }
-
-  // N. Bhopal -> Pune (~780 km)
-  if (
-    (srcNorm.includes("bhpl") || srcNorm.includes("bhopal") || nameNorm.includes("bhopal")) &&
-    (dstNorm.includes("pune") || nameNorm.includes("pune"))
-  ) {
-    return [
-      { name: "Sehore", extraInfo: "Ashta Service Stop (Madhya Pradesh)", type: "rest", details: "Bhopal Exit Expressway Refreshment Hub in MP", distPct: 0.18 },
-      { name: "Dewas", extraInfo: "Indore Highway Hub (Madhya Pradesh)", type: "fuel", details: "MP Highway Service Station & Fast Charger", distPct: 0.35 },
-      { name: "Sendhwa", extraInfo: "Border Checkpost (MP ➔ MH Border)", type: "rest", details: "MP-MH State Border Checkpost & Amenities", distPct: 0.48 },
-      { name: "Dhule", extraInfo: "Transit Hub (Maharashtra State)", type: "fuel", details: "NH52 Highway Junction & EV Fast Chargers in MH", distPct: 0.62 },
-      { name: "Nashik", extraInfo: "Wine & Heritage Stop (Maharashtra State)", type: "place", details: "Godavari Temple Heritage & Refreshments in MH", distPct: 0.78 },
-      { name: "Narayangaon", extraInfo: "Khed Bypass (Maharashtra State)", type: "rest", details: "Highway Rest Area Before Entering Pune in MH", distPct: 0.9 },
-    ];
-  }
-
-  // O. Bhopal -> Gwalior (~430 km)
-  if (
-    (srcNorm.includes("bhpl") || srcNorm.includes("bhopal") || nameNorm.includes("bhopal")) &&
-    (dstNorm.includes("gwlr") || dstNorm.includes("gwalior") || nameNorm.includes("gwalior"))
-  ) {
-    return [
-      { name: "Vidisha", extraInfo: "Sanchi Stupa (Madhya Pradesh)", type: "place", details: "UNESCO Heritage Site & Gateway in MP", distPct: 0.15 },
-      { name: "Bina", extraInfo: "Highway Junction (Madhya Pradesh)", type: "rest", details: "Central MP Transit & Refreshment Stop", distPct: 0.38 },
-      { name: "Guna", extraInfo: "Service Hub (Madhya Pradesh)", type: "fuel", details: "Highway Fuel & EV Charger Station in MP", distPct: 0.62 },
-      { name: "Shivpuri", extraInfo: "Fort Viewpoint (Madhya Pradesh)", type: "place", details: "Madhav National Park & Viewpoint in MP", distPct: 0.82 },
-    ];
-  }
-
-  // P. Gwalior -> Delhi (~360 km)
-  if (
-    (srcNorm.includes("gwlr") || srcNorm.includes("gwalior") || nameNorm.includes("gwalior")) &&
-    (dstNorm.includes("delhi") || nameNorm.includes("delhi"))
-  ) {
-    return [
-      { name: "Morena", extraInfo: "Dholpur Border Stop (MP ➔ Rajasthan)", type: "rest", details: "MP-Rajasthan State Border Transit Hub", distPct: 0.2 },
-      { name: "Agra", extraInfo: "Taj Expressway Hub (Uttar Pradesh)", type: "fuel", details: "Taj Expressway Entrance & Fast Charger in UP", distPct: 0.5 },
-      { name: "Mathura", extraInfo: "Vrindavan Gateway (Uttar Pradesh)", type: "place", details: "Sacred Pilgrim Heritage Stop in UP", distPct: 0.72 },
-      { name: "Palwal", extraInfo: "Gurgaon Express Stop (Haryana / Delhi)", type: "rest", details: "Delhi NCR Entry Expressway Stop", distPct: 0.9 },
-    ];
-  }
-
-  // 2. Check if CMS POIs are explicitly provided (for unmapped routes with custom backend POIs)
-  if (Array.isArray(cmsPois) && cmsPois.length > 0) {
-    const validPois = cmsPois.filter((p) => p && (p.name || p.title || p.location));
-    if (validPois.length > 0) {
-      return validPois.map((poi, idx) => {
-        const rawTitle = poi.name || poi.title || poi.location || `Waypoint ${idx + 1}`;
-        const { cityName, extraInfo } = extractCityAndExtraInfo(rawTitle);
-        return {
-          name: cityName,
-          extraInfo: extraInfo || poi.location,
-          type:
-            poi.category === "Restaurant" || poi.type === "food"
-              ? "food"
-              : poi.category === "Fuel Station" || poi.type === "fuel"
-              ? "fuel"
-              : poi.category === "Viewpoint" || poi.type === "place"
-              ? "place"
-              : "rest",
-          details: poi.details || poi.location || `Key waypoint along corridor.`,
-          distPct: (idx + 1) / (validPois.length + 1),
-        };
-      });
-    }
-  }
-
-  // 3. Smart Geographic Fallback — picks REAL city names from coordinate map that lie
-  //    between source and destination. Works for ANY route pair, not just predefined ones.
-  return resolveSmartGeographicFallback(src, dst);
+  return `${meters} m`;
 }
 
-/**
- * Finds real cities from the LOCATION_COORDINATES_MAP that lie geographically between
- * two named cities. Returns them as properly-typed corridor stop objects.
- * This ensures NO placeholder names like "Transit Service Station #1" ever appear.
- */
-function resolveSmartGeographicFallback(
-  src: string,
-  dst: string
-): Array<{ name: string; extraInfo?: string; type: string; details: string; distPct: number }> {
-  // Normalize helper
-  const clean = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  // Lookup source & destination coordinates
-  const srcCoord = lookupSingleCoordinate(src);
-  const dstCoord = lookupSingleCoordinate(dst);
-
-  // SKIP_KEYS: generic region names, countries, & states that aren't real highway cities
-  const SKIP_KEYS = new Set([
-    "india", "nepal", "bhutan", "maharashtra", "madhya pradesh", "m.p", "m. p",
-    "karnataka", "haryana", "gujarat", "rajasthan", "uttar pradesh",
-    "himachal pradesh", "punjab", "panjab", "goa",
-  ]);
-
-  if (!srcCoord || !dstCoord) {
-    // Cannot geo-resolve — return simple named stops using source/destination
-    return [
-      { name: src, extraInfo: "Journey Start", type: "rest", details: `Departure point on ${src} ➔ ${dst} corridor.`, distPct: 0.2 },
-      { name: dst, extraInfo: "Journey End", type: "place", details: `Arrival point on ${src} ➔ ${dst} corridor.`, distPct: 0.8 },
-    ];
+function formatSeconds(seconds: number): string {
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  if (hrs > 0) {
+    return `${hrs}h ${mins > 0 ? `${mins}m` : ""}`.trim();
   }
+  return `${mins || 1}m`;
+}
 
-  // Haversine distance helper (km)
-  const haversine = (a: { lat: number; lng: number }, b: { lat: number; lng: number }): number => {
-    const R = 6371;
-    const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-    const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-    const sinA = Math.sin(dLat / 2);
-    const sinB = Math.sin(dLng / 2);
-    const c =
-      sinA * sinA +
-      Math.cos((a.lat * Math.PI) / 180) *
-        Math.cos((b.lat * Math.PI) / 180) *
-        sinB * sinB;
-    return R * 2 * Math.atan2(Math.sqrt(c), Math.sqrt(1 - c));
-  };
-
-  const totalDist = haversine(srcCoord, dstCoord);
-
-  // Helper: project a point onto the line segment src→dst, return fraction [0,1]
-  //         and perpendicular deviation (km)
-  const projectOntoRoute = (
-    p: { lat: number; lng: number }
-  ): { fraction: number; devKm: number } => {
-    const ax = srcCoord.lng, ay = srcCoord.lat;
-    const bx = dstCoord.lng, by = dstCoord.lat;
-    const px = p.lng, py = p.lat;
-
-    const abx = bx - ax, aby = by - ay;
-    const apx = px - ax, apy = py - ay;
-    const ab2 = abx * abx + aby * aby;
-    const t = ab2 === 0 ? 0 : Math.max(0, Math.min(1, (apx * abx + apy * aby) / ab2));
-
-    // Closest point on segment
-    const closestX = ax + t * abx;
-    const closestY = ay + t * aby;
-
-    // Convert perpendicular deviation to km (approximate: 1 degree ≈ 111 km)
-    const devLat = (py - closestY) * 111;
-    const devLng = (px - closestX) * 111 * Math.cos((py * Math.PI) / 180);
-    const devKm = Math.sqrt(devLat * devLat + devLng * devLng);
-
-    return { fraction: t, devKm };
-  };
-
-  // Max allowed perpendicular deviation from route line (scale with distance)
-  const maxDevKm = Math.max(60, totalDist * 0.25);
-
-  // Score every city in our coordinate map
-  type CityCandidate = {
-    cityName: string;
-    fraction: number;
-    devKm: number;
-    coord: { lat: number; lng: number };
-  };
-
-  const candidates: CityCandidate[] = [];
-  const srcClean = clean(src);
-  const dstClean = clean(dst);
-
-  for (const [key, coord] of Object.entries(LOCATION_COORDINATES_MAP)) {
-    if (SKIP_KEYS.has(key)) continue;
-    // Exclude keys that ARE the source or destination
-    if (clean(key).includes(srcClean) || srcClean.includes(clean(key))) continue;
-    if (clean(key).includes(dstClean) || dstClean.includes(clean(key))) continue;
-
-    const { fraction, devKm } = projectOntoRoute(coord);
-
-    // Only keep intermediate points (not near start or end) within corridor width
-    if (fraction < 0.08 || fraction > 0.95) continue;
-    if (devKm > maxDevKm) continue;
-
-    candidates.push({ cityName: key, fraction, devKm, coord });
-  }
-
-  // Divide the route into segments (e.g. 4-5 evenly spaced buckets from 0.10 to 0.90)
-  // and pick the best (lowest devKm) city candidate in each segment.
-  const NUM_BUCKETS = 5;
-  const selected: CityCandidate[] = [];
-
-  for (let b = 0; b < NUM_BUCKETS; b++) {
-    const minFrac = 0.08 + (b / NUM_BUCKETS) * 0.84;
-    const maxFrac = 0.08 + ((b + 1) / NUM_BUCKETS) * 0.84;
-
-    const bucketCandidates = candidates
-      .filter((c) => c.fraction >= minFrac && c.fraction < maxFrac)
-      .sort((a, b) => a.devKm - b.devKm);
-
-    if (bucketCandidates.length > 0) {
-      // Pick the candidate with lowest deviation from the route line
-      const best = bucketCandidates[0];
-      // Ensure it's not too close to previous selected stop
-      const isDuplicate = selected.some(
-        (s) => Math.abs(s.fraction - best.fraction) < 0.08 || s.cityName === best.cityName
-      );
-      if (!isDuplicate) {
-        selected.push(best);
-      }
-    }
-  }
-
-  // If buckets didn't yield enough stops, greedily fill from remaining candidates
-  if (selected.length < 3) {
-    for (const c of candidates) {
-      if (selected.length >= 4) break;
-      const isTooClose = selected.some(
-        (s) => Math.abs(s.fraction - c.fraction) < 0.12 || s.cityName === c.cityName
-      );
-      if (!isTooClose) {
-        selected.push(c);
-      }
-    }
-  }
-
-  // Sort selected stops strictly by fraction (origin to destination order)
-  selected.sort((a, b) => a.fraction - b.fraction);
-
-  // Stop type assignment based on position
-  const stopTypes = ["rest", "food", "fuel", "place", "rest"] as const;
-  const stopTypeLabels = ["Highway Hub", "Food Stop", "Fuel Station", "Scenic Point", "Rest Stop"];
-
-  if (selected.length > 0) {
-    return selected.map((c, idx) => {
-      // Capitalize city name nicely
-      const displayName = c.cityName
-        .split(" ")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ");
-
-      const typeIdx = idx % stopTypes.length;
-      const stopType = stopTypes[typeIdx];
-      const typeLabel = stopTypeLabels[typeIdx];
-
-      return {
-        name: displayName,
-        extraInfo: `${typeLabel} – ${src} ➔ ${dst} Corridor`,
-        type: stopType,
-        details: `${displayName} — key waypoint along ${src} to ${dst} highway corridor. Services available: Hotels, Restaurants, Fuel & EV Stations, Attractions.`,
-        distPct: c.fraction,
-      };
-    });
-  }
-
-  // Ultimate fallback: if still no geo matches, use the src → dst midpoint city approach
-  // Give meaningful named stops derived from source / destination names
-  const srcTitle = src.split(",")[0].trim();
-  const dstTitle = dst.split(",")[0].trim();
-  return [
-    {
-      name: `${srcTitle} Outskirts`,
-      extraInfo: `${srcTitle} ➔ ${dstTitle} Highway Start`,
-      type: "rest",
-      details: `First highway rest area departing ${srcTitle} towards ${dstTitle}. Fuel & food available.`,
-      distPct: 0.2,
-    },
-    {
-      name: `Midway Junction`,
-      extraInfo: `Midpoint – ${srcTitle} ➔ ${dstTitle}`,
-      type: "fuel",
-      details: `Central highway junction between ${srcTitle} and ${dstTitle}. EV charging, fuel & restaurants available.`,
-      distPct: 0.5,
-    },
-    {
-      name: `${dstTitle} Approach`,
-      extraInfo: `Last stop before ${dstTitle}`,
-      type: "place",
-      details: `Final scenic rest stop before entering ${dstTitle}. Good viewpoints & refreshments.`,
-      distPct: 0.82,
-    },
-  ];
+function cleanInstruction(html?: string): string {
+  if (!html) return "";
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /* ============================================================
@@ -646,6 +203,7 @@ function resolveSmartGeographicFallback(
 
 export default function RoutePage() {
   const navigate = useNavigate();
+
   /* ----------------------------------------------------------
      STATE: DB ROUTES & SELECTION
   ---------------------------------------------------------- */
@@ -672,17 +230,14 @@ export default function RoutePage() {
   ---------------------------------------------------------- */
   const [sourceSearch, setSourceSearch] = useState("");
   const [destSearch, setDestSearch] = useState("");
-  const [sourceSuggestions, setSourceSuggestions] = useState<PlaceSuggestion[]>([]);
-  const [destSuggestions, setDestSuggestions] = useState<PlaceSuggestion[]>([]);
-  const [showSourceSuggestions, setShowSourceSuggestions] = useState(false);
-  const [showDestSuggestions, setShowDestSuggestions] = useState(false);
-
   const [routeSearch, setRouteSearch] = useState<RouteSearchData | null>(null);
-  const [apiStops, setApiStops] = useState<RouteStop[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [routeDistance, setRouteDistance] = useState<number | string | undefined>();
-  const [routeDuration, setRouteDuration] = useState<string | undefined>();
-  const [error, setError] = useState<string | null>(null);
+
+  /* ----------------------------------------------------------
+     STATE: GOOGLE MAPS DIRECTIONS VIA BACKEND PROXY
+  ---------------------------------------------------------- */
+  const [directionsData, setDirectionsData] = useState<DirectionsResponse | null>(null);
+  const [directionsLoading, setDirectionsLoading] = useState(false);
+  const [directionsError, setDirectionsError] = useState<{ message: string; code: string } | null>(null);
 
   /* ----------------------------------------------------------
      STATE: SESSION ROUTE EXTENSIONS (USER-ADDED EXTENDED STOPS)
@@ -701,96 +256,6 @@ export default function RoutePage() {
     setRouteExtensions([]);
   }, [selectedRouteId, routeSearch]);
 
-  const calculateExtensionDistance = useCallback((prevCity: string, newCity: string): number => {
-    const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const pKey = norm(prevCity);
-    const nKey = norm(newCity);
-    const pairKey = `${pKey}-${nKey}`;
-    const revPairKey = `${nKey}-${pKey}`;
-
-    const CITY_PAIR_DISTANCES: Record<string, number> = {
-      // From Indore
-      "indoresurat": 450,
-      "indoremumbai": 585,
-      "indoreahmedabad": 385,
-      "indoreujjain": 55,
-      "indoreomkareshwar": 77,
-      "indoreratlam": 135,
-      "indoremandav": 95,
-      "indoredhule": 260,
-      "indorebhopal": 195,
-      "indorepune": 590,
-
-      // From Bhopal
-      "bhopalindore": 195,
-      "bhopalgwalior": 430,
-      "bhopaljabalpur": 310,
-      "bhopalsagar": 170,
-      "bhopalrewa": 490,
-      "bhopaldelhi": 780,
-      "bhopalsurat": 620,
-      "bhopalmumbai": 770,
-      "bhopalvidisha": 55,
-
-      // From Delhi
-      "delhijaipur": 280,
-      "delhiagra": 230,
-      "delhichandigarh": 245,
-      "delhishimla": 345,
-      "delhimanali": 530,
-      "delhidehradun": 245,
-      "delhirishikesh": 240,
-
-      // From Jaipur
-      "jaipurajmer": 135,
-      "jaipurpushkar": 145,
-      "jaipurudaipur": 390,
-      "jaipurjodhpur": 330,
-      "jaipurbikaner": 335,
-
-      // From Mumbai / Goa
-      "mumbaipune": 150,
-      "mumbaigoa": 580,
-      "mumbaisurat": 280,
-      "goagokarna": 140,
-      "goakarwar": 65,
-
-      // From Pokhara / Kathmandu / Nepal
-      "pokharamuktinath": 170,
-      "pokharachitwan": 145,
-      "pokharajomsom": 155,
-      "pokharabandipur": 75,
-      "kathmandupokhara": 200,
-      "kathmanduchitwan": 170,
-      "kathmandunagarkot": 32,
-      "kathmandubhaktapur": 15,
-    };
-
-    if (CITY_PAIR_DISTANCES[pairKey]) return CITY_PAIR_DISTANCES[pairKey];
-    if (CITY_PAIR_DISTANCES[revPairKey]) return CITY_PAIR_DISTANCES[revPairKey];
-
-    const c1 = lookupSingleCoordinate(prevCity);
-    const c2 = lookupSingleCoordinate(newCity);
-
-    if (c1 && c2) {
-      const R = 6371;
-      const dLat = ((c2.lat - c1.lat) * Math.PI) / 180;
-      const dLng = ((c2.lng - c1.lng) * Math.PI) / 180;
-      const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos((c1.lat * Math.PI) / 180) *
-          Math.cos((c2.lat * Math.PI) / 180) *
-          Math.sin(dLng / 2) *
-          Math.sin(dLng / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      const straightKm = R * c;
-      const roadDistKm = Math.round(straightKm * 1.3);
-      if (roadDistKm > 10) return roadDistKm;
-    }
-
-    return 65;
-  }, []);
-
   const handleAddExtension = (e?: React.FormEvent, customName?: string, customKm?: number) => {
     if (e) e.preventDefault();
     const nameToAdd = (customName || newExtensionInput).trim();
@@ -801,15 +266,10 @@ export default function RoutePage() {
       return;
     }
 
-    const lastStopName = routeExtensions.length > 0
-      ? routeExtensions[routeExtensions.length - 1].name
-      : (routeSearch ? routeSearch.destination.name : (activeDbRoute?.destination || "Destination"));
-
-    const dist = customKm || calculateExtensionDistance(lastStopName, nameToAdd);
     const newExt: SessionExtension = {
       id: `ext-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name: nameToAdd,
-      distKm: dist,
+      distKm: customKm || 0,
       addedAt: new Date().toISOString(),
     };
 
@@ -832,7 +292,6 @@ export default function RoutePage() {
   ========================================================== */
   const fetchDbRoutes = useCallback(async () => {
     try {
-      setLoading(true);
       const storeRoutes = cmsStore.getRoutes();
 
       const response = await apiRequest<RouteEntry[] | { data?: RouteEntry[] }>("/routes").catch(() => null);
@@ -872,8 +331,6 @@ export default function RoutePage() {
         const validSaved = savedId && storeRoutes.some((r) => String(r.id) === String(savedId)) ? savedId : null;
         setSelectedRouteId(validSaved || storeRoutes[0].id);
       }
-    } finally {
-      setLoading(false);
     }
   }, []);
 
@@ -947,278 +404,240 @@ export default function RoutePage() {
   }, [dbRoutes, selectedRouteId]);
 
   /* ==========================================================
-     TIMELINE STOPS COMPUTATION (DB ROUTE OR SEARCHED ROUTE)
+     FETCH REAL GOOGLE DIRECTIONS VIA PROXY (ZERO STATIC FALLBACK)
   ========================================================== */
-  const timelineStops = useMemo<TimelineStop[]>(() => {
-    const appendExtensions = (baseStops: TimelineStop[]): TimelineStop[] => {
-      if (routeExtensions.length === 0 || baseStops.length === 0) return baseStops;
-      const result = [...baseStops];
-      const origDstIndex = result.length - 1;
+  const fetchDirections = useCallback(async () => {
+    const origin = routeSearch ? routeSearch.source.name : activeDbRoute?.origin;
+    const dest = routeExtensions.length > 0
+      ? routeExtensions[routeExtensions.length - 1].name
+      : (routeSearch ? routeSearch.destination.name : activeDbRoute?.destination);
 
-      let baseKm = parseFloat(String(result[origDstIndex].distanceKm).replace(/[^0-9.]/g, "")) || 200;
-      let baseHours = parseFloat(String(result[origDstIndex].travelTime).replace(/[^0-9.]/g, "")) || (baseKm / 45);
+    if (!origin || !dest) return;
 
-      if (origDstIndex >= 0) {
-        result[origDstIndex] = {
-          ...result[origDstIndex],
-          isDestination: false,
-          badgeLabel: "CORRIDOR WAYPOINT",
-          color: "bg-emerald-600",
-          badgeBg: "bg-emerald-50 text-emerald-600",
-          subtitle: "Original Corridor Terminal",
-          details: `${result[origDstIndex].name} (Original Corridor Terminal). Extended further to custom session stops below.`,
-        };
-      }
+    // Collect waypoints
+    const waypoints: string[] = [];
 
-      let cumKm = baseKm;
-      let cumHours = baseHours;
-
-      routeExtensions.forEach((ext, extIdx) => {
-        const prevStop = result[result.length - 1];
-        const prevCity = prevStop ? prevStop.name : "Previous Terminal";
-        const newCity = ext.name;
-
-        // Resolve intermediate via-stops between prevCity and newCity
-        const midStops = resolveCorridorStops(prevCity, newCity);
-
-        midStops.forEach((mid, midIdx) => {
-          const midKm = cumKm + Math.round(ext.distKm * mid.distPct);
-          const midHours = cumHours + ((ext.distKm * mid.distPct) / 50);
-          result.push({
-            id: `ext-${extIdx}-mid-${midIdx}`,
-            name: mid.name,
-            extraInfo: mid.extraInfo,
-            type: mid.type as any,
-            subtitle: `Intermediate Extension Stop`,
-            address: `${mid.name} (${prevCity} ➔ ${newCity})`,
-            details: `${mid.details}. On the route from ${prevCity} to ${newCity}.`,
-            sequence: result.length + 1,
-            isSource: false,
-            isDestination: false,
-            badgeLabel: mid.type === "food" ? "FOOD STOP" : mid.type === "fuel" ? "FUEL STOP" : mid.type === "place" ? "ATTRACTION" : "HIGHWAY HUB",
-            color: mid.type === "food" ? "bg-orange-500" : mid.type === "fuel" ? "bg-amber-500" : mid.type === "place" ? "bg-purple-600" : "bg-emerald-600",
-            badgeBg: "bg-emerald-50 text-emerald-600",
-            distanceKm: `~${midKm} km`,
-            travelTime: `~${midHours.toFixed(1)}h`,
-            isExtension: true,
-          } as any);
-        });
-
-        // Finally add the target extended city as the Ending Destination!
-        cumKm += ext.distKm;
-        const stepHours = ext.distKm / 50;
-        cumHours += stepHours;
-
-        const isFinalExt = extIdx === routeExtensions.length - 1;
-        const formattedHours = `~${cumHours.toFixed(1)}h`;
-
-        result.push({
-          id: ext.id,
-          name: ext.name,
-          type: "destination",
-          subtitle: isFinalExt ? "Session Extended Destination" : `Extended Stop #${extIdx + 1}`,
-          address: `${ext.name} (Custom Session Stop)`,
-          details: `Custom user extension beyond original route. Total distance to ${ext.name}: ${cumKm} km (~${cumHours.toFixed(1)}h).`,
-          sequence: result.length + 1,
-          isSource: false,
-          isDestination: isFinalExt,
-          badgeLabel: isFinalExt ? "SESSION DESTINATION" : `EXTENDED STOP #${extIdx + 1}`,
-          color: isFinalExt ? "bg-purple-600" : "bg-indigo-600",
-          badgeBg: isFinalExt ? "bg-purple-50 text-purple-600" : "bg-indigo-50 text-indigo-600",
-          distanceKm: `${cumKm} km`,
-          travelTime: formattedHours,
-          isExtension: true,
-        } as any);
+    // If using a DB route and no custom search, include recommended stops as corridor waypoints
+    if (!routeSearch && activeDbRoute?.recommendedStops && activeDbRoute.recommendedStops.length > 0) {
+      activeDbRoute.recommendedStops.slice(0, 5).forEach((stop) => {
+        const sName = stop.name?.trim();
+        if (sName && sName !== origin && sName !== dest && !waypoints.includes(sName)) {
+          waypoints.push(sName);
+        }
       });
-
-      return result;
-    };
-
-    // 1. Custom Searched Route Timeline
-    if (routeSearch) {
-      const srcName = routeSearch.source?.name || "Origin";
-      const dstName = routeSearch.destination?.name || "Destination";
-
-      const preMapped = resolveCorridorStops(srcName, dstName);
-
-      const sourceStop: TimelineStop = {
-        id: "src-1",
-        name: srcName,
-        type: "source",
-        subtitle: "Start your journey from here",
-        address: (routeSearch.source as any)?.address || srcName,
-        details: "Starting Point",
-        sequence: 1,
-        isSource: true,
-        isDestination: false,
-        badgeLabel: "START",
-        color: "bg-blue-600",
-        badgeBg: "bg-blue-50 text-blue-600",
-        distanceKm: "0 km",
-        travelTime: "0h 00m",
-      };
-
-      const destStop: TimelineStop = {
-        id: "dst-1",
-        name: dstName,
-        type: "destination",
-        subtitle: "Your final destination",
-        address: (routeSearch.destination as any)?.address || dstName,
-        details: "Final Destination",
-        sequence: (preMapped?.length || apiStops.length) + 2,
-        isSource: false,
-        isDestination: true,
-        badgeLabel: "DESTINATION",
-        color: "bg-red-500",
-        badgeBg: "bg-red-50 text-red-600",
-        distanceKm: routeDistance ? `${routeDistance} km` : "End",
-        travelTime: routeDuration || "End",
-      };
-
-      if (preMapped && preMapped.length > 0) {
-        const totalKmVal = parseFloat(String(routeDistance || "200")) || 200;
-        const intermediates: TimelineStop[] = preMapped.map((item, idx) => {
-          const stepKm = Math.round(totalKmVal * item.distPct);
-          return {
-            id: `searched-mid-${idx}`,
-            name: item.name,
-            extraInfo: item.extraInfo,
-            type: item.type as any,
-            subtitle: `Intermediate Corridor Stop`,
-            address: `${item.name} Highway Station`,
-            details: `${item.details}. Click below to explore local hotels, restaurants & attractions.`,
-            sequence: idx + 2,
-            isSource: false,
-            isDestination: false,
-            badgeLabel: item.type === "food" ? "FOOD STOP" : item.type === "fuel" ? "FUEL STOP" : item.type === "place" ? "ATTRACTION" : "HIGHWAY HUB",
-            color: item.type === "food" ? "bg-orange-500" : item.type === "fuel" ? "bg-amber-500" : item.type === "place" ? "bg-purple-600" : "bg-emerald-600",
-            badgeBg: "bg-emerald-50 text-emerald-600",
-            distanceKm: `~${stepKm} km`,
-            travelTime: `~${(stepKm / 45).toFixed(1)}h`,
-          };
-        });
-        return appendExtensions([sourceStop, ...intermediates, destStop]);
-      }
-
-      const intermediates: TimelineStop[] = apiStops.map((stop, idx) => ({
-        ...stop,
-        sequence: idx + 2,
-        isSource: false,
-        isDestination: false,
-        badgeLabel: stop.type === "food" ? "FOOD STOP" : stop.type === "fuel" ? "FUEL STOP" : "RECOMMENDED STOP",
-        color: stop.type === "food" ? "bg-orange-500" : stop.type === "fuel" ? "bg-amber-500" : "bg-emerald-600",
-        badgeBg: "bg-emerald-50 text-emerald-600",
-        distanceKm: `~${((idx + 1) * 45).toFixed(0)} km`,
-        travelTime: `~${(idx + 1) * 1.2}h`,
-      }));
-
-      return appendExtensions([sourceStop, ...intermediates, destStop]);
     }
 
-    // 2. DB Active Route Timeline with Full Corridor Intermediate Locations
-    if (activeDbRoute) {
-      const srcName = activeDbRoute.origin || "Origin";
-      const dstName = activeDbRoute.destination || "Destination";
-      const totalKm = activeDbRoute.totalDistanceKm || 200;
-
-      const rawPois = [
-        ...(activeDbRoute.recommendedStops || []),
-        ...(activeDbRoute.touristAttractions || []),
-        ...(activeDbRoute.viewpoints || []),
-        ...(activeDbRoute.restaurants || []),
-        ...(activeDbRoute.fuelStations || []),
-      ];
-
-      const corridorIntermediates = resolveCorridorStops(srcName, dstName, activeDbRoute.routeName, rawPois);
-
-      const stopsList: TimelineStop[] = [];
-
-      // Start Stop
-      stopsList.push({
-        id: `db-src-${activeDbRoute.id}`,
-        name: srcName,
-        type: "source",
-        subtitle: "Start your journey",
-        address: `${srcName} Departure Point`,
-        details: `Corridor start along ${activeDbRoute.routeName}. Road condition: ${activeDbRoute.roadCondition || "Smooth Asphalt"}.`,
-        sequence: 1,
-        isSource: true,
-        isDestination: false,
-        badgeLabel: "START",
-        color: "bg-blue-600",
-        badgeBg: "bg-blue-50 text-blue-600",
-        distanceKm: "0 km",
-        travelTime: "0h 00m",
-      });
-
-      // Intermediate Corridor Stops
-      corridorIntermediates.forEach((item, index) => {
-        const stepKm = Math.round(totalKm * item.distPct);
-        const hours = (stepKm / 45).toFixed(1);
-
-        stopsList.push({
-          id: `db-mid-${index}-${activeDbRoute.id}`,
-          name: item.name,
-          extraInfo: item.extraInfo,
-          type: item.type as any,
-          subtitle: `Intermediate Waypoint on ${activeDbRoute.routeName}`,
-          address: `${item.name} Highway Corridor`,
-          details: `${item.details}. Available services: Hotels, Restaurants, Fuel & EV Stations, and Local Attractions.`,
-          sequence: index + 2,
-          isSource: false,
-          isDestination: false,
-          badgeLabel: item.type === "food" ? "FOOD STOP" : item.type === "fuel" ? "FUEL STOP" : item.type === "place" ? "ATTRACTION" : "HIGHWAY HUB",
-          color: item.type === "food" ? "bg-orange-500" : item.type === "fuel" ? "bg-amber-500" : item.type === "place" ? "bg-purple-600" : "bg-emerald-600",
-          badgeBg: "bg-emerald-50 text-emerald-600",
-          distanceKm: `${stepKm} km`,
-          travelTime: `~${hours}h`,
-        });
-      });
-
-      // Final Destination Stop
-      stopsList.push({
-        id: `db-dst-${activeDbRoute.id}`,
-        name: dstName,
-        type: "destination",
-        subtitle: "Final Destination",
-        address: `${dstName} Arrival Terminal`,
-        details: `Arrival point for ${activeDbRoute.routeName}. Total distance: ${totalKm} km.`,
-        sequence: stopsList.length + 1,
-        isSource: false,
-        isDestination: true,
-        badgeLabel: "DESTINATION",
-        color: "bg-red-500",
-        badgeBg: "bg-red-50 text-red-600",
-        distanceKm: `${totalKm} km`,
-        travelTime: activeDbRoute.estimatedTravelTime || "End",
-      });
-
-      return appendExtensions(stopsList);
+    // Include intermediate extensions before the last extension
+    if (routeExtensions.length > 1) {
+      for (let i = 0; i < routeExtensions.length - 1; i++) {
+        const extName = routeExtensions[i].name.trim();
+        if (extName && !waypoints.includes(extName)) {
+          waypoints.push(extName);
+        }
+      }
     }
 
-    return [];
-  }, [routeSearch, apiStops, routeDistance, routeDuration, activeDbRoute, routeExtensions]);
+    setDirectionsLoading(true);
+    setDirectionsError(null);
+
+    try {
+      const data = await getDirections(origin, dest, waypoints);
+      setDirectionsData(data);
+    } catch (err: any) {
+      console.error("Failed to fetch Google Directions:", err);
+      setDirectionsData(null);
+      setDirectionsError({
+        message: err.message || "Unable to retrieve real Google Maps route directions.",
+        code: err.code || "unknown_error",
+      });
+    } finally {
+      setDirectionsLoading(false);
+    }
+  }, [routeSearch, activeDbRoute, routeExtensions]);
+
+  useEffect(() => {
+    fetchDirections();
+  }, [fetchDirections]);
 
   /* ==========================================================
-     MAP MARKER ITEMS FROM TIMELINE STOPS
+     TIMELINE STOPS COMPUTATION FROM REAL GOOGLE DIRECTIONS DATA
+  ========================================================== */
+  const timelineStops = useMemo<TimelineStop[]>(() => {
+    if (!directionsData || !directionsData.routes || directionsData.routes.length === 0) {
+      return [];
+    }
+
+    const route = directionsData.routes[0];
+    const legs: DirectionsLeg[] = route.legs || [];
+    if (legs.length === 0) return [];
+
+    const stops: TimelineStop[] = [];
+
+    const totalMeters = legs.reduce((acc, l) => acc + (l.distance?.value || 0), 0);
+    const totalSeconds = legs.reduce((acc, l) => acc + (l.duration?.value || 0), 0);
+
+    const originName = routeSearch ? routeSearch.source.name : (activeDbRoute?.origin || "Origin");
+    const firstLeg = legs[0];
+
+    // 1. START STOP
+    stops.push({
+      id: "google-src",
+      name: originName,
+      type: "source",
+      subtitle: "Journey Departure Point",
+      address: firstLeg.start_address || originName,
+      details: `Starting point at ${firstLeg.start_address || originName}.`,
+      sequence: 1,
+      isSource: true,
+      isDestination: false,
+      badgeLabel: "START",
+      color: "bg-blue-600",
+      badgeBg: "bg-blue-50 text-blue-600",
+      distanceKm: "0 km",
+      travelTime: "0h 00m",
+      lat: firstLeg.start_location?.lat,
+      lng: firstLeg.start_location?.lng,
+      latitude: firstLeg.start_location?.lat,
+      longitude: firstLeg.start_location?.lng,
+    });
+
+    // 2. INTERMEDIATE STOPS
+    if (legs.length > 1) {
+      // Multiple legs: each leg endpoint represents a waypoint / extension
+      let cumMeters = 0;
+      let cumSeconds = 0;
+
+      for (let i = 0; i < legs.length - 1; i++) {
+        const leg = legs[i];
+        cumMeters += leg.distance?.value || 0;
+        cumSeconds += leg.duration?.value || 0;
+
+        const isExt = routeExtensions.some(
+          (ext) => ext.name.toLowerCase() === leg.end_address.toLowerCase() ||
+                   leg.end_address.toLowerCase().includes(ext.name.toLowerCase())
+        );
+
+        const stopName = leg.end_address.split(",")[0].trim() || `Waypoint #${i + 1}`;
+
+        stops.push({
+          id: `google-leg-${i}`,
+          name: stopName,
+          type: "stop",
+          subtitle: isExt ? `Extended Waypoint #${i + 1}` : "Corridor Waypoint",
+          address: leg.end_address,
+          details: `Waypoint reached after ${leg.distance?.text || formatMeters(leg.distance?.value || 0)} (${leg.duration?.text || formatSeconds(leg.duration?.value || 0)}).`,
+          sequence: stops.length + 1,
+          isSource: false,
+          isDestination: false,
+          badgeLabel: isExt ? "EXTENDED STOP" : "WAYPOINT",
+          color: isExt ? "bg-indigo-600" : "bg-emerald-600",
+          badgeBg: isExt ? "bg-indigo-50 text-indigo-600" : "bg-emerald-50 text-emerald-600",
+          distanceKm: formatMeters(cumMeters),
+          travelTime: formatSeconds(cumSeconds),
+          lat: leg.end_location?.lat,
+          lng: leg.end_location?.lng,
+          latitude: leg.end_location?.lat,
+          longitude: leg.end_location?.lng,
+          isExtension: isExt,
+        });
+      }
+    } else {
+      // Single leg: Extract significant milestone steps from Google Directions steps
+      const steps: DirectionsStep[] = firstLeg.steps || [];
+      if (steps.length > 2) {
+        const sampleCount = Math.min(4, Math.max(2, Math.floor(steps.length / 5)));
+        const stepInterval = Math.floor(steps.length / (sampleCount + 1));
+
+        let runningDist = 0;
+        let runningDuration = 0;
+
+        for (let sIdx = 0; sIdx < steps.length - 1; sIdx++) {
+          const step = steps[sIdx];
+          runningDist += step.distance?.value || 0;
+          runningDuration += step.duration?.value || 0;
+
+          if ((sIdx + 1) % stepInterval === 0 && stops.length <= sampleCount) {
+            const instr = cleanInstruction(step.html_instructions);
+            const milestoneTitle = instr.length > 50 ? `${instr.slice(0, 50)}...` : (instr || "Highway Corridor Stop");
+
+            stops.push({
+              id: `google-step-${sIdx}`,
+              name: milestoneTitle,
+              type: "stop",
+              subtitle: "Corridor Navigation Point",
+              address: `${instr} (${formatMeters(runningDist)})`,
+              details: `${instr}. Real-time road navigation milestone along route.`,
+              sequence: stops.length + 1,
+              isSource: false,
+              isDestination: false,
+              badgeLabel: "CORRIDOR WAYPOINT",
+              color: "bg-emerald-600",
+              badgeBg: "bg-emerald-50 text-emerald-600",
+              distanceKm: formatMeters(runningDist),
+              travelTime: formatSeconds(runningDuration),
+              lat: step.start_location?.lat,
+              lng: step.start_location?.lng,
+              latitude: step.start_location?.lat,
+              longitude: step.start_location?.lng,
+            });
+          }
+        }
+      }
+    }
+
+    // 3. FINAL DESTINATION STOP
+    const lastLeg = legs[legs.length - 1];
+    const finalDestName = routeExtensions.length > 0
+      ? routeExtensions[routeExtensions.length - 1].name
+      : (routeSearch ? routeSearch.destination.name : (activeDbRoute?.destination || "Destination"));
+
+    stops.push({
+      id: "google-dst",
+      name: finalDestName,
+      type: "destination",
+      subtitle: routeExtensions.length > 0 ? "Session Extended Destination" : "Final Destination",
+      address: lastLeg.end_address || finalDestName,
+      details: `Arrival terminal at ${lastLeg.end_address || finalDestName}. Total real route distance: ${formatMeters(totalMeters)} (${formatSeconds(totalSeconds)}).`,
+      sequence: stops.length + 1,
+      isSource: false,
+      isDestination: true,
+      badgeLabel: routeExtensions.length > 0 ? "SESSION DESTINATION" : "DESTINATION",
+      color: "bg-red-500",
+      badgeBg: "bg-red-50 text-red-600",
+      distanceKm: formatMeters(totalMeters),
+      travelTime: formatSeconds(totalSeconds),
+      lat: lastLeg.end_location?.lat,
+      lng: lastLeg.end_location?.lng,
+      latitude: lastLeg.end_location?.lat,
+      longitude: lastLeg.end_location?.lng,
+      isExtension: routeExtensions.length > 0,
+    });
+
+    return stops;
+  }, [directionsData, routeSearch, activeDbRoute, routeExtensions]);
+
+  /* ==========================================================
+     MAP MARKER ITEMS FROM REAL GOOGLE TIMELINE STOPS
   ========================================================== */
   const mapItems = useMemo<MapMarkerItem[]>(() => {
-    return timelineStops.map((stop, idx) => {
-      const { cityName: displayCity } = extractCityAndExtraInfo(stop.name, stop.extraInfo);
-      return {
-        id: String(stop.id || `stop-${idx}`),
-        name: displayCity || stop.name,
-        location: stop.address || stop.subtitle || stop.name,
-        priceTag: stop.badgeLabel || `#${stop.sequence}`,
-        category: stop.isSource ? "transport" : stop.isDestination ? "hotel" : "place",
-        lat: (stop as any).lat || (stop as any).latitude,
-        lng: (stop as any).lng || (stop as any).longitude,
-      };
-    });
+    return timelineStops
+      .filter((stop) => typeof stop.lat === "number" && typeof stop.lng === "number")
+      .map((stop, idx) => {
+        const { cityName: displayCity } = extractCityAndExtraInfo(stop.name, stop.extraInfo);
+        return {
+          id: String(stop.id || `stop-${idx}`),
+          name: displayCity || stop.name,
+          location: stop.address || stop.subtitle || stop.name,
+          priceTag: stop.badgeLabel || `#${stop.sequence}`,
+          category: stop.isSource ? "transport" : stop.isDestination ? "hotel" : "place",
+          lat: stop.lat!,
+          lng: stop.lng!,
+        };
+      });
   }, [timelineStops]);
 
   /* ==========================================================
-     EXTENSION CALCULATIONS (CURRENT DESTINATION & SUGGESTIONS)
+     ACTIVE TOTAL DISTANCE & DURATION (REAL DATA FROM GOOGLE)
   ========================================================== */
   const currentDestinationName = useMemo(() => {
     if (routeExtensions.length > 0) {
@@ -1229,66 +648,61 @@ export default function RoutePage() {
   }, [routeExtensions, routeSearch, activeDbRoute]);
 
   const activeTotalDistance = useMemo(() => {
+    if (directionsLoading) return "Calculating...";
+    if (directionsError) return "Unavailable";
     if (timelineStops.length > 0) {
       const last = timelineStops[timelineStops.length - 1];
-      return last?.distanceKm || `${activeDbRoute?.totalDistanceKm || 0} km`;
+      return last?.distanceKm || (activeDbRoute?.totalDistanceKm ? `${activeDbRoute.totalDistanceKm} km` : "N/A");
     }
-    return `${activeDbRoute?.totalDistanceKm || 0} km`;
-  }, [timelineStops, activeDbRoute]);
+    return activeDbRoute?.totalDistanceKm ? `${activeDbRoute.totalDistanceKm} km` : "N/A";
+  }, [directionsLoading, directionsError, timelineStops, activeDbRoute]);
 
   const activeTotalDuration = useMemo(() => {
+    if (directionsLoading) return "Calculating...";
+    if (directionsError) return "Unavailable";
     if (timelineStops.length > 0) {
       const last = timelineStops[timelineStops.length - 1];
       return last?.travelTime || activeDbRoute?.estimatedTravelTime || "N/A";
     }
     return activeDbRoute?.estimatedTravelTime || "N/A";
-  }, [timelineStops, activeDbRoute]);
+  }, [directionsLoading, directionsError, timelineStops, activeDbRoute]);
 
+  /* ==========================================================
+     DYNAMIC EXTENSION SUGGESTIONS (DERIVED FROM DB ROUTES)
+  ========================================================== */
   const extensionSuggestions = useMemo(() => {
-    const nameLower = currentDestinationName.toLowerCase();
-    if (nameLower.includes("indore")) {
-      return [
-        { name: "Ujjain", distKm: 55 },
-        { name: "Omkareshwar", distKm: 77 },
-        { name: "Ratlam", distKm: 135 },
-        { name: "Mandav", distKm: 95 },
-      ];
+    if (!dbRoutes || dbRoutes.length === 0) return [];
+    const currentLower = (currentDestinationName || "").toLowerCase().trim();
+
+    const candidates: Array<{ name: string; distKm: number }> = [];
+    const seen = new Set<string>([currentLower]);
+
+    // Check if any DB route connects from current destination
+    for (const r of dbRoutes) {
+      const origLower = r.origin.toLowerCase().trim();
+      const destLower = r.destination.toLowerCase().trim();
+      if (origLower.includes(currentLower) || currentLower.includes(origLower)) {
+        if (!seen.has(destLower)) {
+          seen.add(destLower);
+          candidates.push({ name: r.destination, distKm: r.totalDistanceKm || 50 });
+        }
+      }
     }
-    if (nameLower.includes("pokhara")) {
-      return [
-        { name: "Muktinath", distKm: 170 },
-        { name: "Chitwan", distKm: 145 },
-        { name: "Bandipur", distKm: 75 },
-        { name: "Jomsom", distKm: 155 },
-      ];
+
+    // If fewer than 4 candidates, add other unique destinations from DB
+    if (candidates.length < 4) {
+      for (const r of dbRoutes) {
+        const destLower = r.destination.toLowerCase().trim();
+        if (!seen.has(destLower)) {
+          seen.add(destLower);
+          candidates.push({ name: r.destination, distKm: r.totalDistanceKm || 50 });
+          if (candidates.length >= 4) break;
+        }
+      }
     }
-    if (nameLower.includes("kathmandu")) {
-      return [
-        { name: "Nagarkot", distKm: 32 },
-        { name: "Bhaktapur", distKm: 15 },
-        { name: "Pokhara", distKm: 200 },
-        { name: "Chitwan", distKm: 170 },
-      ];
-    }
-    if (nameLower.includes("goa")) {
-      return [
-        { name: "Gokarna", distKm: 140 },
-        { name: "Dudhsagar Waterfalls", distKm: 45 },
-        { name: "Karwar", distKm: 65 },
-      ];
-    }
-    if (nameLower.includes("jaipur")) {
-      return [
-        { name: "Ajmer & Pushkar", distKm: 135 },
-        { name: "Udaipur", distKm: 390 },
-        { name: "Jodhpur", distKm: 330 },
-      ];
-    }
-    return [
-      { name: `${currentDestinationName} North Bypass`, distKm: 25 },
-      { name: `${currentDestinationName} Scenic Viewpoint`, distKm: 40 },
-    ];
-  }, [currentDestinationName]);
+
+    return candidates;
+  }, [dbRoutes, currentDestinationName]);
 
   /* ==========================================================
      ALL POIS COMBINED FROM ACTIVE DB ROUTE
@@ -1315,38 +729,19 @@ export default function RoutePage() {
   /* ==========================================================
      SEARCH CUSTOM ROUTE HANDLER
   ========================================================== */
-  const handleCustomSearch = async (e: React.FormEvent) => {
+  const handleCustomSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!sourceSearch.trim() || !destSearch.trim()) return;
 
-    setLoading(true);
-    setError(null);
-    try {
-      const searchData: RouteSearchData = {
-        source: { name: sourceSearch.trim(), placeId: "src-1", address: sourceSearch.trim(), latitude: 0, longitude: 0 },
-        destination: { name: destSearch.trim(), placeId: "dst-1", address: destSearch.trim(), latitude: 0, longitude: 0 },
-        date: new Date().toISOString().split("T")[0],
-        travellers: 2,
-      };
+    setRouteExtensions([]);
+    const searchData: RouteSearchData = {
+      source: { name: sourceSearch.trim(), placeId: "src-1", address: sourceSearch.trim(), latitude: 0, longitude: 0 },
+      destination: { name: destSearch.trim(), placeId: "dst-1", address: destSearch.trim(), latitude: 0, longitude: 0 },
+      date: new Date().toISOString().split("T")[0],
+      travellers: 2,
+    };
 
-      setRouteSearch(searchData);
-
-      const response = await planRoute(searchData).catch(() => null);
-      if (response && Array.isArray(response.stops)) {
-        setApiStops(response.stops);
-        setRouteDistance(response.distance);
-        setRouteDuration(response.duration);
-      } else {
-        setApiStops([]);
-        setRouteDistance("Custom Route");
-        setRouteDuration("Direct");
-      }
-    } catch (err) {
-      console.error("Custom route error:", err);
-      setError("Unable to calculate route for specified locations.");
-    } finally {
-      setLoading(false);
-    }
+    setRouteSearch(searchData);
   };
 
   /* ==========================================================
@@ -1383,7 +778,7 @@ export default function RoutePage() {
             className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm border border-white/20 transition-all shadow-md backdrop-blur-md hover:scale-105 active:scale-95"
           >
             <ArrowLeft className="w-4 h-4 text-blue-400" />
-            <span>Back</span> 
+            <span>Back</span>
           </button>
         </div>
 
@@ -1398,7 +793,7 @@ export default function RoutePage() {
           </h1>
 
           <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
-            Select any database route below or search custom locations to inspect live step-by-step stops, altitude profiles, emergency helplines, and connected services.
+            Select any database route below or search custom locations to inspect live step-by-step stops, altitude profiles, emergency helplines, and connected services powered by Google Directions API.
           </p>
 
           {/* SEARCH FORM */}
@@ -1430,7 +825,7 @@ export default function RoutePage() {
 
               <button
                 type="submit"
-                className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg transition-all whitespace-nowrap"
+                className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg transition-all whitespace-nowrap cursor-pointer"
               >
                 Analyze Custom Route
               </button>
@@ -1561,14 +956,14 @@ export default function RoutePage() {
 
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="bg-slate-50 px-4 py-2 rounded-2xl border border-slate-200/80 text-center">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase">Total Distance</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Real Road Distance</div>
                     <div className="text-sm font-extrabold text-emerald-600">
                       {activeTotalDistance}
                     </div>
                   </div>
 
                   <div className="bg-slate-50 px-4 py-2 rounded-2xl border border-slate-200/80 text-center">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase">Estimated Duration</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Estimated Travel Time</div>
                     <div className="text-sm font-extrabold text-slate-800">
                       {activeTotalDuration}
                     </div>
@@ -1576,7 +971,7 @@ export default function RoutePage() {
 
                   {activeDbRoute?.imageUrl && (
                     <div className="w-16 h-12 rounded-xl overflow-hidden shadow-sm border border-slate-200 shrink-0">
-                      <SafeImage src={activeDbRoute.imageUrl} fallbackSrc={DEFAULT_IMAGE} alt="Route" width={64} height={48} className="object-cover w-full h-full" />
+                      <SafeImage src={activeDbRoute.imageUrl} alt="Route" width={64} height={48} className="object-cover w-full h-full" />
                     </div>
                   )}
                 </div>
@@ -1611,7 +1006,7 @@ export default function RoutePage() {
                       if (currentDestinationName) params.set("destination", currentDestinationName);
                       navigate(`/pages/famous-places?${params.toString()}`);
                     }}
-                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-sm flex items-center gap-1.5"
+                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
                   >
                     <Star className="w-3.5 h-3.5 fill-yellow-300 text-yellow-300" />
                     <span>Find More Attractions</span>
@@ -1624,7 +1019,7 @@ export default function RoutePage() {
                       if (currentDestinationName) params.set("location", currentDestinationName);
                       navigate(`/pages/fuel-station?${params.toString()}`);
                     }}
-                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-extrabold transition-all shadow-sm flex items-center gap-1.5"
+                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-extrabold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
                   >
                     <Fuel className="w-3.5 h-3.5" />
                     <span>Find More Fuel & EV Stations</span>
@@ -1637,7 +1032,7 @@ export default function RoutePage() {
                       if (currentDestinationName) params.set("location", currentDestinationName);
                       navigate(`/pages/hotels?${params.toString()}`);
                     }}
-                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                   >
                     <Hotel className="w-3.5 h-3.5 text-blue-500" />
                     <span>Hotels</span>
@@ -1650,7 +1045,7 @@ export default function RoutePage() {
                       if (currentDestinationName) params.set("location", currentDestinationName);
                       navigate(`/pages/guides?${params.toString()}`);
                     }}
-                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                   >
                     <Compass className="w-3.5 h-3.5 text-indigo-500" />
                     <span>Tour Guides</span>
@@ -1658,7 +1053,7 @@ export default function RoutePage() {
                 </div>
               </div>
 
-              {/* STEP-BY-STEP TIMELINE LIST */}
+              {/* STEP-BY-STEP TIMELINE SECTION */}
               <div className="space-y-6 pt-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-base sm:text-lg font-extrabold text-slate-900 flex items-center space-x-2">
@@ -1666,84 +1061,119 @@ export default function RoutePage() {
                     <span>Step-by-Step Route Sequence</span>
                   </h3>
                   <span className="text-xs font-semibold text-slate-500">
-                    {timelineStops.length} Waypoints Identified
+                    {directionsLoading ? "Calculating..." : `${timelineStops.length} Waypoints Identified`}
                   </span>
                 </div>
 
-                <div className="space-y-6">
-                  {timelineStops.map((stop) => {
-                    const { cityName: displayCity, extraInfo: displayExtra } = extractCityAndExtraInfo(stop.name, stop.extraInfo);
-                    return (
-                      <div key={stop.id} className="flex gap-4 items-start group">
-                        {/* Sequence Marker Circle */}
-                        <div className={`w-9 h-9 rounded-full ${stop.color} text-white font-extrabold text-xs flex items-center justify-center shadow-md shrink-0 mt-1 ring-4 ring-white`}>
-                          {stop.sequence < 10 ? `0${stop.sequence}` : stop.sequence}
-                        </div>
+                {/* LOADING SKELETON */}
+                {directionsLoading && (
+                  <div className="p-6 rounded-2xl bg-blue-50/70 border border-blue-200/80 flex items-center space-x-3 text-blue-900">
+                    <RotateCw className="w-5 h-5 text-blue-600 animate-spin shrink-0" />
+                    <div>
+                      <div className="font-extrabold text-sm text-blue-900">Fetching Route Analysis from Google Maps...</div>
+                      <div className="text-xs text-blue-600">Calculating real road waypoints, distance, travel time & coordinates via backend proxy.</div>
+                    </div>
+                  </div>
+                )}
 
-                        {/* Card Content */}
-                        <div className="flex-1 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 hover:border-emerald-400 transition-colors space-y-2.5">
-                          <div className="flex items-start justify-between flex-wrap gap-2">
-                            <div className="space-y-1">
-                              <h4 className="font-extrabold text-base sm:text-lg text-slate-900 leading-tight">
-                                {displayCity}
-                              </h4>
-                              {displayExtra && (
-                                <div className="flex items-center gap-1.5 pt-0.5">
-                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/70 font-semibold text-xs">
-                                    <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
-                                    <span>{displayExtra}</span>
-                                  </span>
-                                </div>
-                              )}
-                            </div>
+                {/* ERROR BANNER WITH RETRY (ZERO STATIC FALLBACK) */}
+                {directionsError && !directionsLoading && (
+                  <div className="p-6 rounded-2xl bg-red-50 border border-red-200/80 space-y-3 text-red-900">
+                    <div className="flex items-center space-x-2 font-extrabold text-sm sm:text-base text-red-700">
+                      <AlertTriangle className="w-5 h-5 text-red-600 shrink-0" />
+                      <span>Route Directions Unavailable</span>
+                    </div>
+                    <p className="text-xs text-red-600 leading-relaxed">
+                      {directionsError.message || "Unable to fetch real Google Maps Directions for this route."}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => fetchDirections()}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-md inline-flex items-center space-x-1.5 cursor-pointer"
+                    >
+                      <RouteIcon className="w-4 h-4" />
+                      <span>Retry Route Analysis</span>
+                    </button>
+                  </div>
+                )}
 
-                            <div className="flex items-center space-x-2 shrink-0 pt-0.5">
-                              {(stop as any).isExtension && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveExtension(stop.id)}
-                                  className="px-2 py-0.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[10px] flex items-center space-x-1 border border-red-200 transition-colors mr-1 shadow-sm"
-                                  title="Remove custom extension stop"
-                                >
-                                  <X className="w-3 h-3" />
-                                  <span>Remove</span>
-                                </button>
-                              )}
-                              <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${stop.badgeBg}`}>
-                                {stop.badgeLabel}
-                              </span>
-                              <span className="text-xs font-bold text-slate-500">
-                                {stop.distanceKm} ({stop.travelTime})
-                              </span>
-                            </div>
+                {/* TIMELINE LIST */}
+                {!directionsLoading && !directionsError && timelineStops.length > 0 && (
+                  <div className="space-y-6">
+                    {timelineStops.map((stop) => {
+                      const { cityName: displayCity, extraInfo: displayExtra } = extractCityAndExtraInfo(stop.name, stop.extraInfo);
+                      return (
+                        <div key={stop.id} className="flex gap-4 items-start group">
+                          {/* Sequence Marker Circle */}
+                          <div className={`w-9 h-9 rounded-full ${stop.color} text-white font-extrabold text-xs flex items-center justify-center shadow-md shrink-0 mt-1 ring-4 ring-white`}>
+                            {stop.sequence < 10 ? `0${stop.sequence}` : stop.sequence}
                           </div>
 
-                          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                            {stop.details || stop.subtitle || stop.address}
-                          </p>
+                          {/* Card Content */}
+                          <div className="flex-1 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 hover:border-emerald-400 transition-colors space-y-2.5">
+                            <div className="flex items-start justify-between flex-wrap gap-2">
+                              <div className="space-y-1">
+                                <h4 className="font-extrabold text-base sm:text-lg text-slate-900 leading-tight">
+                                  {displayCity}
+                                </h4>
+                                {displayExtra && (
+                                  <div className="flex items-center gap-1.5 pt-0.5">
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/70 font-semibold text-xs">
+                                      <MapPin className="w-3 h-3 text-emerald-600 shrink-0" />
+                                      <span>{displayExtra}</span>
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
 
-                          {/* QUICK ACTION CATEGORY BUTTONS FOR EACH STOP */}
-                          <div className="pt-2.5 border-t border-slate-200/60 flex flex-wrap gap-2">
-                            {actionCategories.map((cat) => {
-                              const Icon = cat.icon;
-                              return (
-                                <button
-                                  key={cat.key}
-                                  type="button"
-                                  onClick={() => handleServiceClick(displayCity || stop.name, cat.path, cat.key)}
-                                  className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-all flex items-center space-x-1.5 shadow-sm"
-                                >
-                                  <Icon className="w-3.5 h-3.5 text-emerald-500" />
-                                  <span>{cat.label}</span>
-                                </button>
-                              );
-                            })}
+                              <div className="flex items-center space-x-2 shrink-0 pt-0.5">
+                                {stop.isExtension && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveExtension(stop.id)}
+                                    className="px-2 py-0.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[10px] flex items-center space-x-1 border border-red-200 transition-colors mr-1 shadow-sm cursor-pointer"
+                                    title="Remove custom extension stop"
+                                  >
+                                    <X className="w-3 h-3" />
+                                    <span>Remove</span>
+                                  </button>
+                                )}
+                                <span className={`text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${stop.badgeBg}`}>
+                                  {stop.badgeLabel}
+                                </span>
+                                <span className="text-xs font-bold text-slate-500">
+                                  {stop.distanceKm} ({stop.travelTime})
+                                </span>
+                              </div>
+                            </div>
+
+                            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                              {stop.details || stop.subtitle || stop.address}
+                            </p>
+
+                            {/* QUICK ACTION CATEGORY BUTTONS FOR EACH STOP */}
+                            <div className="pt-2.5 border-t border-slate-200/60 flex flex-wrap gap-2">
+                              {actionCategories.map((cat) => {
+                                const Icon = cat.icon;
+                                return (
+                                  <button
+                                    key={cat.key}
+                                    type="button"
+                                    onClick={() => handleServiceClick(displayCity || stop.name, cat.path, cat.key)}
+                                    className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[11px] font-bold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-all flex items-center space-x-1.5 shadow-sm cursor-pointer"
+                                  >
+                                    <Icon className="w-3.5 h-3.5 text-emerald-500" />
+                                    <span>{cat.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* ========================================================
                     INTERACTIVE ROUTE EXTENSION PANEL (SESSION ONLY)
@@ -1778,7 +1208,7 @@ export default function RoutePage() {
                         type="text"
                         value={newExtensionInput}
                         onChange={(e) => setNewExtensionInput(e.target.value)}
-                        placeholder={`Type next destination beyond ${currentDestinationName} (e.g. Ujjain, Ratlam, Muktinath...)`}
+                        placeholder={`Type next destination beyond ${currentDestinationName} (e.g. Pokhara, Chitwan, Muktinath...)`}
                         className="w-full pl-9 pr-4 py-2.5 text-xs rounded-xl bg-slate-800/90 border border-slate-700 text-white placeholder-slate-400 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20 font-medium"
                       />
                     </div>
@@ -1792,7 +1222,7 @@ export default function RoutePage() {
                     </button>
                   </form>
 
-                  {/* QUICK SUGGESTIONS CHIPS */}
+                  {/* QUICK SUGGESTIONS CHIPS (DYNAMICALLY FROM DB ROUTES) */}
                   {extensionSuggestions.length > 0 && (
                     <div className="pt-2 border-t border-slate-800/80">
                       <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center space-x-1">
@@ -1809,7 +1239,6 @@ export default function RoutePage() {
                           >
                             <Plus className="w-3 h-3 text-emerald-400" />
                             <span>{sugg.name}</span>
-                            <span className="text-[10px] text-indigo-400 font-semibold">(+{sugg.distKm} km)</span>
                           </button>
                         ))}
                       </div>
@@ -2005,10 +1434,10 @@ export default function RoutePage() {
               <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
                 <div className="flex items-center space-x-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block animate-pulse" />
-                  <span className="font-semibold text-slate-700">Route Path Connected</span>
+                  <span className="font-semibold text-slate-700">Google Route Connected</span>
                 </div>
                 <span className="font-extrabold text-blue-700">
-                  {routeSearch ? (routeDistance ? `${routeDistance} km` : "Custom Corridor") : `${activeDbRoute?.totalDistanceKm || 0} km`}
+                  {activeTotalDistance}
                 </span>
               </div>
             </div>

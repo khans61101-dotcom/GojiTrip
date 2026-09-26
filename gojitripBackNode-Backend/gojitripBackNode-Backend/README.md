@@ -23,7 +23,51 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+[Nest](https://github.com/nestjs/nest) framework server for GojiTrip API.
+
+---
+
+## Google Maps API Proxy Configuration
+
+The backend acts as a secure caching proxy for Google Maps. Frontend clients never communicate directly with Google or receive the API key.
+
+### Only 2 Google APIs Allowed
+To keep cost and complexity low, this project uses **strictly 2 Google APIs**:
+1. **Directions API**: Road routes, waypoints, distances, durations, polyline, legs, navigation steps.
+2. **Geocoding API**: Address to lat/lng resolution for map pins.
+
+*(Do NOT enable Places, Distance Matrix, Roads, or Places Photos APIs)*
+
+### Proxy Endpoints
+- `POST /api/v1/google/directions` (also accepts `/api/google/directions`)
+  - Body: `{ origin: string, destination: string, waypoints?: string[], mode?: string }`
+  - In-memory cache TTL: 24 hours
+- `GET /api/v1/google/geocode?address=...` (also accepts `/api/google/geocode?address=...`)
+  - Query: `?address=...`
+  - In-memory cache TTL: 7 days
+
+### Google Cloud Console Setup
+1. Open [Google Cloud Console](https://console.cloud.google.com/).
+2. Create or select your GojiTrip project.
+3. In **APIs & Services > Library**, enable:
+   - **Directions API**
+   - **Geocoding API**
+4. In **APIs & Services > Credentials**, create an **API key**.
+5. Edit the key:
+   - Under **API restrictions**, select **Restrict key** and choose only **Directions API** and **Geocoding API**.
+   - Under **Application restrictions**, set server IP restrictions if deploying to a known server IP.
+6. In **Billing > Budgets & alerts**, configure a budget alert (e.g., $50/month) to prevent accidental charges.
+7. Add the API key to `gojitripBackNode-Backend/gojitripBackNode-Backend/.env`:
+   ```bash
+   GOOGLE_MAPS_API_KEY=AIzaSy...
+   ```
+8. Restart backend server:
+   ```bash
+   npm run build
+   node dist/src/main
+   ```
+
+---
 
 ## Project setup
 

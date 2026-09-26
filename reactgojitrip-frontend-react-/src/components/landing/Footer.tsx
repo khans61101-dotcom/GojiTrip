@@ -21,10 +21,18 @@ import {
   Heart,
   Facebook,
   Instagram,
-  Twitter,
   Linkedin,
+  Crown,
 } from "lucide-react";
 import { cmsStore } from "@/lib/cms-store";
+
+function XIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor" className={className}>
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
 
 export default function Footer() {
   const [email, setEmail] = React.useState("");
@@ -135,6 +143,15 @@ export default function Footer() {
                     <span>Tour Guides & Treks</span>
                   </Link>
                 </li>
+                <li>
+                  <Link
+                    to="/pages/membership"
+                    className="text-slate-400 hover:text-emerald-400 transition-colors flex items-center space-x-2"
+                  >
+                    <Crown className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>VIP Member Passes</span>
+                  </Link>
+                </li>
               </ul>
             </div>
 
@@ -239,6 +256,8 @@ export default function Footer() {
             <span>for Travelers.</span>
           </div>
 
+          <div><p>Developed By Namami Software.</p></div> 
+
           {/* Social Links */}
           <div className="flex items-center space-x-4">
             <a
@@ -260,13 +279,14 @@ export default function Footer() {
               <Instagram className="w-4 h-4" />
             </a>
             <a
-              href="https://twitter.com/gojitrip"
+              href="https://x.com/gojitrip"
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 rounded-xl bg-[#182238] border border-slate-700/80 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 transition-all"
-              title="Twitter"
+              className="p-2 rounded-xl bg-[#182238] border border-slate-700/80 text-slate-400 hover:text-white hover:border-slate-500 transition-all flex items-center justify-center"
+              title="X (formerly Twitter)"
+              aria-label="X (formerly Twitter)"
             >
-              <Twitter className="w-4 h-4" />
+              <XIcon className="w-4 h-4" />
             </a>
             <a
               href="https://linkedin.com/company/gojitrip"

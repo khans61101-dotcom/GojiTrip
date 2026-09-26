@@ -15,8 +15,10 @@ import {
   RoomTypeInfo,
   BookingRecord,
   BookingStatus,
+  SubscriptionPlan,
+  SubscriberUser,
 } from '@/types/cms';
-import { INITIAL_ACTIVITIES, INITIAL_HOTELS, INITIAL_MEDIA, INITIAL_RESTAURANTS, INITIAL_ROUTES, INITIAL_TRANSPORTS, INITIAL_GUIDES, INITIAL_LOGS, INITIAL_PLACES, INITIAL_FUEL_STATIONS, INITIAL_BOOKINGS } from '@/lib/initial-data';
+import { INITIAL_ACTIVITIES, INITIAL_HOTELS, INITIAL_MEDIA, INITIAL_RESTAURANTS, INITIAL_ROUTES, INITIAL_TRANSPORTS, INITIAL_GUIDES, INITIAL_LOGS, INITIAL_PLACES, INITIAL_FUEL_STATIONS, INITIAL_BOOKINGS, INITIAL_SUBSCRIPTIONS, INITIAL_SUBSCRIBERS } from '@/lib/initial-data';
 
 type BackendTrip = { id: number; name: string; destination: string; price: number; description?: string | null; duration: number; is_active: boolean; image_url?: string | null; created_at: string; updated_at: string; owner_id?: number | null };
 type BackendRoute = { id: number; name: string; origin: string; destination: string; distance: number; status: string };
@@ -236,6 +238,8 @@ class CMSStore {
   private places: FamousPlaceEntry[] = [];
   private fuelStations: FuelStationEntry[] = [];
   private bookings: BookingRecord[] = INITIAL_BOOKINGS;
+  private subscriptions: SubscriptionPlan[] = INITIAL_SUBSCRIPTIONS;
+  private subscribers: SubscriberUser[] = INITIAL_SUBSCRIBERS;
   private media: MediaItem[] = [];
   private logs: WorkflowHistoryLog[] = [];
   private currentRole: RoleType = 'Admin';
@@ -271,6 +275,30 @@ class CMSStore {
         try {
           const parsed = JSON.parse(storedBookings);
           if (Array.isArray(parsed) && parsed.length > 0) this.bookings = parsed;
+        } catch {}
+      }
+      const storedSubs = localStorage.getItem('gojitrip_cms_subscriptions');
+      if (storedSubs) {
+        try {
+          const parsed = JSON.parse(storedSubs);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const hasNewAudience = parsed.some((p: any) =>
+              ['Home & Homestays', 'Traveling', 'Restaurant', 'Combo'].includes(p.targetAudience)
+            );
+            if (hasNewAudience) {
+              this.subscriptions = parsed;
+            } else {
+              this.subscriptions = INITIAL_SUBSCRIPTIONS;
+              this.safeSaveItem('gojitrip_cms_subscriptions', this.subscriptions);
+            }
+          }
+        } catch {}
+      }
+      const storedSubscribers = localStorage.getItem('gojitrip_cms_subscribers');
+      if (storedSubscribers) {
+        try {
+          const parsed = JSON.parse(storedSubscribers);
+          if (Array.isArray(parsed) && parsed.length > 0) this.subscribers = parsed;
         } catch {}
       }
     } catch (e) {
@@ -320,6 +348,8 @@ class CMSStore {
     this.safeSaveItem('gojitrip_cms_places', this.places);
     this.safeSaveItem('gojitrip_cms_fuel_stations', this.fuelStations);
     this.safeSaveItem('gojitrip_cms_bookings', this.bookings);
+    this.safeSaveItem('gojitrip_cms_subscriptions', this.subscriptions);
+    this.safeSaveItem('gojitrip_cms_subscribers', this.subscribers);
   }
 
   private notify() {
@@ -616,6 +646,9 @@ class CMSStore {
       mediaCount: this.media.length,
       bookingsCount: this.bookings.length,
       pendingBookingsCount,
+      subscriptionsCount: this.subscriptions.length,
+      activeSubscriptionsCount: this.subscriptions.filter(s => s.status === 'Active').length,
+      subscribersCount: this.subscribers.length,
       draftCount,
       underReviewCount,
       approvedCount,
@@ -682,6 +715,138 @@ class CMSStore {
     this.notify();
   }
 
+  // ==========================================================
+  // SUBSCRIPTIONS & MEMBERSHIPS CRUD
+  // ==========================================================
+  getSubscriptions(): SubscriptionPlan[] {
+    return [...this.subscriptions];
+  }
+
+  getSubscriptionById(id: string): SubscriptionPlan | undefined {
+    return this.subscriptions.find(s => String(s.id) === String(id));
+  }
+
+  async saveSubscription(entry: Partial<SubscriptionPlan> & { id?: string }): Promise<SubscriptionPlan> {
+    const id = entry.id || `sub-plan-${Date.now()}`;
+    const now = new Date().toISOString();
+    const existingIdx = this.subscriptions.findIndex(s => String(s.id) === String(id));
+
+    const fullPlan: SubscriptionPlan = {
+      id,
+      name: entry.name || 'Untitled Plan',
+      code: (entry.code || entry.name?.replace(/\s+/g, '_') || 'PLAN').toUpperCase(),
+      description: entry.description || '',
+      price: Number(entry.price) || 0,
+      currency: entry.currency || 'NPR',
+      billingCycle: entry.billingCycle || 'Monthly',
+      targetAudience: entry.targetAudience || 'Home & Homestays',
+      features: Array.isArray(entry.features) ? entry.features.filter(Boolean) : [],
+      discountPercentage: entry.discountPercentage !== undefined ? Number(entry.discountPercentage) : 0,
+      maxBookings: entry.maxBookings ? Number(entry.maxBookings) : undefined,
+      badgeText: entry.badgeText || '',
+      isPopular: Boolean(entry.isPopular),
+      status: entry.status || 'Active',
+      subscribersCount: entry.subscribersCount !== undefined ? Number(entry.subscribersCount) : (existingIdx >= 0 ? this.subscriptions[existingIdx].subscribersCount : 0),
+      createdAt: entry.createdAt || now,
+      updatedAt: now,
+      createdByName: entry.createdByName || 'Admin',
+    };
+
+    if (existingIdx >= 0) {
+      this.subscriptions[existingIdx] = { ...this.subscriptions[existingIdx], ...fullPlan };
+    } else {
+      this.subscriptions.unshift(fullPlan);
+    }
+    this.notify();
+    return fullPlan;
+  }
+
+  async deleteSubscription(id: string): Promise<boolean> {
+    const before = this.subscriptions.length;
+    this.subscriptions = this.subscriptions.filter(s => String(s.id) !== String(id));
+    const deleted = this.subscriptions.length < before;
+    if (deleted) this.notify();
+    return deleted;
+  }
+
+  async toggleSubscriptionStatus(id: string): Promise<SubscriptionPlan | null> {
+    const idx = this.subscriptions.findIndex(s => String(s.id) === String(id));
+    if (idx >= 0) {
+      const newStatus = this.subscriptions[idx].status === 'Active' ? 'Inactive' : 'Active';
+      this.subscriptions[idx] = {
+        ...this.subscriptions[idx],
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+      };
+      this.notify();
+      return this.subscriptions[idx];
+    }
+    return null;
+  }
+
+  getSubscribers(): SubscriberUser[] {
+    return [...this.subscribers];
+  }
+
+  async saveSubscriber(entry: Partial<SubscriberUser> & { id?: string }): Promise<SubscriberUser> {
+    const id = entry.id || `SUB-USR-${Math.floor(100 + Math.random() * 900)}`;
+    const existingIdx = this.subscribers.findIndex(s => String(s.id) === String(id));
+    const fullSubscriber: SubscriberUser = {
+      id,
+      planId: String(entry.planId || ''),
+      planName: entry.planName || 'Plan',
+      userName: entry.userName || 'Member',
+      userEmail: entry.userEmail || '',
+      userPhone: entry.userPhone || '',
+      startDate: entry.startDate || new Date().toISOString().split('T')[0],
+      expiryDate: entry.expiryDate || new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+      amountPaid: Number(entry.amountPaid) || 0,
+      currency: entry.currency || 'NPR',
+      status: entry.status || 'Active',
+      autoRenew: Boolean(entry.autoRenew),
+      paymentMethod: entry.paymentMethod || 'eSewa',
+    };
+
+    if (existingIdx >= 0) {
+      this.subscribers[existingIdx] = { ...this.subscribers[existingIdx], ...fullSubscriber };
+    } else {
+      this.subscribers.unshift(fullSubscriber);
+    }
+    this.notify();
+    return fullSubscriber;
+  }
+
+  async cancelSubscriber(id: string): Promise<boolean> {
+    const idx = this.subscribers.findIndex(s => String(s.id) === String(id));
+    if (idx >= 0) {
+      this.subscribers[idx] = {
+        ...this.subscribers[idx],
+        status: 'Cancelled',
+        autoRenew: false,
+      };
+      this.notify();
+      return true;
+    }
+    return false;
+  }
+
+  async extendSubscriber(id: string, days: number = 30): Promise<SubscriberUser | null> {
+    const idx = this.subscribers.findIndex(s => String(s.id) === String(id));
+    if (idx >= 0) {
+      const currentExp = new Date(this.subscribers[idx].expiryDate);
+      const baseDate = isNaN(currentExp.getTime()) || currentExp.getTime() < Date.now() ? new Date() : currentExp;
+      baseDate.setDate(baseDate.getDate() + days);
+      this.subscribers[idx] = {
+        ...this.subscribers[idx],
+        expiryDate: baseDate.toISOString().split('T')[0],
+        status: 'Active',
+      };
+      this.notify();
+      return this.subscribers[idx];
+    }
+    return null;
+  }
+
   getWorkflowLogs() { return this.logs; }
   getTransports() { return this.transports; }
   syncTransports(incoming: TransportEntry[]) {
@@ -705,6 +870,15 @@ class CMSStore {
   }
   getRoutes() { return this.routes; }
   getHotels() { return this.hotels; }
+  getHotelsByOwner(ownerId: string): HotelEntry[] {
+    return this.hotels.filter(h => h.ownerId === ownerId);
+  }
+  getTransportsByOwner(ownerId: string): TransportEntry[] {
+    return this.transports.filter(t => t.ownerId === ownerId);
+  }
+  getRestaurantsByOwner(ownerId: string): RestaurantEntry[] {
+    return this.restaurants.filter(r => r.ownerId === ownerId);
+  }
   getRestaurants() { return this.restaurants; }
   getActivities() { return this.activities; }
   getGuides() { return this.guides; }
@@ -836,6 +1010,8 @@ class CMSStore {
       approvalStatus: entry.approvalStatus || 'Draft',
       description: entry.description || '',
       createdByName: entry.createdByName || 'Goji Admin',
+      ownerId: entry.ownerId,
+      ownerEmail: entry.ownerEmail,
     };
 
     let tempId: string | null = null;

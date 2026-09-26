@@ -24,6 +24,7 @@ import PublicTransportPage from "@/app/pages/transport/page";
 import PublicAboutPage from "@/app/pages/about/page";
 import TripPlannerPage from "@/app/pages/trip-planner/page";
 import AIRouteAnalysisPage from "@/app/pages/ai-route-analysis/page";
+import PublicMembershipPage from "@/app/pages/membership/page";
 
 // ============================================================
 // AUTH PAGES
@@ -50,6 +51,19 @@ import TransportPage from "@/app/(dashboard)/transport/page";
 import WorkflowPage from "@/app/(dashboard)/workflow/page";
 import EssentialServicesPage from "@/app/(dashboard)/essential-services/page";
 import BookingsPage from "@/app/(dashboard)/bookings/page";
+import SubscriptionsPage from "@/app/(dashboard)/subscriptions/page";
+
+// ============================================================
+// MEMBER PORTAL PAGES
+// ============================================================
+import MemberLayout from "@/app/member/layout";
+import MemberLoginPage from "@/app/member/login/page";
+import MemberRegisterPage from "@/app/member/register/page";
+import MemberDashboardPage from "@/app/member/dashboard/page";
+import MemberHomestaysPage from "@/app/member/homestays/page";
+import MemberTravelingPage from "@/app/member/traveling/page";
+import MemberRestaurantsPage from "@/app/member/restaurants/page";
+import MemberSubscriptionPage from "@/app/member/subscription/page";
 
 // ============================================================
 // APP
@@ -86,6 +100,24 @@ export function App() {
           element={
             <PublicLayout>
               <PublicAboutPage />
+            </PublicLayout>
+          }
+        />
+
+        <Route
+          path="/membership"
+          element={
+            <PublicLayout>
+              <PublicMembershipPage />
+            </PublicLayout>
+          }
+        />
+
+        <Route
+          path="/pages/membership"
+          element={
+            <PublicLayout>
+              <PublicMembershipPage />
             </PublicLayout>
           }
         />
@@ -372,6 +404,15 @@ export function App() {
         />
 
         <Route
+          path="/subscriptions"
+          element={
+            <DashboardLayout>
+              <SubscriptionsPage />
+            </DashboardLayout>
+          }
+        />
+
+        <Route
           path="/enquiries"
           element={
             <DashboardLayout>
@@ -388,6 +429,21 @@ export function App() {
             </PublicLayout>
           }
         />
+
+        {/* ======================================================
+            MEMBER / PARTNER PORTAL
+            ====================================================== */}
+        <Route path="/member/login" element={<MemberLoginPage />} />
+        <Route path="/member/register" element={<MemberRegisterPage />} />
+
+        <Route path="/member" element={<MemberLayout />}>
+          <Route index element={<Navigate to="/member/dashboard" replace />} />
+          <Route path="dashboard" element={<MemberDashboardPage />} />
+          <Route path="homestays" element={<MemberHomestaysPage />} />
+          <Route path="traveling" element={<MemberTravelingPage />} />
+          <Route path="restaurants" element={<MemberRestaurantsPage />} />
+          <Route path="subscription" element={<MemberSubscriptionPage />} />
+        </Route>
 
         {/* ======================================================
             FALLBACK

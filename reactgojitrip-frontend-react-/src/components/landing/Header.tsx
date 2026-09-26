@@ -16,6 +16,7 @@ import {
   Mountain,
   Sparkles,
   ChevronDown,
+  Crown,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
@@ -67,9 +68,11 @@ export default function Header() {
     { name: "Hotels", href: "/pages/hotels", icon: Hotel }, 
     { name: "Homestays", href: "/pages/homestays", icon: Home },
     { name: "Restaurants", href: "/pages/restaurants", icon: UtensilsCrossed },
+    { name: "Membership", href: "/pages/membership", icon: Crown },
   ];
 
   const dropdownServices = [
+    { name: "Membership Pass", href: "/pages/membership", icon: Crown, desc: "VIP discounts, offline maps & safety pass" },
     { name: "Buses & Transport", href: "/pages/transport", icon: Bus, desc: "Schedules, routes & vehicle fares" },
     { name: "Certified Guides & Treks", href: "/pages/guides", icon: Compass, desc: "Mountain guides & adventure pilots" },
     { name: "Famous Attractions", href: "/pages/famous-places", icon: Mountain, desc: "Top Nepal destinations & landmarks" },
@@ -159,7 +162,15 @@ export default function Header() {
           </div>
 
           {/* Right Action Controls */}
-          <div className="hidden lg:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-2.5">
+            <Link
+              to="/member/login"
+              className="text-xs font-extrabold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors px-3 py-2 rounded-xl border border-emerald-300/80 flex items-center space-x-1.5"
+            >
+              <Crown className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Partner Portal</span>
+            </Link>
+
             <Link
               to="/dashboard"
               className="text-xs font-bold text-slate-700 hover:text-blue-600 transition-colors px-3 py-2 rounded-xl hover:bg-slate-100 border border-slate-200/80"
@@ -184,28 +195,32 @@ export default function Header() {
               </button>
 
               {isAccountOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 p-1.5 z-50">
+                <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 p-1.5 z-50">
+                  <div className="px-3 py-1.5 text-[10px] font-bold text-emerald-600 uppercase tracking-wider border-b border-slate-100 mb-1">
+                    Partner Network
+                  </div>
+                  <Link
+                    to="/member/login"
+                    onClick={() => setIsAccountOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 rounded-xl"
+                  >
+                    <Crown size={15} className="text-emerald-600" /> Partner Member Portal
+                  </Link>
+                  <Link
+                    to="/member/register"
+                    onClick={() => setIsAccountOpen(false)}
+                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
+                  >
+                    <UserPlus size={15} className="text-emerald-600" /> Register Partner Account
+                  </Link>
+                  <div className="border-t border-slate-100 my-1" />
                   <Link
                     to="/auth/login"
                     onClick={() => setIsAccountOpen(false)}
                     className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
                   >
-                    <LogIn size={15} className="text-blue-600" /> Login to Portal
+                    <LogIn size={15} className="text-blue-600" /> Login to Admin CMS
                   </Link>
-                  <Link
-                    to="/auth/register"
-                    onClick={() => setIsAccountOpen(false)}
-                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 rounded-xl"
-                  >
-                    <UserPlus size={15} className="text-blue-600" /> Register Account
-                  </Link>
-                  {/* <Link
-                    to="/dashboard"
-                    onClick={() => setIsAccountOpen(false)}
-                    className="flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-blue-600 hover:bg-blue-50 border-t border-slate-100 mt-1 pt-2 rounded-xl"
-                  >
-                    <CircleUserRound size={15} /> Admin Dashboard
-                  </Link> */} 
                 </div>
               )}
             </div>
@@ -263,11 +278,19 @@ export default function Header() {
 
             <div className="px-4 pt-3 border-t border-slate-100 flex flex-col gap-2">
               <Link
+                to="/member/login"
+                className="w-full px-4 py-2.5 text-center text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-bold hover:bg-emerald-100 flex items-center justify-center space-x-1.5"
+                onClick={toggleMenu}
+              >
+                <Crown size={15} className="text-emerald-600" />
+                <span>Partner / Member Portal</span>
+              </Link>
+              <Link
                 to="/auth/login"
                 className="w-full px-4 py-2 text-center text-slate-700 border border-slate-200 rounded-xl text-xs font-semibold hover:bg-slate-50"
                 onClick={toggleMenu}
               >
-                Login to Portal
+                Login to Admin CMS
               </Link>
               <Link
                 to="/dashboard"

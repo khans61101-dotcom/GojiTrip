@@ -17,6 +17,7 @@ import {
   User,
   Fuel,
   CalendarCheck,
+  CreditCard,
 } from "lucide-react";
 
 export const Sidebar: React.FC = () => {
@@ -40,6 +41,12 @@ export const Sidebar: React.FC = () => {
       icon: CalendarCheck,
       badge: stats.bookingsCount,
       highlight: (stats.pendingBookingsCount || 0) > 0,
+    },
+    {
+      label: "Subscription Management",
+      href: "/subscriptions",
+      icon: CreditCard,
+      badge: (stats as any).subscriptionsCount ?? 0,
     },
     {
       label: "Transport Module",

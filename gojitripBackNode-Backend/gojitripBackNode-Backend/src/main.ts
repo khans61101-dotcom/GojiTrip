@@ -17,6 +17,14 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // Rewrite /api/google/* to /api/v1/google/* for backward/direct compatibility
+  app.use((req: any, _res: any, next: any) => {
+    if (req.url && req.url.startsWith('/api/google/')) {
+      req.url = req.url.replace('/api/google/', '/api/v1/google/');
+    }
+    next();
+  });
+
   // API prefix (exclude root / route for health check)
   app.setGlobalPrefix('api/v1', { exclude: ['/'] });
 

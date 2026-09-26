@@ -28,6 +28,8 @@ export interface TransportEntry {
   createdAt: string;
   updatedAt: string;
   createdByName: string;
+  ownerId?: string;
+  ownerEmail?: string;
 }
 
 export interface RoutePOI {
@@ -76,6 +78,8 @@ export interface RouteEntry {
   createdAt: string;
   updatedAt: string;
   createdByName: string;
+  ownerId?: string;
+  ownerEmail?: string;
 }
 
 export interface RoomTypeInfo {
@@ -113,6 +117,8 @@ export interface HotelEntry {
   createdAt: string;
   updatedAt: string;
   createdByName: string;
+  ownerId?: string;
+  ownerEmail?: string;
 }
 
 export interface MenuItem {
@@ -143,6 +149,8 @@ export interface RestaurantEntry {
   createdAt: string;
   updatedAt: string;
   createdByName: string;
+  ownerId?: string;
+  ownerEmail?: string;
 }
 
 export interface ActivityEntry {
@@ -279,3 +287,66 @@ export interface BookingRecord {
   updatedAt: string;
 }
 
+// ============================================================
+// SUBSCRIPTION & MEMBERSHIP MANAGEMENT TYPES
+// ============================================================
+
+export type SubscriptionBillingCycle = 'Monthly' | 'Quarterly' | 'Yearly' | 'Lifetime';
+export type SubscriptionStatus = 'Active' | 'Inactive' | 'Archived';
+export type TargetAudience = 'Home & Homestays' | 'Traveling' | 'Restaurant' | 'Combo';
+
+export type MemberCategory = 'Home & Homestays' | 'Traveling' | 'Restaurant' | 'Combo';
+
+export interface MemberAccount {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  businessName: string;
+  category: MemberCategory;
+  address?: string;
+  status: 'Active' | 'Pending' | 'Suspended';
+  subscribedPlanId?: string;
+  subscribedPlanName?: string;
+  subscriptionStatus?: 'Active' | 'Inactive' | 'Trial';
+  subscriptionExpiry?: string;
+  createdAt: string;
+  avatarUrl?: string;
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+  price: number;
+  currency: string;
+  billingCycle: SubscriptionBillingCycle;
+  targetAudience: TargetAudience;
+  features: string[];
+  discountPercentage?: number;
+  maxBookings?: number;
+  badgeText?: string;
+  isPopular?: boolean;
+  status: SubscriptionStatus;
+  subscribersCount: number;
+  createdAt: string;
+  updatedAt: string;
+  createdByName?: string;
+}
+
+export interface SubscriberUser {
+  id: string;
+  planId: string;
+  planName: string;
+  userName: string;
+  userEmail: string;
+  userPhone: string;
+  startDate: string;
+  expiryDate: string;
+  amountPaid: number;
+  currency: string;
+  status: 'Active' | 'Expired' | 'Cancelled';
+  autoRenew: boolean;
+  paymentMethod: 'Khalti' | 'eSewa' | 'Credit Card' | 'Bank Transfer';
+}
